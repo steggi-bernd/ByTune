@@ -22,7 +22,7 @@ const documentScope = (): Promise<string> => {
 const api = {
   platform: process.platform,
   versions: {
-    app: "1.0.3",
+    app: "1.0.4",
     electron: process.versions.electron ?? "",
     chrome: process.versions.chrome ?? "",
     node: process.versions.node ?? "",
