@@ -31,7 +31,7 @@ const LIBRARY_STORE = "jellyfin-library";
 const PAGE_SIZE = 500;
 const MAX_ITEMS = 100_000;
 const CLIENT = "ByTune";
-const VERSION = "1.0.6";
+const VERSION = "1.0.7";
 /** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
 const LIB_VERSION = 2;
 
