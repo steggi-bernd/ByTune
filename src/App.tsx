@@ -70,6 +70,11 @@ function useKeyboardShortcuts(): void {
           const el = document.getElementById("global-search") as HTMLInputElement | null;
           el?.focus();
           el?.select();
+        } else if (e.key.toLowerCase() === "b" && !e.shiftKey && !e.altKey) {
+          // Ctrl/Cmd+B folds the library panel, like an editor's side bar.
+          e.preventDefault();
+          const s = useSettings.getState();
+          s.setSidebarCollapsed(!s.sidebarCollapsed);
         }
         return;
       }

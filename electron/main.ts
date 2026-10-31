@@ -8,7 +8,7 @@ import * as downloads from "./downloads";
 import * as canvas from "./canvas";
 import { enrichLocalLibrary } from "./enrich";
 import * as jellyfin from "./jellyfin";
-import { fetchLyrics, type FetchedLyrics } from "./lyrics";
+import { libraryLyrics } from "./library-lyrics";
 import * as meta from "./metadata";
 import * as music from "./music-service";
 import { backupExport, backupImport } from "./backup";
@@ -19,6 +19,7 @@ import * as stats from "./stats";
 import { proxyUrlFor, proxyUrlForJellyfin, proxyUrlForLocalTrack, startStreamProxy } from "./stream-proxy";
 import * as auth from "./supabase";
 import * as sync from "./sync";
+import * as transcode from "./transcode";
 import * as transition from "./data-transition";
 import { buildAppMenu, type MenuCommand, type MenuPlaybackState, type MenuWiring } from "./mac-menu";
 import type { Track } from "../src/types";
@@ -295,25 +296,8 @@ function createWindow(): void {
   });
 }
 
-/**
- * Lyrics for the local player: the open lyric databases only (LRCLIB, KuGou,
- * the Apple-TTML mirrors …). The YouTube caption and YT Music sources are
- * left out — local files and Jellyfin items have no video behind them.
- */
-const lyricCache = new Map<string, FetchedLyrics | null>();
-async function localLyrics(q: music.LyricsMeta): Promise<FetchedLyrics | null> {
-  if (!q?.id) return null;
-  if (lyricCache.has(q.id)) return lyricCache.get(q.id) ?? null;
-  const duration = typeof q.duration === "number" && Number.isFinite(q.duration) ? Math.round(q.duration) : 0;
-  const found = await fetchLyrics(
-    { id: q.id, title: q.title || "", artist: q.artist || "", album: q.album, duration },
-    { prioritizeWordSync: true },
-    {}
-  ).catch(() => null);
-  lyricCache.set(q.id, found);
-  if (lyricCache.size > 200) lyricCache.delete(lyricCache.keys().next().value as string);
-  return found;
-}
+/** Why the last track-URL request for an id produced no URL (for the renderer's error toast). */
+const trackUrlErrors = new Map<string, "missing" | transcode.TranscodeFailure>();
 
 /** Background cover/album fill; each batch is pushed to the renderer. */
 function startEnrichment(): void {
@@ -401,7 +385,8 @@ function registerIpc(): void {
   ipc.handle("music:charts", () => music.getCharts());
   ipc.handle("music:moods", () => music.getMoods());
   ipc.handle("market:current", () => music.currentMarket());
-  ipc.handle("music:lyrics", (_e, q: music.LyricsMeta) => localLyrics(q));
+  // Own lyrics first (.lrc, embedded tags, Jellyfin), then cache, then the open providers.
+  ipc.handle("music:lyrics", (_e, q: music.LyricsMeta) => libraryLyrics(q));
   ipc.handle("music:enrich", (_e, ids: string[]) => music.enrichDurations(Array.isArray(ids) ? ids : []));
   ipc.handle("music:stream", async (_e, id: string, forceRotate?: boolean, quality?: string) => {
     // Hand the renderer a localhost proxy URL — the main process does the
@@ -448,12 +433,29 @@ function registerIpc(): void {
       await startStreamProxy();
       return jellyfin.status().connected ? proxyUrlForJellyfin(String(id)) : null;
     }
-    const p = locallib.localStreamPath(String(id ?? ""));
-    if (!p) return null;
+    const key = String(id ?? "");
+    const p = locallib.localStreamPath(key);
+    if (!p) {
+      trackUrlErrors.set(key, "missing");
+      return null;
+    }
+    // AIFF, ALAC, WMA, WavPack, APE and DSD are converted to a cached FLAC
+    // first (FFmpeg) — the proxy then serves that file instead.
+    let served = p;
+    try {
+      served = await transcode.ensurePlayable(p, locallib.localTrackById(key)?.codec);
+    } catch (err) {
+      trackUrlErrors.set(key, err instanceof transcode.TranscodeError ? err.reason : "transcode-failed");
+      return null;
+    }
+    trackUrlErrors.delete(key);
     // Serve over the stream proxy — Chromium blocks file:// media when the
     // renderer runs on an http origin (dev server / packaged build).
-    return proxyUrlForLocalTrack(String(id)) ?? pathToFileURL(p).toString();
+    await startStreamProxy();
+    return proxyUrlForLocalTrack(key) ?? pathToFileURL(served).toString();
   });
+  ipc.handle("library:trackerror", (_e, id: string) => trackUrlErrors.get(String(id ?? "")) ?? null);
+  ipc.handle("ffmpeg:status", (_e, recheck?: boolean) => transcode.ffmpegStatus(recheck === true));
   ipc.handle("library:artbytes", async (_e, thumb: string) => {
     if (String(thumb ?? "").startsWith("jfart://")) return (await jellyfin.artBytes(String(thumb)))?.data ?? null;
     // Raw cover bytes for the palette extractors: Chromium blocks CORS-mode

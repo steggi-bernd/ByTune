@@ -17,6 +17,8 @@ import {
   Library,
   ListPlus,
   Music2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pin,
   PinOff,
   Server,
@@ -24,6 +26,7 @@ import {
 } from "lucide-react";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
+import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
 import { EqBars } from "./primitives";
 import { upgradeArtwork } from "../lib/artwork";
@@ -52,7 +55,13 @@ interface LibRow {
   singleKey?: "liked" | "downloads" | "local";
 }
 
-function LibraryPill() {
+/**
+ * The library panel. Collapsed, it folds down to an icon rail: every row keeps
+ * its artwork/icon (title as tooltip), clicks, drops and context menus work as
+ * before, and the header button folds it back out.
+ */
+function LibraryPill({ collapsed }: { collapsed: boolean }) {
+  const setCollapsed = useSettings((s) => s.setSidebarCollapsed);
   const liked = useLibrary((s) => s.liked);
   const playlists = useLibrary((s) => s.playlists);
   const folders = useLibrary((s) => s.folders);
@@ -667,24 +676,45 @@ function LibraryPill() {
         />
       )}
       {/* Header */}
-      <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-        <button
-          onClick={() => navigate({ name: "library" })}
-          className="flex items-center gap-2 text-[14px] font-semibold text-ink-hi/75 hover:text-ink-hi transition-colors"
-        >
-          <Library className="w-4 h-4" />
-          Your Library
-        </button>
-        <div className="ml-auto flex items-center gap-1">
-          {/* + opens Spotify's create dropdown — Playlist / Folder, no modal. */}
-          <CreateMenu onFolderCreated={(f) => setExpanded((prev) => new Set(prev).add(f.id))} />
+      {collapsed ? (
+        <div className="flex justify-center pt-4 pb-2">
+          <button
+            onClick={() => setCollapsed(false)}
+            title="Expand Your Library"
+            aria-label="Expand Your Library"
+            className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
+          >
+            <PanelLeftOpen className="w-5 h-5" />
+          </button>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+          <button
+            onClick={() => navigate({ name: "library" })}
+            className="flex items-center gap-2 text-[14px] font-semibold text-ink-hi/75 hover:text-ink-hi transition-colors"
+          >
+            <Library className="w-4 h-4" />
+            Your Library
+          </button>
+          <div className="ml-auto flex items-center gap-1">
+            {/* + opens Spotify's create dropdown — Playlist / Folder, no modal. */}
+            <CreateMenu onFolderCreated={(f) => setExpanded((prev) => new Set(prev).add(f.id))} />
+            <button
+              onClick={() => setCollapsed(true)}
+              title="Collapse Your Library"
+              aria-label="Collapse Your Library"
+              className="w-8 h-8 grid place-items-center rounded-full text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Rows — drops bubble to the panel root, which imports playlists and
           artists anywhere they land; specific rows handle their own targets. */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 pt-1 space-y-0.5">
-        {rows.length === 0 ? (
+        {rows.length === 0 && !collapsed ? (
           <div className="px-3 py-8 text-center text-[13px] text-ink-hi/55">
             Nothing here yet — play a track to fill your library.
           </div>
@@ -699,8 +729,10 @@ function LibraryPill() {
                 onDragOver={(e) => onRowDragOver(e, r)}
                 onDragLeave={(e) => onRowDragLeave(e, r)}
                 onDrop={(e) => onRowDrop(e, r)}
+                title={collapsed ? `${r.title} · ${r.subtitle}` : undefined}
+                aria-label={collapsed ? r.title : undefined}
                 className={`group w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-ink-hi/[0.05] active:bg-ink-hi/[0.09] transition-all duration-150 ${
-                  r.kind === "playlist" && r.folderId ? "pl-6" : ""
+                  collapsed ? "justify-center" : r.kind === "playlist" && r.folderId ? "pl-6" : ""
                 } ${dropHover === r.id ? "ring-2 ring-inset ring-accent/60 bg-ink-hi/[0.08] scale-[1.02]" : ""} ${
                   pulse === r.id ? "animate-drop-pulse" : ""
                 }`}
@@ -742,29 +774,33 @@ function LibraryPill() {
                     )}
                   </div>
                 )}
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={`text-[14px] font-semibold truncate ${
-                      isCurrent ? "text-ink-hi" : "text-ink-hi"
-                    }`}
-                  >
-                    {r.title}
-                  </div>
-                  <div className="text-[12.5px] text-ink-hi/55 truncate mt-0.5">{r.subtitle}</div>
-                </div>
-                {isCurrent && playing && <EqBars />}
-                {((r.singleKey && r.pinned) ||
-                  (r.kind === "playlist" &&
-                    !r.singleKey &&
-                    playlists.find((p) => p.id === r.id)?.pinned)) && (
-                  <Pin className="w-3.5 h-3.5 text-accent shrink-0 fill-accent/20" aria-label="Pinned" />
+                {!collapsed && (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={`text-[14px] font-semibold truncate ${
+                          isCurrent ? "text-ink-hi" : "text-ink-hi"
+                        }`}
+                      >
+                        {r.title}
+                      </div>
+                      <div className="text-[12.5px] text-ink-hi/55 truncate mt-0.5">{r.subtitle}</div>
+                    </div>
+                    {isCurrent && playing && <EqBars />}
+                    {((r.singleKey && r.pinned) ||
+                      (r.kind === "playlist" &&
+                        !r.singleKey &&
+                        playlists.find((p) => p.id === r.id)?.pinned)) && (
+                      <Pin className="w-3.5 h-3.5 text-accent shrink-0 fill-accent/20" aria-label="Pinned" />
+                    )}
+                    {r.kind === "folder" &&
+                      (expanded.has(r.id) ? (
+                        <ChevronDown className="w-4 h-4 text-ink-hi/45 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-ink-hi/45 shrink-0" />
+                      ))}
+                  </>
                 )}
-                {r.kind === "folder" &&
-                  (expanded.has(r.id) ? (
-                    <ChevronDown className="w-4 h-4 text-ink-hi/45 shrink-0" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-ink-hi/45 shrink-0" />
-                  ))}
               </button>
             );
           })
@@ -777,9 +813,12 @@ function LibraryPill() {
 /* ============================================================ root */
 
 export function Sidebar() {
+  const collapsed = useSettings((s) => s.sidebarCollapsed);
   return (
-    <aside className="w-[328px] shrink-0 flex flex-col min-h-0">
-      <LibraryPill />
+    <aside
+      className={`${collapsed ? "w-[80px]" : "w-[328px]"} shrink-0 flex flex-col min-h-0 transition-[width] duration-200 ease-out`}
+    >
+      <LibraryPill collapsed={collapsed} />
     </aside>
   );
 }

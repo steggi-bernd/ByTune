@@ -14,6 +14,7 @@
  * once and the panels paint instantly on the next launch.
  */
 import { app } from "electron";
+import { storeFetchedArt } from "./local-library";
 import * as persist from "./persist";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -395,11 +396,30 @@ async function wikipediaSummary(langCode: string, title: string): Promise<any | 
   return res;
 }
 
-export function lookupArtist(name: string): Promise<ArtistMeta | null> {
+/** Artist photos are stored at this width: sharp in the 328 px card on 2× screens, ~30–80 KB each. */
+const PHOTO_WIDTH = 600;
+
+/**
+ * Keep the artist photo on disk (in the cover cache, served as localart://),
+ * so the card paints offline and Wikimedia is asked once per artist. A failed
+ * download keeps the web URL and is retried on the next lookup.
+ */
+async function localizeArtistPhoto(key: string, meta: ArtistMeta): Promise<ArtistMeta> {
+  if (!meta.image || !/^https?:/i.test(meta.image)) return meta;
+  const pic = await downloadCover(meta.image);
+  const local = pic ? storeFetchedArt(`artist:${meta.mbid}`, pic) : undefined;
+  if (!local) return meta;
+  const updated = { ...meta, image: local };
+  cacheMap()[key] = { at: Date.now(), value: updated };
+  scheduleSave();
+  return updated;
+}
+
+export async function lookupArtist(name: string): Promise<ArtistMeta | null> {
   const lead = leadArtist(name);
-  if (isPlaceholder(lead)) return Promise.resolve(null);
+  if (isPlaceholder(lead)) return null;
   const key = `art:${lang()}:${norm(lead)}`;
-  return cached(key, async () => {
+  const meta = await cached<ArtistMeta>(key, async () => {
     const search = await mb(`artist?query=${encodeURIComponent(`artist:${phrase(lead)}`)}&limit=5`);
     const hits: any[] = Array.isArray(search?.artists) ? search.artists : [];
     const hit = hits.find((a) => (a.score ?? 0) >= 90 && (sameName(a.name ?? "", lead) || (a.aliases ?? []).some((al: any) => sameName(al.name ?? "", lead))));
@@ -416,7 +436,7 @@ export function lookupArtist(name: string): Promise<ArtistMeta | null> {
       const entity = await wikidataEntity(qid).catch(() => null);
       const p18 = entity?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
       if (typeof p18 === "string") {
-        image = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=800`;
+        image = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=${PHOTO_WIDTH}`;
       }
       for (const code of [...new Set([lang(), "en"])]) {
         const title = entity?.sitelinks?.[`${code}wiki`]?.title;
@@ -425,7 +445,9 @@ export function lookupArtist(name: string): Promise<ArtistMeta | null> {
         if (!summary) continue;
         description = String(summary.extract);
         wikiUrl = summary.content_urls?.desktop?.page ?? null;
-        image = image ?? summary.originalimage?.source ?? summary.thumbnail?.source ?? null;
+        // The lead image's thumbnail, resized — the original can be a multi-MB scan.
+        const thumb: string | undefined = summary.thumbnail?.source;
+        image = image ?? (thumb ? thumb.replace(/\/\d+px-/, `/${PHOTO_WIDTH}px-`) : summary.originalimage?.source) ?? null;
         break;
       }
     }
@@ -443,4 +465,6 @@ export function lookupArtist(name: string): Promise<ArtistMeta | null> {
       genres,
     };
   });
+  // Also upgrades entries cached before photos were stored locally.
+  return meta ? localizeArtistPhoto(key, meta) : null;
 }

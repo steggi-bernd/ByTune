@@ -1,10 +1,10 @@
 {
   "name": "bytune-desktop",
-  "productName": "ByTune",
+  "productName": "ByTune Local",
   "private": true,
   "version": "1.0.1",
   "author": "ByTune",
-  "description": "ByTune — desktop music player for Windows & macOS",
+  "description": "ByTune Local — local music player with Jellyfin and open metadata",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -s first \"npm:dev:renderer\" \"npm:dev:app\"",
@@ -26,8 +26,8 @@
     "qa:local": "node scripts/local-lib-qa.mjs"
   },
   "build": {
-    "appId": "com.bytune.music",
-    "productName": "ByTune",
+    "appId": "com.bytune.local",
+    "productName": "ByTune Local",
     "directories": {
       "output": "release"
     },
@@ -40,7 +40,7 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "artifactName": "ByTune-Setup.${ext}"
+      "artifactName": "ByTune-Local-Setup.${ext}"
     },
     "mac": {
       "target": [
@@ -103,7 +103,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
-      "shortcutName": "ByTune"
+      "shortcutName": "ByTune Local"
     }
   },
   "devDependencies": {

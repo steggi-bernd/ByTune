@@ -173,6 +173,28 @@ function toResult(source: string, lines: SyncedLyricLine[]): ProviderResult | nu
 
 /* ------------------------------ LRC parsing ----------------------------- */
 
+/**
+ * Lyrics text the user already has — a sidecar .lrc, an embedded tag, a
+ * Jellyfin lyrics file — through the same parsers the providers use: rich
+ * LRC (word stamps) first, then plain LRC, then untimed text.
+ */
+export function lyricsFromText(source: string, text: string): FetchedLyrics | null {
+  const clean = text.replace(/^﻿/, "").trim();
+  if (!clean) return null;
+  const rich = parseEnhancedLrc(clean);
+  const lines = rich.length ? rich : parseLrc(clean);
+  if (lines.some((l) => l.text.trim())) {
+    return { source, wordSynced: rich.length > 0, synced: withInstrumentalGaps(lines), plain: null };
+  }
+  // No timestamps: plain text, minus any LRC header tags ([ar:…], [ti:…]).
+  const plain = clean
+    .split(/\r?\n/)
+    .filter((l) => !/^\[[a-z]+:.*]$/i.test(l.trim()))
+    .join("\n")
+    .trim();
+  return plain ? { source, wordSynced: false, synced: null, plain } : null;
+}
+
 /** Plain LRC → line-synced lines (seconds). Word stamps `<…>` are ignored. */
 function parseLrc(lrc: string): SyncedLyricLine[] {
   const rows: { time: number; text: string }[] = [];

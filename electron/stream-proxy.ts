@@ -15,6 +15,7 @@ import path from "path";
 import type { AddressInfo } from "net";
 import { fetchStream as fetchJellyfinStream } from "./jellyfin";
 import { localStreamPath } from "./local-library";
+import { servedPathFor } from "./transcode";
 import { resolveStream } from "./music-service";
 
 const UA =
@@ -109,7 +110,9 @@ const LOCAL_MIME: Record<string, string> = {
 };
 
 function serveLocalFile(id: string, range: string | undefined, res: http.ServerResponse, req: http.IncomingMessage): void {
-  const filePath = localStreamPath(id);
+  // Formats Chromium can't decode are served from their converted FLAC.
+  const original = localStreamPath(id);
+  const filePath = original ? servedPathFor(original) : null;
   if (!filePath) {
     res.writeHead(404);
     res.end("local file missing");

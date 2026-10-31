@@ -38,6 +38,8 @@ export interface LocalTrack {
   mtime: number;
   /** localart:// URL for the extracted cover, when one was found */
   art?: string;
+  /** codec the tags report ("ALAC", "MPEG-4/AAC" …) — decides FFmpeg conversion */
+  codec?: string;
 }
 
 export interface LocalFolderEntry {
@@ -70,7 +72,12 @@ export interface FolderStatus {
   exists: boolean;
 }
 
-const AUDIO_EXT = new Set([".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus", ".wma", ".aiff", ".alac"]);
+// AIFF, ALAC, WMA, WavPack, APE and DSD play through an FFmpeg conversion
+// (see transcode.ts); everything else Chromium decodes itself.
+const AUDIO_EXT = new Set([
+  ".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus", ".wma", ".aiff", ".aif", ".aifc", ".alac",
+  ".wv", ".ape", ".dsf", ".dff",
+]);
 const MIN_DURATION_SEC = 30;
 /** Hard ceiling on stored folder entries — protects against pathological picks. */
 const MAX_FOLDERS = 200;
@@ -561,6 +568,7 @@ export async function scanLibrary(
         artist: bounded(c.artist?.trim()) || bounded(c.albumartist?.trim()) || track.artist,
         album: bounded(c.album?.trim()) || track.album,
         genre: bounded(c.genre?.[0]),
+        codec: bounded(meta.format.codec),
         duration: parsedDuration(meta.format.duration),
         // Re-parsed (mtime changed) → refresh the extracted cover too.
         art: extractArt(hashPath(f.abs), c.picture?.[0], true),

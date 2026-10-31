@@ -40,6 +40,8 @@ interface SettingsState {
   eqGains: number[];
 
   /* Appearance */
+  /** Left library panel folded down to an icon rail */
+  sidebarCollapsed: boolean;
   reduceAnimation: boolean;
   reduceDynamicBlur: boolean;
   liquidGlass: boolean;
@@ -69,6 +71,7 @@ interface SettingsState {
   setAudioSinkId(sinkId: string): void;
   setEqEnabled(v: boolean): void;
   setEqGains(gains: number[]): void;
+  setSidebarCollapsed(v: boolean): void;
   setReduceAnimation(v: boolean): void;
   setReduceDynamicBlur(v: boolean): void;
   setLiquidGlass(v: boolean): void;
@@ -100,6 +103,7 @@ export const useSettings = create<SettingsState>()(
       eqEnabled: false,
       eqGains: Array(10).fill(0),
 
+      sidebarCollapsed: false,
       reduceAnimation: false,
       reduceDynamicBlur: false,
       liquidGlass: true,
@@ -127,6 +131,7 @@ export const useSettings = create<SettingsState>()(
       setAudioSinkId: (audioSinkId) => set({ audioSinkId }),
       setEqEnabled: (eqEnabled) => set({ eqEnabled }),
       setEqGains: (eqGains) => set({ eqGains: eqGains.map((g) => Math.min(12, Math.max(-12, g))) }),
+      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setReduceAnimation: (reduceAnimation) => set({ reduceAnimation }),
       setReduceDynamicBlur: (reduceDynamicBlur) => set({ reduceDynamicBlur }),
       setLiquidGlass: (liquidGlass) => set({ liquidGlass }),

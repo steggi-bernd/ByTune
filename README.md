@@ -30,13 +30,25 @@ Everything the files' tags don't say comes from **public, open databases**:
 | --- | --- |
 | Missing covers and album names | MusicBrainz + Cover Art Archive, iTunes Search as fallback |
 | Artist bio, photo, facts, genres | MusicBrainz → Wikidata → Wikipedia (app language, English fallback) / Wikimedia Commons |
-| Synced lyrics | LRCLIB, KuGou and the other open lyric providers (the YouTube sources are off) |
+| Synced lyrics | your own first (`Song.lrc` next to the file, embedded lyrics tags, the Jellyfin server's lyrics), then LRCLIB, KuGou and the other open providers (the YouTube sources are off) |
 
 Lookups are paced to MusicBrainz's one-request-per-second rule, run in the background after a scan
 (`electron/enrich.ts`), and are cached on disk (`open-metadata` store) — a temporary outage is never
 cached as "not found". Search, AutoPlay and the "More by …" menu all work on your own library only.
 
-The YouTube code is still in the repository but no longer reachable from the UI.
+**Formats.** Chromium plays MP3, AAC, FLAC (up to 24-bit/192 kHz, multichannel), WAV (16/24/32-bit, float),
+Ogg Vorbis and Opus directly. AIFF, ALAC, WMA, WavPack, APE and DSD (DSF/DFF) play through
+[FFmpeg](https://ffmpeg.org/): converted once into a lossless 24-bit FLAC in a cache (DSD → 24-bit/176.4 kHz PCM),
+then played with full seeking. FFmpeg is found in the app's data folder, next to the app or on `PATH`
+(`winget install ffmpeg`); Settings → Library sources shows its status.
+
+**Caching.** Online lyrics are fetched once and kept on disk (`lyrics-cache`); artist photos are stored locally
+at 600 px (~30–100 KB each) next to the artist text (~1 KB each), so the panels also work offline.
+
+**Layout.** The library panel folds down to an icon rail (header button or `Ctrl+B`).
+
+The installer uses its own identity (`ByTune Local`, `com.bytune.local`), so it never replaces an installed
+original ByTune or shares its data. The YouTube code is still in the repository but no longer reachable from the UI.
 
 ## What is ByTune?
 

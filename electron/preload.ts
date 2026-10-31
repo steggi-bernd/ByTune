@@ -62,6 +62,11 @@ const api = {
   removeLibraryFolder: (folderPath: string) => ipcRenderer.invoke("library:removeFolder", folderPath),
   libraryFolderStatuses: () => ipcRenderer.invoke("library:folderStatuses"),
   localTrackUrl: (id: string) => ipcRenderer.invoke("library:trackurl", id),
+  /** Why localTrackUrl answered null: "missing" | "ffmpeg-missing" | "transcode-failed". */
+  localTrackError: (id: string) => ipcRenderer.invoke("library:trackerror", id) as Promise<string | null>,
+  /** FFmpeg (needed for AIFF, ALAC, WMA, WavPack, APE, DSD): where it is and which version. */
+  ffmpegStatus: (recheck = false) =>
+    ipcRenderer.invoke("ffmpeg:status", recheck) as Promise<{ path: string | null; version: string | null }>,
   localArtBytes: (thumb: string) => ipcRenderer.invoke("library:artbytes", thumb),
   /** Background cover/album fills for the local library land here, batch by batch. */
   onLibraryEnriched: (cb: (lib: unknown) => void): (() => void) => {

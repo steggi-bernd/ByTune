@@ -1254,7 +1254,10 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
       // proxy port changes between launches, so cached URLs would go stale,
       // and the IPC lookup is a local roundtrip.
       const src = await requireBridge().localTrackUrl(track.id);
-      if (!src) throw new Error(track.id.startsWith("jf:") ? "Jellyfin server is not connected" : "Local file is missing on disk");
+      if (!src) {
+        if (track.id.startsWith("jf:")) throw new Error("Jellyfin server is not connected");
+        throw new LibrarySourceError((await requireBridge().localTrackError(track.id).catch(() => null)) ?? "missing");
+      }
       // Local files play at their original level — no normalisation, no trim.
       rememberGain(track.id, 1);
       // Apply immediately: without this the element keeps the PREVIOUS
@@ -1324,6 +1327,13 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
   }
 }
 
+/** Why a local track produced no stream URL: "missing" | "ffmpeg-missing" | "transcode-failed". */
+class LibrarySourceError extends Error {
+  constructor(readonly reason: string) {
+    super(`local source unavailable: ${reason}`);
+  }
+}
+
 function handleFailure(track: Track, err?: unknown): void {
   const state = usePlayer.getState();
   if (state.queue[state.index]?.id !== track.id) return;
@@ -1344,7 +1354,14 @@ function handleFailure(track: Track, err?: unknown): void {
   // away. The entries survive in synced playlists, and re-importing the
   // folder relinks them (ids are hashes of the file's absolute path).
   const isLocal = !!track.localPath || track.id.startsWith("local:");
-  const localGoneMsg = `Couldn't play "${track.title}" — its local file can't be reached on this device. Re-add the folder in Local Music to relink your songs.`;
+  const reason = err instanceof LibrarySourceError ? err.reason : null;
+  const ext = (track.localPath?.split(".").pop() ?? "").toUpperCase();
+  const localGoneMsg =
+    reason === "ffmpeg-missing"
+      ? `"${track.title}" is a ${ext} file — playing it needs FFmpeg. Install it (for example with "winget install ffmpeg"), then play it again.`
+      : reason === "transcode-failed"
+        ? `Couldn't convert "${track.title}" for playback — the file may be damaged.`
+        : `Couldn't play "${track.title}" — its local file can't be reached on this device. Re-add the folder in Local Music to relink your songs.`;
   if (state.playing && consecutiveFailures <= MAX_SKIPS) {
     console.warn(`[bytune] playback failed for ${track.id}`, err);
     if (isLocal) {

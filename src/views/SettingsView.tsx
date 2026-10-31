@@ -22,6 +22,7 @@ import {
   Music4,
   RefreshCw,
   SlidersHorizontal,
+  FileAudio,
   Server,
   SlidersVertical,
   Speaker,
@@ -120,6 +121,34 @@ function Badge({ children }: { children: ReactNode }) {
     <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-ink-hi/90 rounded-[5px] bg-ink-hi/[0.16] px-1.5 py-0.5">
       {children}
     </span>
+  );
+}
+
+/**
+ * FFmpeg status: AIFF, ALAC, WMA, WavPack, APE and DSD play through an FFmpeg
+ * conversion (electron/transcode.ts). Clicking re-checks, so installing
+ * FFmpeg while ByTune runs is picked up without a restart.
+ */
+function FfmpegRow() {
+  const [status, setStatus] = useState<{ path: string | null; version: string | null } | null>(null);
+  const check = (recheck: boolean): void => {
+    void window.bytune?.ffmpegStatus(recheck).then(setStatus).catch(() => undefined);
+  };
+  useEffect(() => check(false), []);
+  return (
+    <SettingsRow
+      icon={FileAudio}
+      title="FFmpeg"
+      subtitle={
+        !status
+          ? "Checking…"
+          : status.path
+            ? "AIFF, ALAC, WMA, WavPack, APE and DSD play through it (converted once, lossless)"
+            : "Not found — needed for AIFF, ALAC, WMA, WavPack, APE and DSD. Install it (e.g. “winget install ffmpeg”), then click to check again."
+      }
+      value={status?.path ? `v${status.version}` : status ? "Missing" : undefined}
+      onClick={() => check(true)}
+    />
   );
 }
 
@@ -738,6 +767,8 @@ export function SettingsView() {
           subtitle="Your own media server"
           onClick={() => useUI.getState().navigate({ name: "jellyfin" })}
         />
+        <Divider />
+        <FfmpegRow />
       </SettingsGroup>
 
       <OutputDeviceGroup />

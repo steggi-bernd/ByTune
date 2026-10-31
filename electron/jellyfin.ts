@@ -282,6 +282,31 @@ export async function fetchStream(itemId: string, range: string | undefined): Pr
   return fetch(`${cfg.server}/Audio/${itemId}/universal?${params}`, { headers });
 }
 
+/**
+ * Lyrics the server already has for an item (Jellyfin 10.9+ serves the
+ * .lrc files and embedded lyrics of its library), rebuilt as LRC text so
+ * the shared parser handles timed and untimed answers alike.
+ */
+export async function fetchLyrics(itemId: string): Promise<string | null> {
+  const cfg = readConfig();
+  const token = openSecret(cfg?.token);
+  if (!cfg || !token || !/^[a-f0-9-]{32,36}$/i.test(itemId)) return null;
+  try {
+    const res = await request(cfg.server, `/Audio/${itemId}/Lyrics`, { token, device: cfg.deviceId });
+    const lines: any[] = Array.isArray(res?.Lyrics) ? res.Lyrics : [];
+    if (!lines.length) return null;
+    const timed = lines.every((l) => typeof l.Start === "number");
+    const stamp = (ticks: number): string => {
+      const sec = ticks / 10_000_000;
+      const m = Math.floor(sec / 60);
+      return `${String(m).padStart(2, "0")}:${(sec - m * 60).toFixed(2).padStart(5, "0")}`;
+    };
+    return lines.map((l) => (timed ? `[${stamp(l.Start)}]${l.Text ?? ""}` : String(l.Text ?? ""))).join("\n");
+  } catch {
+    return null; // 404 = the server has none
+  }
+}
+
 /* ------------------------------------------------------------- covers */
 
 const ART_RE = /^jfart:\/\/([a-f0-9]{32})\/([A-Za-z0-9%._-]{1,80})$/i;
