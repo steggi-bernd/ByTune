@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getPlaybackPosition } from "../lib/audio";
 import { LYRICS_LOADING_LINES, pickLyricsLine } from "../lib/lyricsPhrases";
+import { hasCyrillic, toLatin } from "../lib/transliterate";
 import { usePlayer } from "../stores/player";
 import { useSettings } from "../stores/settings";
 import type { LyricsResult, SyncedLyricWord } from "../types";
@@ -35,6 +36,18 @@ interface LyricsViewProps {
 }
 
 type LyricsVariant = "compact" | "large" | "hero";
+
+/** The Latin reading under a Cyrillic line: same font, a size down, dimmed. */
+function latinSizeClass(variant: LyricsVariant): string {
+  switch (variant) {
+    case "hero":
+      return "block mt-1 font-display text-[clamp(17px,1.7vw,26px)] leading-[1.25] tracking-[-0.01em] font-semibold opacity-60";
+    case "large":
+      return "block mt-1 font-display text-[21px] leading-[1.3] font-semibold opacity-60";
+    default:
+      return "block mt-0.5 font-display text-[14px] leading-[1.4] font-semibold opacity-60";
+  }
+}
 
 /** Line type scale — `hero` is the fullscreen variant of `large`. */
 function lineSizeClass(variant: LyricsVariant): string {
@@ -216,6 +229,30 @@ export function LyricsView({
     return fromSynced || null;
   }, [lyrics, lines]);
 
+  // Cyrillic lyrics get a Latin line under each line (Settings → Lyrics, or
+  // the "Latin" switch the view shows for them).
+  const latinOn = useSettings((s) => s.lyricsLatin);
+  const setLatin = useSettings((s) => s.setLyricsLatin);
+  const cyrillic = useMemo(() => !!staticText && hasCyrillic(staticText), [staticText]);
+  const showLatin = latinOn && cyrillic;
+  const latinLines = useMemo(
+    () => (showLatin ? (lines ?? []).map((l) => (hasCyrillic(l.text) ? toLatin(l.text) : null)) : null),
+    [lines, showLatin],
+  );
+  const latinSwitch = cyrillic ? (
+    <button
+      onClick={() => setLatin(!latinOn)}
+      role="switch"
+      aria-checked={latinOn}
+      title="Show Cyrillic lyrics in Latin letters too"
+      className={`absolute top-1 right-10 z-10 h-7 px-2.5 rounded-full text-[12px] font-semibold transition-colors ${
+        latinOn ? "bg-ink-hi/[0.16] text-ink-hi" : "bg-ink-hi/[0.06] text-ink-dim hover:text-ink-hi"
+      }`}
+    >
+      Latin
+    </button>
+  ) : null;
+
   // Lyric times live on the matched recording's timeline; the playing upload
   // may prepend an intro (music videos). offset converts element position →
   // lyric timeline.
@@ -319,6 +356,7 @@ export function LyricsView({
             "linear-gradient(to right, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)",
         }}
       >
+        {latinSwitch}
         <div
           ref={containerRef}
           className="absolute inset-0 overflow-y-auto scroll-host px-6 py-0"
@@ -392,6 +430,7 @@ export function LyricsView({
                     {line.text}
                   </span>
                 )}
+                {latinLines?.[i] && <span className={latinSizeClass(variant)}>{latinLines[i]}</span>}
               </button>
             );
           })}
@@ -403,13 +442,22 @@ export function LyricsView({
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="relative flex flex-col flex-1 min-h-0">
+      {latinSwitch}
       <pre
         className={`relative flex-1 min-h-0 overflow-y-auto whitespace-pre-wrap font-sans text-ink-dim ${
           hero ? "h-full text-[17px] leading-8 py-2" : large ? "h-full text-[15px] leading-7 py-2" : "text-[13px] leading-6 py-2"
         }`}
       >
-        {staticText}
+        {showLatin
+          ? staticText.split("\n").map((text, i) => (
+              <span key={i}>
+                {text}
+                {"\n"}
+                {hasCyrillic(text) && <span className="opacity-60">{toLatin(text)}{"\n"}</span>}
+              </span>
+            ))
+          : staticText}
       </pre>
     </div>
   );

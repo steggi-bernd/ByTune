@@ -6,7 +6,8 @@
  * a song found in several places is listed once (lib/duplicates.ts).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Disc3, Pencil, Shuffle } from "lucide-react";
+import { Disc3, Download, Pencil, Shuffle } from "lucide-react";
+import { downloadForOffline, SERVER_SONG } from "../lib/downloads";
 import { AlbumEditor, useAlbumEditorRequest } from "../components/AlbumEditor";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { AlbumTile, BigPlayButton, playCollection } from "../components/LibraryCards";
@@ -48,6 +49,16 @@ export function LibraryAlbumView({ param }: { param: string }) {
     return (["local", "jellyfin", "subsonic"] as const).filter((s) => found.has(s));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [album, catalogVersion]);
+  // Songs only a server has: what "Download for offline" fetches (each one's server copy).
+  const serverOnly = useMemo(
+    () =>
+      (album?.tracks ?? [])
+        .filter((t) => !versionsOf(t).some((v) => v.localPath))
+        .map((t) => versionsOf(t).find((v) => SERVER_SONG.test(v.id)))
+        .filter((t): t is NonNullable<typeof t> => !!t),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [album, catalogVersion]
+  );
 
   if (!loaded) return null;
   if (!album) {
@@ -97,6 +108,16 @@ export function LibraryAlbumView({ param }: { param: string }) {
         >
           <Pencil className="w-5 h-5" />
         </button>
+        {serverOnly.length > 0 && (
+          <button
+            onClick={() => downloadForOffline(serverOnly)}
+            title={`Download for offline — ${serverOnly.length} ${serverOnly.length === 1 ? "song" : "songs"} only on the server`}
+            aria-label="Download for offline"
+            className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
+          >
+            <Download className="w-5 h-5" />
+          </button>
+        )}
       </div>
       {editing && <AlbumEditor album={album} onClose={() => setEditing(false)} />}
 

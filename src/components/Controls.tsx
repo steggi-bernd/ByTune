@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Volume1, Volume2 } from "lucide-react";
 import { getPlaybackPosition } from "../lib/audio";
+import { useVolumeTarget } from "../lib/cast";
 import { fmtTime } from "../lib/format";
 import { usePlayer } from "../stores/player";
 import { Slider } from "./Slider";
@@ -53,17 +54,16 @@ export function SeekBar({ large = false, showRemaining = false }: SeekBarProps) 
 }
 
 export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }) => React.ReactElement }) {
-  const volume = usePlayer((s) => s.volume);
-  const muted = usePlayer((s) => s.muted);
-  const setVolume = usePlayer((s) => s.setVolume);
-  const toggleMute = usePlayer((s) => s.toggleMute);
+  // While a network player has the music, its volume (lib/cast.ts).
+  const { value: volume, muted, fixed, setVolume, toggleMute } = useVolumeTarget();
   const shown = muted ? 0 : volume;
 
   return (
-    <div className="flex items-center">
+    <div className="flex items-center" title={fixed ? "This player's volume is set on the player" : undefined}>
       <button
         onClick={toggleMute}
-        className="grid h-8 w-8 place-items-center text-[#b3b3b3] transition-colors hover:text-white"
+        disabled={fixed}
+        className="grid h-8 w-8 place-items-center text-[#b3b3b3] transition-colors hover:text-white disabled:opacity-40"
         title={muted ? "Unmute" : "Mute"}
         aria-label={muted ? "Unmute" : "Mute"}
       >
@@ -78,6 +78,7 @@ export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }
         onChange={setVolume}
         step={0.05}
         valueText={`${Math.round(shown * 100)}%`}
+        disabled={fixed}
       />
     </div>
   );
@@ -89,10 +90,7 @@ export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }
  * between them. Used on the full-screen NowPlaying overlay.
  */
 export function VolumeRow() {
-  const volume = usePlayer((s) => s.volume);
-  const muted = usePlayer((s) => s.muted);
-  const setVolume = usePlayer((s) => s.setVolume);
-  const toggleMute = usePlayer((s) => s.toggleMute);
+  const { value: volume, muted, fixed, setVolume, toggleMute } = useVolumeTarget();
   const shown = muted ? 0 : volume;
 
   return (
@@ -112,6 +110,7 @@ export function VolumeRow() {
         onChange={setVolume}
         step={0.05}
         valueText={`${Math.round(shown * 100)}%`}
+        disabled={fixed}
       />
       <button
         onClick={toggleMute}

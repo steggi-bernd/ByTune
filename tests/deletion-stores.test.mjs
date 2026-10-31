@@ -211,6 +211,20 @@ test("a song an import brought goes below it once the export no longer has it, a
   assert.deepEqual(ids(), ["mine", "a", "c", "b"]);
 });
 
+test("server favorites become likes: new ones on top, a server's first sync below, one copy per song", async () => {
+  const h = await harness("library"), s = h.store.getState;
+  const ids = () => plain(s().liked.map((t) => t.id));
+  s().toggleLike(track("mine")); s().toggleLike(track("jf:gone"));
+  s().applyServerLikes([track("jf:new")], [track("ss:first"), track("mine")], ["jf:gone"]);
+  assert.deepEqual(ids(), ["jf:new", "mine", "ss:first"]);
+  const sync = h.snapshot().state.deletionSync;
+  assert.ok(sync.adds[key("liked", "jf:new")] && sync.adds[key("liked", "ss:first")], "recorded as likes");
+  assert.ok(sync.deletes[key("liked", "jf:gone")], "and the taken-back one as a removal");
+  const writes = h.writes.length;
+  s().applyServerLikes([], [track("mine")], []);
+  assert.equal(h.writes.length, writes, "nothing new: no write at all");
+});
+
 test("the import remembers every song an add laid out, not just the last add's", async () => {
   const h = await harness("spotifyImport"), s = h.store.getState;
   s().noteLiked(["a", "b", "c"]);

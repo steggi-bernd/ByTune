@@ -34,7 +34,8 @@ export async function startDownload(track: Track, dirOverride?: string): Promise
 
   try {
     const s = useSettings.getState();
-    const dir = dirOverride ?? s.downloadDir ?? undefined;
+    // A server song's copy goes to its offline library folder unless a folder was chosen for it.
+    const dir = dirOverride ?? (SERVER_SONG.test(track.id) ? undefined : (s.downloadDir ?? undefined));
     // The main process queues it; lifecycle arrives over download:event.
     await requireBridge().startDownload(track, dir, s.downloadQuality, s.exportDownloads);
   } catch (err) {
@@ -115,6 +116,46 @@ async function reconcileStaleDownloads(): Promise<void> {
   }
 }
 
+/** A song on Jellyfin or Navidrome: its download is an offline copy in the library (electron/downloads.ts). */
+export const SERVER_SONG = /^(jf|ss):/;
+
+/**
+ * Offline copies land in a library folder of their own: once a batch is
+ * through (nothing queued or running), one rescan merges them with their
+ * server songs — from then on they play from disk — and one note says so.
+ */
+let offlineReady = 0;
+let offlineTimer: number | null = null;
+function scheduleOfflineScan(): void {
+  if (offlineTimer !== null) window.clearTimeout(offlineTimer);
+  offlineTimer = window.setTimeout(() => {
+    offlineTimer = null;
+    const pending = Object.values(useLibrary.getState().downloads).some(
+      (d) => SERVER_SONG.test(d.track.id) && (d.status === "queued" || d.status === "downloading")
+    );
+    if (pending || offlineReady === 0) return;
+    const n = offlineReady;
+    offlineReady = 0;
+    void requireBridge()
+      .scanLibrary(useSettings.getState().filterNonMusicAudio)
+      .then((lib) => {
+        window.dispatchEvent(new CustomEvent("bytune:local-library-updated", { detail: lib }));
+        useUI.getState().toast(`${n} song${n === 1 ? "" : "s"} ready offline`, "success");
+      })
+      .catch(() => undefined);
+  }, 800);
+}
+
+/** Every song of `tracks` that lives only on a server, downloaded for offline listening. */
+export function downloadForOffline(tracks: Track[]): number {
+  const wanted = tracks.filter((t) => SERVER_SONG.test(t.id) && getDownload(t.id)?.status !== "done");
+  for (const t of wanted) void startDownload(t);
+  if (wanted.length) {
+    useUI.getState().toast(`Downloading ${wanted.length} song${wanted.length === 1 ? "" : "s"} for offline listening`, "info");
+  }
+  return wanted.length;
+}
+
 /** Subscribe to queue lifecycle events from the main process. */
 export function listenForDownloadProgress(): () => void {
   if (!window.bytune) return () => undefined;
@@ -145,14 +186,21 @@ export function listenForDownloadProgress(): () => void {
         downloaded: 0,
         total: 0,
       });
-      useUI.getState().toast("Download finished", "success");
+      if (SERVER_SONG.test(e.id)) {
+        offlineReady += 1;
+        scheduleOfflineScan();
+      } else {
+        useUI.getState().toast("Download finished", "success");
+      }
     } else if (e.type === "failed") {
       buffer.flush(e.id);
       lib.patchDownload(e.id, { status: "failed", progress: 0 });
       useUI.getState().toast(`Download failed: ${e.reason ?? "unknown error"}`, "error");
+      if (SERVER_SONG.test(e.id)) scheduleOfflineScan();
     } else if (e.type === "cancelled") {
       buffer.flush(e.id);
       lib.patchDownload(e.id, { status: "failed", progress: 0 });
+      if (SERVER_SONG.test(e.id)) scheduleOfflineScan();
     }
   });
   // Legacy channel (kept for older event payloads).

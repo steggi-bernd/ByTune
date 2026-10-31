@@ -74,6 +74,18 @@ interface SettingsState {
   discordPresence: boolean;
   /** that application's ID, from the Discord Developer Portal */
   discordClientId: string;
+  /** Liked Songs ↔ the Jellyfin/Navidrome favorites, both ways (lib/serverSync.ts) */
+  serverSync: boolean;
+  /** count plays on the servers too */
+  serverPlays: boolean;
+  /** shop links next to the songs a Spotify import misses */
+  storeLinks: boolean;
+  /** Cyrillic lyrics get a Latin line under each line */
+  lyricsLatin: boolean;
+  /** with crossfade off, the next song starts the moment this one ends */
+  gapless: boolean;
+  /** Milkdrop behind the full-screen Now Playing */
+  milkdrop: boolean;
 
   setDownloadDir(dir: string | null): void;
   setDownloadQuality(q: DownloadQuality): void;
@@ -108,6 +120,12 @@ interface SettingsState {
   setHideVolumeBar(v: boolean): void;
   setDiscordPresence(v: boolean): void;
   setDiscordClientId(id: string): void;
+  setServerSync(v: boolean): void;
+  setServerPlays(v: boolean): void;
+  setStoreLinks(v: boolean): void;
+  setLyricsLatin(v: boolean): void;
+  setGapless(v: boolean): void;
+  setMilkdrop(v: boolean): void;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -150,6 +168,12 @@ export const useSettings = create<SettingsState>()(
       hideVolumeBar: false,
       discordPresence: false,
       discordClientId: "",
+      serverSync: true,
+      serverPlays: true,
+      storeLinks: false,
+      lyricsLatin: true,
+      gapless: true,
+      milkdrop: false,
 
       setDownloadDir: (downloadDir) => set({ downloadDir }),
       setDownloadQuality: (downloadQuality) => set({ downloadQuality }),
@@ -185,6 +209,12 @@ export const useSettings = create<SettingsState>()(
       setDiscordPresence: (discordPresence) => set({ discordPresence }),
       // Only the digits survive a paste ("ID: 1234…", spaces, a trailing newline).
       setDiscordClientId: (id) => set({ discordClientId: id.replace(/\D/g, "").slice(0, 22) }),
+      setServerSync: (serverSync) => set({ serverSync }),
+      setServerPlays: (serverPlays) => set({ serverPlays }),
+      setStoreLinks: (storeLinks) => set({ storeLinks }),
+      setLyricsLatin: (lyricsLatin) => set({ lyricsLatin }),
+      setGapless: (gapless) => set({ gapless }),
+      setMilkdrop: (milkdrop) => set({ milkdrop }),
     }),
     {
       name: "settings",

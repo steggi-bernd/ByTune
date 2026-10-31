@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { milkdropDevRewrite, milkdropPrecompile } from "./scripts/vite-milkdrop";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), milkdropPrecompile()],
   // relative asset paths so the production build works under file:// in Electron
   base: "./",
   clearScreen: false,
@@ -10,6 +11,9 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
+  },
+  optimizeDeps: {
+    esbuildOptions: { plugins: [milkdropDevRewrite] },
   },
   build: {
     outDir: "dist",

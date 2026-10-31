@@ -72,6 +72,8 @@ interface LibraryState {
    * song ids the last import brought; returns how many songs are newly liked
    */
   importLikes(tracks: Track[], previous?: string[]): number;
+  /** Server sync (lib/serverSync.ts): likes from the servers' favorites, and the ones taken back there. */
+  applyServerLikes(top: Track[], bottom: Track[], remove: string[]): void;
   togglePinSingle(key: PinnedSingleKey): void;
   createPlaylist(name: string): Playlist;
   renamePlaylist(id: string, name: string): void;
@@ -185,6 +187,28 @@ export const useLibrary = create<LibraryState>()(
           ...replaced.map((t): DeletionChange => ({ kind: "delete", group: "liked", id: t.id })),
         ]);
         return imported.filter((t) => !likedKeys.has(songKey(t.id))).length;
+      },
+
+      applyServerLikes(top, bottom, remove) {
+        // Favorites made on a server: new ones on top like any new like, a
+        // server's first sync below (its favorites have no order to keep);
+        // favorites taken back there leave. One copy per song.
+        const { liked } = get();
+        const gone = new Set(remove);
+        const kept = liked.filter((t) => !gone.has(t.id));
+        const have = new Set(kept.map((t) => songKey(t.id)));
+        const fresh = (list: Track[]): Track[] =>
+          list.filter((t) => !have.has(songKey(t.id)) && !!have.add(songKey(t.id)));
+        const above = fresh(top);
+        const below = fresh(bottom);
+        const dropped = liked.filter((t) => gone.has(t.id));
+        if (!above.length && !below.length && !dropped.length) return;
+        for (const t of [...above, ...below]) hydrationLikes?.set(t.id, { track: t, liked: true });
+        for (const t of dropped) hydrationLikes?.set(t.id, { track: t, liked: false });
+        withChanges(set, get, { liked: [...above, ...kept, ...below] }, [
+          ...[...above, ...below].map((t): DeletionChange => ({ kind: "add", group: "liked", id: t.id })),
+          ...dropped.map((t): DeletionChange => ({ kind: "delete", group: "liked", id: t.id })),
+        ]);
       },
 
       createPlaylist(name) {

@@ -18,7 +18,7 @@ async function load(name, dir, mocks = {}, globals = {}) {
   const { outputFiles } = await build({
     entryPoints: [fileURLToPath(new URL(`../electron/${name}.ts`, import.meta.url))],
     bundle: true, platform: "node", format: "cjs", write: false,
-    external: ["electron", "./music-service", "./persist"],
+    external: ["electron", "./music-service", "./persist", "./jellyfin", "./subsonic"],
     plugins: [{ name: "metadata-mock", setup(build) {
       build.onResolve({ filter: /^music-metadata$/ }, () => ({ path: "metadata", namespace: "mock" }));
       build.onLoad({ filter: /.*/, namespace: "mock" }, () => ({ contents: "export const parseFile = (...args) => globalThis.__parseFile(...args);" }));
@@ -231,6 +231,9 @@ test("reset cancels an in-flight download, cleans only its partial file, and dro
   let fetchCount = 0;
   const downloads = await load("downloads", dir, {
     "./music-service": { resolveStream: (id) => id === "waiting" ? resolving.promise : Promise.resolve({ mime: "audio/mp4", url: "https://example.invalid/audio" }) },
+    // Only stream songs are downloaded here; server songs never reach these.
+    "./jellyfin": { originalFile: () => { throw new Error("no server in this test"); } },
+    "./subsonic": { originalFile: () => { throw new Error("no server in this test"); } },
   }, {
     fetch: async () => {
       fetchCount++;

@@ -363,6 +363,8 @@ export async function boot(opts = {}) {
     crossfadeSeconds: opts.fadeSeconds ?? FADE_SEC,
     smartFade: opts.smartFade ?? false,
     skipSilence: opts.skipSilence ?? false,
+    // Off unless a test asks: the crossfade tests time what plays without it.
+    gapless: opts.gapless ?? false,
     autoplay: false,
     playbackSpeed: 1,
   });

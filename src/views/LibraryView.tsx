@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileDown,
   FileUp,
   Folder,
   FolderOpen,
@@ -35,6 +36,7 @@ import { requireBridge } from "../lib/bridge";
 import { playlistFolderItems, playlistHeaderItems } from "../lib/trackActions";
 import { plural } from "../lib/format";
 import { upgradeArtwork } from "../lib/artwork";
+import { exportM3uPlaylist } from "../lib/playlistFiles";
 import type { Track } from "../types";
 
 type LibTab = "playlists" | "liked" | "downloaded";
@@ -575,6 +577,9 @@ export function LibraryView() {
                 </Btn>
                 <Btn variant="glass" size="md" icon={FileUp} onClick={() => navigate({ name: "spotify" })} className="ml-auto">
                   Import from Spotify
+                </Btn>
+                <Btn variant="glass" size="md" icon={FileDown} onClick={() => void exportM3uPlaylist("Liked Songs", liked)}>
+                  Export M3U
                 </Btn>
               </div>
               <div className="mt-5">

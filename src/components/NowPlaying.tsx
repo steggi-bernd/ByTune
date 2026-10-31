@@ -22,8 +22,9 @@
  * motion) is untouched.
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronDown, Heart, Music2 } from "lucide-react";
+import { ChevronDown, Heart, Music2, Shuffle, Sparkles } from "lucide-react";
 import { PlayerBar } from "./PlayerBar";
+import { MilkdropVisualizer, type MilkdropHandle } from "./MilkdropVisualizer";
 import { QueuePanel } from "./RightRail";
 import { LyricsView } from "./SyncedLyrics";
 import { requestLyrics } from "./LyricsCenter";
@@ -281,6 +282,9 @@ export function NowPlaying() {
   const boost = useSettings((st) => st.fullBleedArtwork);
   const legacyMesh = useSettings((st) => st.legacyMeshGradient);
   const animatedCanvas = useSettings((st) => st.animatedCanvas);
+  const milkdrop = useSettings((st) => st.milkdrop);
+  const setMilkdrop = useSettings((st) => st.setMilkdrop);
+  const milkdropRef = useRef<MilkdropHandle | null>(null);
   const canvasUrl = useCanvas(track ?? null);
   const canvasVideoRef = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
@@ -382,6 +386,13 @@ export function NowPlaying() {
       }`}
     >
       <FsBackdrop artwork={track?.thumb ?? null} boost={boost} legacy={legacyMesh} />
+      {milkdrop && (
+        <>
+          <MilkdropVisualizer ref={milkdropRef} className="absolute inset-0 w-full h-full" />
+          {/* A dark veil over the visuals keeps the cover, title and lyrics readable. */}
+          <div aria-hidden className="absolute inset-0 bg-black/35 pointer-events-none" />
+        </>
+      )}
 
       <div className="relative h-full flex flex-col">
         {/* Fullscreen entry hint — Spotify's "To exit full screen, press Esc".
@@ -411,6 +422,30 @@ export function NowPlaying() {
           >
             <ChevronDown className="w-5 h-5" />
           </button>
+          <div className="relative z-10 ml-auto flex items-center gap-1">
+            {milkdrop && (
+              <button
+                onClick={() => milkdropRef.current?.next()}
+                title="Next visual"
+                aria-label="Next visual"
+                className="p-2 rounded-full text-white/75 hover:text-white hover:bg-white/[0.08] transition-colors"
+              >
+                <Shuffle className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={() => setMilkdrop(!milkdrop)}
+              role="switch"
+              aria-checked={milkdrop}
+              title={milkdrop ? "Hide the Milkdrop visuals" : "Milkdrop visuals behind the music"}
+              aria-label="Milkdrop visualizer"
+              className={`p-2 rounded-full transition-colors ${
+                milkdrop ? "text-white bg-white/[0.14]" : "text-white/75 hover:text-white hover:bg-white/[0.08]"
+              }`}
+            >
+              <Sparkles className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {!track ? (

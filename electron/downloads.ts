@@ -16,7 +16,29 @@ import * as path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { resolveStream } from "./music-service";
+import * as jellyfin from "./jellyfin";
+import * as subsonic from "./subsonic";
 import type { Track } from "../src/types";
+
+/** A song on Jellyfin or Navidrome: downloaded as its original file, for offline listening. */
+export const SERVER_SONG = /^(jf|ss):/;
+
+/**
+ * Where offline copies of server songs go, filed as <artist>/<album>/: a
+ * library folder of its own (main.ts adds it), so a copy merges with its
+ * server song and plays from disk first — offline too.
+ */
+export function offlineDir(): string {
+  return path.join(app.getPath("music"), "ByTune Offline");
+}
+
+/** The extension a server names its file with (Content-Disposition), if any. */
+function serverExt(res: Response): string | null {
+  const cd = res.headers.get("content-disposition") ?? "";
+  const name = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1] ?? /filename="?([^";]+)"?/i.exec(cd)?.[1];
+  const ext = name ? path.extname(decodeURIComponent(name)).toLowerCase() : "";
+  return /^\.[a-z0-9]{2,5}$/.test(ext) ? ext : null;
+}
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -204,24 +226,41 @@ async function runDownload(track: Track, dirOverride?: string, maxKbps?: number,
   let ownsPartial = false;
   const checkCancelled = (): void => { if (ctrl.signal.aborted) throw new Error("cancelled"); };
   try {
-    const dir = exportCompat ? exportDownloadDir() : dirOverride && dirOverride.trim() ? dirOverride : await defaultDownloadDir();
+    const server = SERVER_SONG.test(track.id);
+    const chosen = dirOverride && dirOverride.trim() ? dirOverride : null;
+    const dir = server ? (chosen ?? offlineDir()) : exportCompat ? exportDownloadDir() : (chosen ?? (await defaultDownloadDir()));
     checkCancelled();
     await fs.promises.mkdir(dir, { recursive: true });
     checkCancelled();
 
-    // Downloads ask for an mp4/AAC rendition (the most portable container);
-    // the resolver still falls back to the best available if a track has none,
-    // so name the file from the mime it actually returned.
-    const stream = await abortable(resolveStream(track.id, false, maxKbps, true), ctrl.signal);
-    checkCancelled();
-    const ext = /webm|opus/i.test(stream.mime) ? ".webm" : ".m4a";
-    dest = uniquePath(dir, `${sanitizeFilename(`${track.artist} - ${track.title}`)}${ext}`);
-
-    const res = await fetch(stream.url, {
-      headers: { "User-Agent": UA, Range: "bytes=0-" },
-      signal: ctrl.signal,
-    });
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    let res: Response;
+    if (server) {
+      // The original file, named and filed the way a music library is: <artist>/<album>/<no> <title>.
+      const original = track.id.startsWith("jf:") ? jellyfin.originalFile(track.id.slice(3)) : subsonic.originalFile(track.id.slice(3));
+      res = await fetch(original.url, { headers: original.headers, signal: ctrl.signal });
+      if (!res.ok || !res.body) throw new Error(`The server answered HTTP ${res.status}`);
+      const albumDir = path.join(
+        dir,
+        sanitizeFilename(track.albumArtist || track.artist || "Unknown artist"),
+        sanitizeFilename(track.album || "Unknown album")
+      );
+      await fs.promises.mkdir(albumDir, { recursive: true });
+      const no = track.trackNo ? `${String(track.trackNo).padStart(2, "0")} ` : "";
+      dest = uniquePath(albumDir, `${sanitizeFilename(`${no}${track.title}`)}${serverExt(res) ?? original.ext}`);
+    } else {
+      // Downloads ask for an mp4/AAC rendition (the most portable container);
+      // the resolver still falls back to the best available if a track has none,
+      // so name the file from the mime it actually returned.
+      const stream = await abortable(resolveStream(track.id, false, maxKbps, true), ctrl.signal);
+      checkCancelled();
+      const ext = /webm|opus/i.test(stream.mime) ? ".webm" : ".m4a";
+      dest = uniquePath(dir, `${sanitizeFilename(`${track.artist} - ${track.title}`)}${ext}`);
+      res = await fetch(stream.url, {
+        headers: { "User-Agent": UA, Range: "bytes=0-" },
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    }
     const total = Number(res.headers.get("content-length") ?? 0);
     checkCancelled();
     // Exclusive creation prevents a competing download/user file from being

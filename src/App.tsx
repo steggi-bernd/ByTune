@@ -13,6 +13,9 @@ import { TopBar } from "./components/TopBar";
 import { engineBoot } from "./lib/audio";
 import { setAmbientFromArtwork } from "./lib/ambient";
 import { watchDiscordPresence } from "./lib/discordPresence";
+import { watchServerSync } from "./lib/serverSync";
+import { watchArchiveDrops } from "./lib/archiveImport";
+import { volumeTarget } from "./lib/cast";
 import { listenForDownloadProgress } from "./lib/downloads";
 import { watchLibraryEnrichment } from "./lib/libraryEnrichment";
 import { watchMenuCommands } from "./lib/menuCommands";
@@ -159,16 +162,20 @@ function useKeyboardShortcuts(): void {
           if (e.shiftKey) player.prev();
           else player.seek(player.position - 5);
           break;
-        case "ArrowUp":
+        case "ArrowUp": {
           e.preventDefault();
-          player.setVolume(player.volume + 0.05);
+          const volume = volumeTarget();
+          volume.setVolume(volume.value + 0.05);
           break;
-        case "ArrowDown":
+        }
+        case "ArrowDown": {
           e.preventDefault();
-          player.setVolume(player.volume - 0.05);
+          const volume = volumeTarget();
+          volume.setVolume(volume.value - 0.05);
           break;
+        }
         case "KeyM":
-          player.toggleMute();
+          volumeTarget().toggleMute();
           break;
         case "KeyS":
           player.toggleShuffle();
@@ -318,6 +325,8 @@ export default function App() {
 
   // The song playing now as the Discord status, when that is turned on.
   useEffect(() => watchDiscordPresence(), []);
+  useEffect(() => watchServerSync(), []);
+  useEffect(() => watchArchiveDrops(), []);
 
   // Folder watching follows its setting (main watches by default).
   const watchFolders = useSettings((s) => s.watchFolders);

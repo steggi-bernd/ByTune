@@ -12,6 +12,7 @@
  * synchronously keeps the PiP's slider live even while the main window is
  * minimized.
  */
+import { useCast, volumeTarget } from "../lib/cast";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
@@ -35,8 +36,9 @@ function buildSnapshot(): PipSnapshot {
     buffering: p.buffering,
     position: p.position,
     duration: p.duration,
-    volume: p.volume,
-    muted: p.muted,
+    // While a network player has the music, its volume (lib/cast.ts).
+    volume: volumeTarget().value,
+    muted: volumeTarget().muted,
     shuffle: p.shuffle,
     repeat: p.repeat,
     liked: track ? lib.liked.some((t) => t.id === track.id) : false,
@@ -60,10 +62,10 @@ function execute(command: PipCommand): void {
       if (typeof command.sec === "number" && Number.isFinite(command.sec)) p.seek(command.sec);
       break;
     case "volume":
-      if (typeof command.v === "number" && Number.isFinite(command.v)) p.setVolume(command.v);
+      if (typeof command.v === "number" && Number.isFinite(command.v)) volumeTarget().setVolume(command.v);
       break;
     case "mute":
-      p.toggleMute();
+      volumeTarget().toggleMute();
       break;
     case "shuffle":
       p.toggleShuffle();
@@ -116,6 +118,7 @@ export function startPipSync(): () => void {
 
   const unsubPlayer = usePlayer.subscribe(() => push());
   const unsubLibrary = useLibrary.subscribe(() => push());
+  const unsubCast = useCast.subscribe(() => push());
   // The PiP just (re)opened — resend a full snapshot so it never sits empty
   // waiting for the next state change. need-state only fires from a live PiP
   // window, so it also repairs a stale isOpen reply that raced an
@@ -130,6 +133,7 @@ export function startPipSync(): () => void {
   return () => {
     unsubPlayer();
     unsubLibrary();
+    unsubCast();
     offNeed();
     offCommand();
     offOpen();

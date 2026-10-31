@@ -19,6 +19,14 @@ export interface PlayEvent {
   deltaMs: number;
 }
 
+const listeners = new Set<(event: PlayEvent) => void>();
+
+/** Listen in this window too (the server play counts); the main process gets every event over IPC. */
+export function onPlayEvent(listener: (event: PlayEvent) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function emitPlayEvent(
   type: PlayEventType,
   track: Track | null | undefined,
@@ -26,15 +34,17 @@ export function emitPlayEvent(
   playedSec: number,
   deltaMs = 0
 ): void {
+  const event: PlayEvent = { type, track: track ?? undefined, positionSec, playedSec, deltaMs };
   try {
-    window.bytune?.playbackEvent?.({
-      type,
-      track: track ?? undefined,
-      positionSec,
-      playedSec,
-      deltaMs,
-    });
+    window.bytune?.playbackEvent?.(event);
   } catch {
     /* never let telemetry break playback */
+  }
+  for (const listener of listeners) {
+    try {
+      listener(event);
+    } catch {
+      /* nor a listener */
+    }
   }
 }

@@ -4,7 +4,10 @@
  * "PLAYLIST • N TRACKS • ABOUT 3:2X" metadata line, circular glass controls,
  * then the playlist's own numbered track rows.
  */
-import { Heart, ListMusic, ListPlus, MoreHorizontal, Play, Shuffle } from "lucide-react";
+import { Download, FileDown, Heart, ListMusic, ListPlus, MoreHorizontal, Play, Shuffle } from "lucide-react";
+import { exportM3uPlaylist } from "../lib/playlistFiles";
+import { downloadForOffline, SERVER_SONG } from "../lib/downloads";
+import { versionsOf } from "../stores/catalog";
 import { DownloadBadge } from "../components/TrackList";
 import { Artwork, EmptyState, EqBars, ExplicitBadge } from "../components/primitives";
 import { playlistHeaderItems, playlistMenuItems } from "../lib/trackActions";
@@ -75,6 +78,22 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
           toast("Playlist added to queue");
         },
       },
+      ...(tracks.length
+        ? [
+            { label: "Export as M3U…", icon: FileDown, action: () => void exportM3uPlaylist(playlist.name, tracks) },
+            {
+              label: "Download for offline",
+              icon: Download,
+              action: () => {
+                const servers = tracks
+                  .filter((t) => !versionsOf(t).some((v) => v.localPath))
+                  .map((t) => versionsOf(t).find((v) => SERVER_SONG.test(v.id)))
+                  .filter((t): t is NonNullable<typeof t> => !!t);
+                if (!downloadForOffline(servers)) toast("Every song here is already on this device");
+              },
+            },
+          ]
+        : []),
       { ...renameItem, separatorBefore: true },
       deleteItem,
     ]);

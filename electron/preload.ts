@@ -1,7 +1,12 @@
 /** Preload — exposes a minimal, typed API to the renderer via contextBridge. */
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DownloadProgress, Track } from "../src/types";
 import type { DiscordStatus } from "./discord";
+import type { JellyfinStatus, JellyfinTrack, JellyfinUser } from "./jellyfin";
+import type { SubsonicTrack } from "./subsonic";
+import type { ArchiveImport } from "./archive-import";
+import type { M3uEntry } from "./m3u";
+import type { CastStatus } from "./cast";
 
 // The PiP window loads this same preload but its scope requests are rejected
 // by design (main-window-only handler) — an eager invoke there would leave an
@@ -126,6 +131,18 @@ const api = {
   subsonicLibrary: () => ipcRenderer.invoke("subsonic:library"),
   subsonicRefresh: () => ipcRenderer.invoke("subsonic:refresh"),
 
+  // Server sync: favorites ↔ Liked Songs, plays reported (what to change is decided in the renderer)
+  jellyfinUsers: () => ipcRenderer.invoke("jellyfin:users") as Promise<JellyfinUser[]>,
+  jellyfinSetSyncUser: (id: string | null) => ipcRenderer.invoke("jellyfin:setSyncUser", id) as Promise<JellyfinStatus>,
+  serverFavorites: () =>
+    ipcRenderer.invoke("server:favorites") as Promise<{
+      jellyfin: { ok: boolean; tracks: JellyfinTrack[]; error?: string } | null;
+      subsonic: { ok: boolean; tracks: SubsonicTrack[]; error?: string } | null;
+    }>,
+  serverSetFavorite: (id: string, favorite: boolean) => ipcRenderer.invoke("server:setFavorite", id, favorite) as Promise<void>,
+  serverPlayed: (id: string, at: number) => ipcRenderer.invoke("server:played", id, at) as Promise<void>,
+  serverNowPlaying: (id: string) => ipcRenderer.invoke("server:nowPlaying", id) as Promise<void>,
+
   // Window controls (frameless window — chrome drawn by the renderer)
   windowMinimize: () => ipcRenderer.send("window:minimize"),
   windowMaximizeToggle: () => ipcRenderer.send("window:maximizeToggle"),
@@ -248,6 +265,34 @@ const api = {
     ipcRenderer.invoke("file:saveText", suggestedName, content) as Promise<string | null>,
   revealPath: (p: string) => ipcRenderer.invoke("app:revealPath", p),
   openPath: (p: string) => ipcRenderer.invoke("app:openPath", p),
+  /** Casting to a network player (electron/cast.ts): find, start, load a song, steer, stop. */
+  castFind: () => ipcRenderer.invoke("cast:find") as Promise<{ id: string; name: string; model: string }[]>,
+  castStart: (id: string) => ipcRenderer.invoke("cast:start", id) as Promise<CastStatus>,
+  castLoad: (song: { id: string; title: string; artist: string; album?: string; duration: number }, position: number, play: boolean) =>
+    ipcRenderer.invoke("cast:load", song, position, play) as Promise<void>,
+  castControl: (action: "play" | "pause" | "seek" | "volume" | "mute", value = 0) => ipcRenderer.invoke("cast:control", action, value) as Promise<void>,
+  castStop: () => ipcRenderer.invoke("cast:stop") as Promise<void>,
+  onCastStatus: (listener: (s: CastStatus) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, s: CastStatus): void => listener(s);
+    ipcRenderer.on("cast:status", handler);
+    return () => ipcRenderer.removeListener("cast:status", handler);
+  },
+  /** M3U playlists (electron/m3u.ts): a picked file's entries, paths resolved; or a written one. */
+  openM3u: () => ipcRenderer.invoke("playlist:openM3u") as Promise<{ name: string; entries: M3uEntry[] } | null>,
+  saveM3u: (suggestedName: string, content: string) =>
+    ipcRenderer.invoke("playlist:saveM3u", suggestedName, content) as Promise<string | null>,
+  /** Bought music: a store's ZIP, unpacked into a library folder (electron/archive-import.ts). */
+  pickArchive: () => ipcRenderer.invoke("library:pickArchive") as Promise<string | null>,
+  importArchive: (zipPath: string, folder: string) =>
+    ipcRenderer.invoke("library:importArchive", zipPath, folder) as Promise<ArchiveImport>,
+  /** A dropped file's path on disk ("" when it has none). */
+  pathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
 
   // Downloads
   startDownload: (track: Track, dir?: string, quality?: string, exportCompat?: boolean) => ipcRenderer.invoke("download:start", track, dir, quality, exportCompat),

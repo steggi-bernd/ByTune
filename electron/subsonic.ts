@@ -31,7 +31,8 @@ const CLIENT = "ByTune";
 /** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
 const LIB_VERSION = 2;
 /** Formats Chromium can't decode — the server transcodes these to MP3. */
-const SERVER_TRANSCODE = new Set(["aif", "aiff", "aifc", "wma", "wv", "ape", "dsf", "dff", "alac"]);
+/** Formats the server converts to MP3 on the way (the player can't open them). */
+export const SERVER_TRANSCODE = new Set(["aif", "aiff", "aifc", "wma", "wv", "ape", "dsf", "dff", "alac"]);
 
 export interface SubsonicTrack {
   /** "ss:<songId>" — the id prefix routes playback to this module */
@@ -317,6 +318,44 @@ export async function refreshLibrary(): Promise<SubsonicLibrary> {
 }
 
 const SONG_ID = /^[\w.:-]{1,128}$/;
+
+/** The song's original file, for an offline copy (downloads.ts); the credentials stay in this process. */
+export function originalFile(songId: string): { url: string; headers: Record<string, string>; ext: string } {
+  const s = session();
+  if (!s || !SONG_ID.test(songId)) throw new Error("Not connected to the Navidrome server");
+  const suffix = readLibrary().tracks.find((t) => t.songId === songId)?.suffix;
+  return {
+    url: `${s.cfg.server}/rest/download.view?${query(s.auth.user, s.auth.salt, s.auth.token, { id: songId })}`,
+    headers: {},
+    ext: suffix && /^[a-z0-9]{2,5}$/.test(suffix) ? `.${suffix}` : ".flac",
+  };
+}
+
+/* ------------------------------------------------------------ favorites & plays */
+
+/** The user's starred songs, as library tracks. */
+export async function favoriteTracks(): Promise<SubsonicTrack[]> {
+  const s = session();
+  if (!s) throw new Error("Not connected to a Navidrome/Subsonic server");
+  const reply = await call(s.cfg.server, "getStarred2", s.auth);
+  const songs: any[] = Array.isArray(reply.starred2?.song) ? reply.starred2.song : [];
+  return songs.map(toTrack).filter((t): t is SubsonicTrack => !!t);
+}
+
+export async function setStarred(songId: string, starred: boolean): Promise<void> {
+  const s = session();
+  if (!s || !SONG_ID.test(songId)) throw new Error("Not a song on this server");
+  await call(s.cfg.server, starred ? "star" : "unstar", s.auth, { id: songId });
+}
+
+/** "Now playing" (submission false) or one play heard at `at` (true). */
+export async function scrobble(songId: string, submission: boolean, at?: Date): Promise<void> {
+  const s = session();
+  if (!s || !SONG_ID.test(songId)) throw new Error("Not a song on this server");
+  const params: Record<string, string> = { id: songId, submission: String(submission) };
+  if (at) params.time = String(at.getTime());
+  await call(s.cfg.server, "scrobble", s.auth, params);
+}
 
 /** Upstream audio for one song, honouring the media element's Range header. */
 export async function fetchStream(songId: string, range: string | undefined): Promise<Response> {

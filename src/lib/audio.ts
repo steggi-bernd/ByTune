@@ -134,6 +134,12 @@ function el(): HTMLAudioElement {
 
 /** Live element clock for consumers needing sub-`timeupdate` resolution (lyrics sweep). */
 export function getPlaybackPosition(): number {
+  // Casting: the network player's last report, run on between its once-a-second reports.
+  if (castFollower && castClock) {
+    const pos = castClock.running ? castClock.pos + (performance.now() - castClock.at) / 1000 : castClock.pos;
+    const d = usePlayer.getState().duration;
+    return d > 0 ? Math.min(pos, d) : pos;
+  }
   return elements ? el().currentTime : 0;
 }
 function standbyEl(): HTMLAudioElement {
@@ -459,6 +465,19 @@ function eqPlan(): { preampDb: number; bands: EqBandPlan[] } | null {
 }
 
 /**
+ * What plays, for the Milkdrop visualizer (components/MilkdropVisualizer):
+ * both decks mixed, before the EQ. The first call builds the audio graph the
+ * EQ uses — with the EQ off it is a transparent chain — because a deck can
+ * only ever feed one graph.
+ */
+export function visualizerTap(): { context: AudioContext; node: AudioNode } | null {
+  if (!elements) return null;
+  if (!eqCtx) applyEq(true);
+  if (eqCtx?.state === "suspended") void eqCtx.resume().catch(() => undefined);
+  return eqCtx && eqInput ? { context: eqCtx, node: eqInput } : null;
+}
+
+/**
  * Both decks → preamp → EQ bands → (limiter while the curve can boost) →
  * speakers. Element volume is applied before a MediaElementSource (verified
  * on Electron's Chromium), so the gain/fade/normalisation logic above keeps
@@ -466,11 +485,11 @@ function eqPlan(): { preampDb: number; bands: EqBandPlan[] } | null {
  * detached from its source node again, so turning the EQ off afterwards
  * leaves an empty, transparent chain (preamp at 0 dB, no bands).
  */
-function applyEq(): void {
+function applyEq(force = false): void {
   if (!elements) return;
   const plan = eqPlan();
   if (!eqCtx) {
-    if (!plan) return;
+    if (!plan && !force) return;
     const ctx = new AudioContext();
     eqCtx = ctx;
     // Brick-wall-ish limiter for boosts the preamp doesn't cover (the
@@ -642,10 +661,37 @@ function planFadeStart(nextId: string, fadeMs: number): { delayMs: number; smart
   return { delayMs: Math.max(0, best), smart: true, reason: `beat-aligned @ ${grid.bpm} BPM` };
 }
 
+/**
+ * Gapless: with no crossfade set, the next song takes over in a blend this
+ * short, ending where this one does — no silence between songs of an album
+ * that runs on (a live set, a soundtrack, a concept record). The standby deck
+ * is armed and buffered seconds ahead like a crossfade's; only its start is
+ * timed on the playing element's own clock (untilRemaining), not a timer.
+ */
+const GAPLESS_MS = 15;
+
+function gaplessNext(): boolean {
+  const s = useSettings.getState();
+  // Skip silence trims song ends itself — the end it plays to isn't the file's.
+  return s.gapless && !s.skipSilence && fadeMsForNext() === 0;
+}
+
+/** Wait until the playing deck has `ms` (wall time, at its speed) left — halving the wait each step, ~4 ms close. */
+async function untilRemaining(ms: number, stale: () => boolean): Promise<void> {
+  for (;;) {
+    const a = el();
+    const duration = Number.isFinite(a.duration) ? a.duration : 0;
+    const left = ((duration - a.currentTime) * 1000) / (a.playbackRate || 1) - ms;
+    if (left <= 4 || stale() || a.paused || !duration) return;
+    await new Promise<void>((r) => window.setTimeout(r, Math.min(Math.max(left / 2, 2), 250)));
+  }
+}
+
 function maybeArmTransition(): void {
   if (fade || armed) return;
-  const fadeMs = fadeMsForNext();
-  if (fadeMs < 500) return;
+  const gapless = gaplessNext();
+  const fadeMs = gapless ? GAPLESS_MS : fadeMsForNext();
+  if (!gapless && fadeMs < 500) return;
   const state = usePlayer.getState();
   if (state.shuffle) return; // random next can't be pre-picked
   if (state.repeat === "one") return;
@@ -707,13 +753,18 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
     }
     const plan = planFadeStart(nextTrack.id, fadeMs);
     const startAt = performance.now() + plan.delayMs;
+    stand.preload = "auto";
     stand.src = url;
     stand.currentTime = 0;
     applySpeed();
     const state = usePlayer.getState();
     armed = null;
-    const waitMs = startAt - performance.now();
-    if (waitMs > 30) await new Promise<void>((r) => window.setTimeout(r, waitMs));
+    if (fadeMs <= GAPLESS_MS) {
+      await untilRemaining(fadeMs, stale);
+    } else {
+      const waitMs = startAt - performance.now();
+      if (waitMs > 30) await new Promise<void>((r) => window.setTimeout(r, waitMs));
+    }
     if (stale() || fade) return;
     // If the user interacted meanwhile, re-check.
     const s2 = usePlayer.getState();
@@ -898,6 +949,85 @@ function abortFade(keepRoles: boolean): void {
     /* ignore */
   }
   if (!keepRoles) applyElementVolumes(1, 0);
+}
+
+/* ============================ casting ============================ */
+
+type PlayerSnapshot = ReturnType<typeof usePlayer.getState>;
+/** Set while a network player plays (lib/cast.ts): store changes go to it instead of the decks. */
+let castFollower: ((state: PlayerSnapshot, prev: PlayerSnapshot) => void) | null = null;
+/** The network player's clock as last reported. */
+let castClock: { pos: number; at: number; running: boolean } | null = null;
+
+/** The network player takes over: transitions end, the decks fall silent where they are. */
+export function handOverToCast(follower: (state: PlayerSnapshot, prev: PlayerSnapshot) => void): void {
+  castFollower = follower;
+  abortFade(false);
+  stopPpRamp();
+  flushAccum("pause");
+  disarmSilenceTail();
+  for (const e of elements ?? []) {
+    try {
+      e.pause();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** Back from the network player: this computer plays on from the store's position. */
+export function takeBackFromCast(): void {
+  castFollower = null;
+  castClock = null;
+  const s = usePlayer.getState();
+  const cur = s.queue[s.index];
+  if (!cur || !elements) return;
+  // The same listening, moved: the song isn't heard "again" (history, stats).
+  const heard = historyForId;
+  void loadTrack(cur, s.playing);
+  historyForId = heard;
+}
+
+/**
+ * What the network player reports, once a second: its clock (seek bar,
+ * lyrics) and what was heard there — a song heard on the player counts in
+ * the history and stats like one heard here.
+ */
+export function castHeard(trackId: string, position: number, playing: boolean): void {
+  const s = usePlayer.getState();
+  const cur = s.queue[s.index];
+  if (!castFollower || !cur || cur.id !== trackId) return;
+  const wasRunning = castClock?.running ?? false;
+  castClock = { pos: position, at: performance.now(), running: playing };
+  if (!playing) {
+    flushAccum("pause");
+    return;
+  }
+  if (historyForId !== cur.id) {
+    flushAccum("stop");
+    historyForId = cur.id;
+    useLibrary.getState().pushHistory(cur);
+    accum = { id: cur.id, playedMs: 0, pendingMs: 0, lastPos: position };
+    emitPlayEvent("start", cur, position, 0, 0);
+    return;
+  }
+  if (!wasRunning) emitPlayEvent("resume", cur, position, (accum?.playedMs ?? 0) / 1000, 0);
+  accumulate(cur.id, position);
+}
+
+/**
+ * The network player finished the song: the queue moves on as at a local end
+ * (AutoPlay included). Repeat-one never gets here — lib/cast.ts replays the
+ * song on the player itself.
+ */
+export function castTrackEnded(): void {
+  const state = usePlayer.getState();
+  const atEnd = state.index >= state.queue.length - 1;
+  if (atEnd && state.repeat === "off" && useSettings.getState().autoplay) {
+    void autoplayNext();
+    return;
+  }
+  state.next(false);
 }
 
 /* ============================ skip silence ============================ */
@@ -1100,6 +1230,11 @@ export function initAudioEngine(): void {
 
   usePlayer.subscribe((state, prev) => {
     if (!elements) return;
+    // A network player has the music (lib/cast.ts): it follows the store, the decks stay silent.
+    if (castFollower) {
+      castFollower(state, prev);
+      return;
+    }
     const cur = state.queue[state.index] ?? null;
     const prevCur = prev.queue[prev.index] ?? null;
 

@@ -20,11 +20,13 @@
  *  - seek row (8px below transport): fixed 50px time boxes (12/17
  *    #b3b3b3) flanking a flexible bar — 12px hit area, 4px track (2px
  *    radius, white @30%), white fill, 12px white handle on hover
- *  - right: lyrics / queue / volume (speaker 32px + 67px track)
+ *  - right: lyrics / queue / cast / volume (speaker 32px + 67px track)
  *    / miniplayer / fullscreen — 16px icons white @70% → white on hover
+ *  - while a network player has the music: a 24px "Playing on …" strip
+ *    beneath the bar (Spotify's Connect treatment, in the primary colour)
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Check, Heart, ListMusic, ListPlus, Loader2 } from "lucide-react";
+import { Cast, Check, Heart, Laptop, ListMusic, ListPlus, Loader2, RefreshCw, Speaker } from "lucide-react";
 import {
   SpCheck,
   SpCoverNote,
@@ -56,6 +58,7 @@ import { useDrag } from "../lib/dnd";
 import { isLibraryTrack } from "../lib/libraryTracks";
 import { ArtistLinks } from "./ArtistLinks";
 import { describePlayback, formatLine } from "../lib/playbackFormat";
+import { castTo, searchCastDevices, stopCasting, useCast, useVolumeTarget, type CastDevice } from "../lib/cast";
 import type { Track } from "../types";
 
 const SOURCE_NAME = { local: "a file on this device", jellyfin: "Jellyfin", subsonic: "Navidrome" } as const;
@@ -214,6 +217,97 @@ function BarButton({
   );
 }
 
+/** Each player's name; two of the same name carry their model too. */
+function castLabel(device: CastDevice, all: CastDevice[]): string {
+  const twin = all.some((d) => d !== device && d.name === device.name);
+  return twin && device.model ? `${device.name} (${device.model})` : device.name;
+}
+
+/**
+ * Play on a network player (DLNA / UPnP — lib/cast.ts): the menu lists this
+ * computer and the players the search finds; it searches again on every
+ * open and fills in as answers arrive.
+ */
+function CastButton() {
+  const active = useCast((s) => s.active);
+  const connecting = useCast((s) => s.connecting);
+  const anchor = useRef<DOMRect | null>(null);
+  const shown = useRef<MenuItem[] | null>(null);
+
+  const items = (): MenuItem[] => {
+    const { devices, searching, active: on, connecting: pending } = useCast.getState();
+    const list: MenuItem[] = [
+      { label: "Play on", header: true },
+      { label: "This computer", icon: on ? Laptop : Check, action: () => void stopCasting() },
+      ...devices.map(
+        (d): MenuItem => ({
+          label: castLabel(d, devices),
+          icon: on?.id === d.id ? Check : pending === d.id ? Loader2 : Speaker,
+          iconClassName: pending === d.id ? "animate-spin" : undefined,
+          action: () => void castTo(d),
+        })
+      ),
+    ];
+    if (searching) {
+      list.push({ label: "Looking for players…", icon: Loader2, iconClassName: "animate-spin opacity-80", disabled: true });
+    } else {
+      if (!devices.length) list.push({ label: "No players found on this network", disabled: true });
+      list.push({
+        label: "Search again",
+        icon: RefreshCw,
+        separatorBefore: true,
+        // After the menu has closed from this click: open it again, searching.
+        action: () => window.setTimeout(open, 0),
+      });
+    }
+    return list;
+  };
+
+  const show = (): void => {
+    const rect = anchor.current;
+    if (!rect) return;
+    shown.current = items();
+    useUI.getState().openContextMenu(rect.right, rect.top, shown.current, { above: true, alignRight: true });
+  };
+
+  function open(): void {
+    if (!useCast.getState().searching) {
+      void searchCastDevices().then(() => {
+        // Still open (not closed or replaced by another menu): show what the search found.
+        if (shown.current && useUI.getState().contextMenu?.items === shown.current) show();
+      });
+    }
+    show();
+  }
+
+  return (
+    <button
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        // Its own menu toggles closed; any other open menu gives way to it.
+        const menu = useUI.getState().contextMenu;
+        if (menu && menu.items === shown.current) {
+          useUI.getState().closeContextMenu();
+          return;
+        }
+        anchor.current = e.currentTarget.getBoundingClientRect();
+        open();
+      }}
+      title={active ? `Playing on ${active.name}` : "Play on a network player"}
+      aria-label={active ? `Playing on ${active.name}` : "Play on a network player"}
+      aria-haspopup="menu"
+      aria-pressed={!!active}
+      className={`relative grid h-8 w-8 place-items-center rounded-full transition-colors ${
+        active ? "text-white" : "text-white/70 hover:text-white"
+      }`}
+    >
+      {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cast className="h-4 w-4" />}
+      {active && <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white" />}
+    </button>
+  );
+}
+
 export function PlayerBar() {
   const track = usePlayer((s) => s.queue[s.index] ?? null);
   const playing = usePlayer((s) => s.playing);
@@ -225,8 +319,9 @@ export function PlayerBar() {
   const prev = usePlayer((s) => s.prev);
   const toggleShuffle = usePlayer((s) => s.toggleShuffle);
   const cycleRepeat = usePlayer((s) => s.cycleRepeat);
-  const volume = usePlayer((s) => s.volume);
-  const muted = usePlayer((s) => s.muted);
+  // While a network player has the music, its volume (lib/cast.ts).
+  const { value: volume, muted } = useVolumeTarget();
+  const castingTo = useCast((s) => s.active);
 
   const liked = useLibrary((s) => (track ? s.liked.some((t) => t.id === track.id) : false));
   const hideVolumeBar = useSettings((s) => s.hideVolumeBar);
@@ -437,6 +532,7 @@ export function PlayerBar() {
           <BarButton onClick={toggleQueue} title="Queue" active={rightPanel === "queue"}>
             <SpQueue />
           </BarButton>
+          <CastButton />
           {!hideVolumeBar && <VolumeControl VolIcon={VolIcon} />}
           <BarButton
             onClick={toggleMiniPlayer}
@@ -454,6 +550,12 @@ export function PlayerBar() {
           </BarButton>
         </div>
       </div>
+      {castingTo && (
+        <div className="-mx-2 flex h-6 items-center justify-end gap-1.5 bg-primary px-4 text-[12px] font-semibold text-on-primary">
+          <Cast className="h-3.5 w-3.5" />
+          Playing on {castingTo.name}
+        </div>
+      )}
     </footer>
   );
 }

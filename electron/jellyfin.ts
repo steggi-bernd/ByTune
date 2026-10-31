@@ -79,6 +79,11 @@ export interface JellyfinStatus {
   fetchedAt: number;
   /** the cached library predates fields this version reads — refresh it */
   stale: boolean;
+  /** signed in with an API key, which belongs to no user */
+  apiKey: boolean;
+  /** whose favorites and plays Server sync uses (see syncUser) */
+  syncUserId: string | null;
+  syncUserName: string | null;
 }
 
 interface Config {
@@ -88,6 +93,9 @@ interface Config {
   userName: string | null;
   token: string; // sealed
   deviceId: string;
+  /** an API-key login syncs favorites and plays for this server user */
+  syncUserId?: string | null;
+  syncUserName?: string | null;
 }
 
 function readConfig(): Config | null {
@@ -157,6 +165,9 @@ export function status(): JellyfinStatus {
     trackCount: lib.tracks.length,
     fetchedAt: lib.fetchedAt,
     stale: !!cfg && lib.fetchedAt > 0 && lib.v !== LIB_VERSION,
+    apiKey: !!cfg && !cfg.userId,
+    syncUserId: cfg ? syncUser(cfg) : null,
+    syncUserName: cfg ? (cfg.userId ? cfg.userName : (cfg.syncUserName ?? null)) : null,
   };
 }
 
@@ -302,6 +313,118 @@ export async function refreshLibrary(): Promise<JellyfinLibrary> {
   const lib = { fetchedAt: Date.now(), tracks, v: LIB_VERSION };
   await persist.writeData(LIBRARY_STORE, lib);
   return lib;
+}
+
+/* ------------------------------------------------------------ favorites & plays */
+
+const ITEM_ID = /^[a-f0-9-]{32,36}$/i;
+
+/**
+ * Whose favorites and plays Server sync uses: the signed-in user — or,
+ * signed in with an API key (which belongs to no user), the server user
+ * chosen in Settings. Without one, Jellyfin isn't synced.
+ */
+function syncUser(cfg: Config): string | null {
+  return cfg.userId ?? cfg.syncUserId ?? null;
+}
+
+export interface JellyfinUser {
+  id: string;
+  name: string;
+}
+
+/** The users an API-key login can sync for; a signed-in user is the only choice. */
+export async function listUsers(): Promise<JellyfinUser[]> {
+  const cfg = readConfig();
+  const token = openSecret(cfg?.token);
+  if (!cfg || !token) return [];
+  if (cfg.userId) return [{ id: cfg.userId, name: cfg.userName ?? "You" }];
+  const users = await request(cfg.server, "/Users", { token, device: cfg.deviceId });
+  return (Array.isArray(users) ? users : [])
+    .filter((u: any) => typeof u?.Id === "string" && ITEM_ID.test(u.Id))
+    .map((u: any) => ({ id: String(u.Id), name: typeof u.Name === "string" && u.Name ? u.Name.slice(0, 80) : "User" }));
+}
+
+export async function setSyncUser(userId: string | null): Promise<JellyfinStatus> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("Not connected to a Jellyfin server");
+  if (cfg.userId) return status(); // a signed-in user syncs as themselves
+  let pick: JellyfinUser | undefined;
+  if (userId !== null) {
+    pick = (await listUsers()).find((u) => u.id === userId);
+    if (!pick) throw new Error("That user isn't on this server");
+  }
+  await persist.writeData(CONFIG_STORE, { ...cfg, syncUserId: pick?.id ?? null, syncUserName: pick?.name ?? null } satisfies Config);
+  return status();
+}
+
+/** A per-user call: Jellyfin 10.9 moved these routes and keeps the old ones for a while. */
+async function userCall(method: "POST" | "DELETE", route: string, legacy: string): Promise<void> {
+  const cfg = readConfig();
+  const token = openSecret(cfg?.token);
+  const user = cfg ? syncUser(cfg) : null;
+  if (!cfg || !token || !user) throw new Error("No Jellyfin user to sync with");
+  const withUser = `${route}${route.includes("?") ? "&" : "?"}userId=${user}`;
+  try {
+    await request(cfg.server, withUser, { method, token, device: cfg.deviceId });
+  } catch (err) {
+    if (!(err instanceof Error) || !/HTTP 40[45]\b/.test(err.message)) throw err;
+    await request(cfg.server, legacy.replace("{user}", user), { method, token, device: cfg.deviceId });
+  }
+}
+
+/** The sync user's favorite songs, as library tracks. */
+export async function favoriteTracks(): Promise<JellyfinTrack[]> {
+  const cfg = readConfig();
+  const token = openSecret(cfg?.token);
+  const user = cfg ? syncUser(cfg) : null;
+  if (!cfg || !token || !user) throw new Error("No Jellyfin user to sync with");
+  const tracks: JellyfinTrack[] = [];
+  for (let start = 0; start < MAX_ITEMS; start += PAGE_SIZE) {
+    const params = new URLSearchParams({
+      IncludeItemTypes: "Audio",
+      Recursive: "true",
+      Filters: "IsFavorite",
+      UserId: user,
+      Fields: "Genres,DateCreated,MediaStreams",
+      EnableImageTypes: "Primary",
+      StartIndex: String(start),
+      Limit: String(PAGE_SIZE),
+    });
+    const page = await request(cfg.server, `/Items?${params}`, { token, device: cfg.deviceId });
+    const items: any[] = Array.isArray(page?.Items) ? page.Items : [];
+    for (const item of items) {
+      const t = toTrack(item);
+      if (t) tracks.push(t);
+    }
+    if (items.length < PAGE_SIZE) break;
+  }
+  return tracks;
+}
+
+export async function setFavorite(itemId: string, favorite: boolean): Promise<void> {
+  if (!ITEM_ID.test(itemId)) throw new Error("Not a Jellyfin item");
+  await userCall(favorite ? "POST" : "DELETE", `/UserFavoriteItems/${itemId}`, `/Users/{user}/FavoriteItems/${itemId}`);
+}
+
+/** One play for the sync user: play count +1, last played at `at`. */
+export async function markPlayed(itemId: string, at: Date): Promise<void> {
+  if (!ITEM_ID.test(itemId)) throw new Error("Not a Jellyfin item");
+  const date = encodeURIComponent(at.toISOString());
+  await userCall("POST", `/UserPlayedItems/${itemId}?datePlayed=${date}`, `/Users/{user}/PlayedItems/${itemId}?datePlayed=${date}`);
+}
+
+/** The item's original file, for an offline copy (downloads.ts); the token stays in this process. */
+export function originalFile(itemId: string): { url: string; headers: Record<string, string>; ext: string } {
+  const cfg = readConfig();
+  const token = openSecret(cfg?.token);
+  if (!cfg || !token || !ITEM_ID.test(itemId)) throw new Error("Not connected to the Jellyfin server");
+  const container = readLibrary().tracks.find((t) => t.itemId === itemId)?.container?.split(",")[0];
+  return {
+    url: `${cfg.server}/Items/${itemId}/Download`,
+    headers: { Authorization: authHeader(token, cfg.deviceId) },
+    ext: container && /^[a-z0-9]{2,5}$/.test(container) ? `.${container}` : ".flac",
+  };
 }
 
 /** Upstream audio for one item, honouring the media element's Range header. */

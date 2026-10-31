@@ -15,6 +15,7 @@ import {
   FolderPlus,
   ListMusic,
   Music2,
+  PackageOpen,
   Pencil,
   RefreshCw,
   Search,
@@ -27,6 +28,7 @@ import { Artwork, EmptyState, Pills } from "../components/primitives";
 import { isUnderPath } from "../../electron/local-paths";
 import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
+import { importPurchase } from "../lib/archiveImport";
 import type { FolderStatus, LocalFolderEntry, LocalTrack } from "../../electron/local-library";
 import type { Track } from "../types";
 
@@ -289,6 +291,14 @@ export function LocalMusicView() {
               className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-ink-dim hover:text-ink-hi transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              onClick={() => void importPurchase()}
+              title="Unpack a store's ZIP (Bandcamp, Qobuz …) into a library folder — or drop it anywhere on ByTune"
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-[13px] font-semibold text-ink-hi transition-colors"
+            >
+              <PackageOpen className="w-4 h-4" />
+              Import ZIP
             </button>
             <button
               onClick={() => void addFolders()}

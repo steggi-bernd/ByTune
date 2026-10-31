@@ -9,7 +9,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Folder, ListPlus, Plus, Sparkles } from "lucide-react";
+import { FileUp, Folder, ListPlus, Plus, Sparkles } from "lucide-react";
+import { importM3uPlaylist } from "../lib/playlistFiles";
 import { newSmartPlaylist } from "../stores/smartPlaylists";
 import { useSmartEditor } from "./SmartPlaylistEditor";
 import { useLibrary, type LibraryFolder } from "../stores/library";
@@ -142,6 +143,21 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
               <span className="min-w-0">
                 <span className="block text-[14px] font-semibold text-ink-hi">Smart playlist</span>
                 <span className="block text-[12px] text-ink-hi/55 truncate">Fills itself from rules</span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                void importM3uPlaylist();
+              }}
+              className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-left hover:bg-ink-hi/[0.06] transition-colors"
+            >
+              <span className="w-10 h-10 rounded-full bg-ink-hi/[0.08] grid place-items-center shrink-0">
+                <FileUp className="w-5 h-5 text-ink-hi" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-semibold text-ink-hi">Import playlist</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">From an M3U file — foobar2000, VLC …</span>
               </span>
             </button>
             <button

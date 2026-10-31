@@ -1,6 +1,7 @@
 /** Builds right-click / "more" menu items for tracks and playlists. */
 import {
   Disc3,
+  Download,
   FolderOpen,
   Heart,
   ListMusic,
@@ -13,7 +14,8 @@ import {
   Trash2,
   User,
 } from "lucide-react";
-import { startDownload } from "./downloads";
+import { downloadForOffline, SERVER_SONG, startDownload } from "./downloads";
+import { versionsOf } from "../stores/catalog";
 import { useLibrary, type Playlist } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useUI, type MenuItem } from "../stores/ui";
@@ -87,14 +89,21 @@ export function trackMenuItems(track: Track): MenuItem[] {
     },
   });
 
-  // Local player: no downloads or share links — a song's home is a file on
-  // this device or an item on the user's Jellyfin server.
+  // Local player: no share links — a song's home is a file on this device or
+  // an item on the user's server, which can get an offline copy.
   if (track.localPath) {
     items.push({
       separatorBefore: true,
       label: "Show in folder",
       icon: FolderOpen,
       action: () => requireReveal(track.localPath as string),
+    });
+  } else if (SERVER_SONG.test(track.id) && !versionsOf(track).some((v) => v.localPath)) {
+    items.push({
+      separatorBefore: true,
+      label: "Download for offline",
+      icon: Download,
+      action: () => void downloadForOffline([track]),
     });
   }
 

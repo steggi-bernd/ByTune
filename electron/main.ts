@@ -1,7 +1,8 @@
 /** ByTune desktop — Electron main process. */
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, session, shell } from "electron";
 import type { NativeImage } from "electron";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
+import * as m3u from "./m3u";
 import * as fs from "fs";
 import * as path from "path";
 import * as downloads from "./downloads";
@@ -10,6 +11,8 @@ import * as canvas from "./canvas";
 import * as discord from "./discord";
 import { enrichLocalLibrary } from "./enrich";
 import * as folderWatch from "./folder-watch";
+import * as archive from "./archive-import";
+import * as cast from "./cast";
 import * as jellyfin from "./jellyfin";
 import * as subsonic from "./subsonic";
 import { libraryLyrics } from "./library-lyrics";
@@ -366,7 +369,15 @@ const RENDERER_STORES = new Set([
   "smart-playlists",
   "spotify-import",
   "album-edits",
+  "server-sync",
 ]);
+/** "jf:<item>" / "ss:<song>" — a song on one of the servers. */
+function serverItem(id: unknown): { kind: "jf" | "ss"; raw: string } {
+  const m = typeof id === "string" ? /^(jf|ss):([\w.:-]{1,128})$/.exec(id) : null;
+  if (!m) throw new Error("Not a server song");
+  return { kind: m[1] as "jf" | "ss", raw: m[2] };
+}
+
 function assertRendererStore(name: unknown): asserts name is string {
   if (typeof name !== "string" || !RENDERER_STORES.has(name)) throw new Error("Store not allowed");
 }
@@ -530,6 +541,42 @@ function registerIpc(): void {
   ipc.handle("subsonic:library", () => subsonic.readLibrary());
   ipc.handle("subsonic:refresh", () => subsonic.refreshLibrary());
 
+  // Server sync: Liked Songs ↔ the servers' favorites, plays counted there too.
+  // The renderer decides what changes (lib/serverSync.ts); these only talk to the servers.
+  ipc.handle("jellyfin:users", () => jellyfin.listUsers());
+  ipc.handle("jellyfin:setSyncUser", (_e, id: unknown) =>
+    jellyfin.setSyncUser(typeof id === "string" && id ? id.slice(0, 64) : null)
+  );
+  ipc.handle("server:favorites", async () => {
+    const settle = async (list: () => Promise<unknown[]>) => {
+      try {
+        return { ok: true, tracks: await list() };
+      } catch (err) {
+        return { ok: false, tracks: [], error: err instanceof Error ? err.message : "failed" };
+      }
+    };
+    return {
+      jellyfin: jellyfin.status().syncUserId ? await settle(jellyfin.favoriteTracks) : null,
+      subsonic: subsonic.status().connected ? await settle(subsonic.favoriteTracks) : null,
+    };
+  });
+  ipc.handle("server:setFavorite", async (_e, id: unknown, favorite: unknown) => {
+    const { kind, raw } = serverItem(id);
+    if (kind === "jf") await jellyfin.setFavorite(raw, favorite === true);
+    else await subsonic.setStarred(raw, favorite === true);
+  });
+  ipc.handle("server:played", async (_e, id: unknown, at: unknown) => {
+    const { kind, raw } = serverItem(id);
+    const when = typeof at === "number" && Number.isFinite(at) && at > 0 && at <= Date.now() + 60_000 ? new Date(at) : new Date();
+    if (kind === "jf") await jellyfin.markPlayed(raw, when);
+    else await subsonic.scrobble(raw, true, when);
+  });
+  ipc.handle("server:nowPlaying", async (_e, id: unknown) => {
+    const { kind, raw } = serverItem(id);
+    // Jellyfin's "now playing" belongs to a playback session; only the play itself is reported there.
+    if (kind === "ss") await subsonic.scrobble(raw, false);
+  });
+
   ipc.handle("canvas:get", (_e, q: { title?: string; artist?: string; album?: string }) =>
     canvas.canvasFor(String(q?.title ?? ""), String(q?.artist ?? ""), q?.album ? String(q.album) : undefined)
   );
@@ -651,6 +698,88 @@ function registerIpc(): void {
     if (dir) approveDir(dir);
     return dir;
   });
+  // Casting to a network player (cast.ts / upnp.ts); the renderer steers, status comes back as cast:status.
+  ipc.handle("cast:find", () => cast.findDevices());
+  ipc.handle("cast:start", (_e, id: unknown) =>
+    cast.start(String(id ?? "").slice(0, 300), (s) => {
+      try {
+        mainWindow?.webContents.send("cast:status", s);
+      } catch {
+        /* window gone */
+      }
+    })
+  );
+  ipc.handle("cast:load", (_e, song: unknown, position: unknown, play: unknown) =>
+    cast.load(cast.songFrom(song), Math.max(0, Number(position) || 0), play === true)
+  );
+  ipc.handle("cast:control", (_e, action: unknown, value: unknown) => cast.control(String(action ?? ""), Number(value)));
+  ipc.handle("cast:stop", () => cast.stop());
+
+  // M3U playlists (m3u.ts): read with paths resolved; written where the user picks.
+  ipc.handle("playlist:openM3u", async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Import a playlist",
+      properties: ["openFile"],
+      filters: [{ name: "Playlist", extensions: ["m3u8", "m3u"] }],
+    });
+    const file = res.canceled ? null : res.filePaths[0];
+    if (!file) return null;
+    const bytes = await fs.promises.readFile(file);
+    if (bytes.length > 5 * 1024 * 1024) throw new Error("That file is far too large for a playlist");
+    // .m3u8 is UTF-8; an old .m3u is often Windows-1252.
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      text = new TextDecoder("windows-1252").decode(bytes);
+    }
+    const dir = path.dirname(file);
+    const entries = m3u.parseM3u(text).map((e) => {
+      if (!e.path) return e; // a ByTune note
+      try {
+        if (/^file:/i.test(e.path)) return { ...e, path: fileURLToPath(e.path) };
+        if (/^[a-z][a-z0-9+.-]+:\/\//i.test(e.path)) return e; // http(s) and other URLs stay as they are
+        return { ...e, path: path.resolve(dir, e.path) }; // relative to the playlist's own folder
+      } catch {
+        return e;
+      }
+    });
+    return { name: path.basename(file).replace(/\.m3u8?$/i, ""), entries };
+  });
+  ipc.handle("playlist:saveM3u", async (_e, suggestedName: unknown, content: unknown) => {
+    if (typeof suggestedName !== "string" || typeof content !== "string") throw new Error("Invalid playlist");
+    if (content.length > 20 * 1024 * 1024) throw new Error("Playlist too large");
+    if (!mainWindow) return null;
+    const name = suggestedName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim().slice(0, 120) || "Playlist";
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: "Export playlist",
+      defaultPath: path.join(app.getPath("music"), `${name}.m3u8`),
+      filters: [{ name: "Playlist (M3U8)", extensions: ["m3u8"] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    await fs.promises.writeFile(res.filePath, content, "utf-8");
+    return res.filePath;
+  });
+
+  // Bought music: a store's ZIP, unpacked into one of the library folders as one album.
+  ipc.handle("library:pickArchive", async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Import bought music",
+      defaultPath: app.getPath("downloads"),
+      properties: ["openFile"],
+      filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+    });
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0];
+  });
+  ipc.handle("library:importArchive", async (_e, zipPath: unknown, folder: unknown) => {
+    if (typeof zipPath !== "string" || typeof folder !== "string") throw new Error("Choose a .zip file");
+    const folders = (locallib.readLocalLibrary().folders as (string | { path: string })[]).map((f) => (typeof f === "string" ? f : f.path));
+    const target = folders.find((f) => f.toLowerCase() === folder.toLowerCase());
+    if (!target || !isApprovedPath(target)) throw new Error("Choose one of your library folders");
+    return archive.importArchive(zipPath, target);
+  });
   ipc.handle("app:revealPath", (_e, p: string) => {
     if (p && isApprovedPath(p)) shell.showItemInFolder(p);
   });
@@ -662,6 +791,17 @@ function registerIpc(): void {
   ipc.handle("download:start", async (_e, track: Track, dir?: string, quality?: string, exportCompat?: boolean) => {
     if (dir && !isApprovedPath(dir)) throw new Error("Download folder not approved");
     if (exportCompat === true) approveDir(downloads.exportDownloadDir());
+    // An offline copy of a server song lands in its own library folder, added once.
+    if (!dir && typeof track?.id === "string" && downloads.SERVER_SONG.test(track.id)) {
+      const offline = downloads.offlineDir();
+      await fs.promises.mkdir(offline, { recursive: true });
+      approveDir(offline);
+      const folders = (locallib.readLocalLibrary().folders as (string | { path: string })[]).map((f) => (typeof f === "string" ? f : f.path));
+      if (!folders.some((f) => f.toLowerCase() === offline.toLowerCase())) {
+        const res = await locallib.addLibraryFolders([offline]);
+        libraryFoldersChanged(res.lib);
+      }
+    }
     const caps: Record<string, number | undefined> = { standard: 128, high: 192, lossless: undefined };
     return downloads.enqueueDownload(track, dir, quality ? caps[quality] : undefined, exportCompat === true);
   });
@@ -942,6 +1082,7 @@ if (!gotLock) {
       stats.flushSync();
       pip.savePipRect();
       discord.stopDiscord();
+  void cast.stop();
       // Kick off a final push, then persist sync-meta synchronously: quit
       // cannot await the push, but the meta must record any un-synced local
       // edits (changedAt > syncedAt) so the next boot pushes them instead of

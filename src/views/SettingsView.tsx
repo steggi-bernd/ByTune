@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Activity,
   AppWindow,
+  AudioLines,
   BarChart3,
   Check,
   ChevronRight,
@@ -16,6 +17,7 @@ import {
   FolderOpen,
   Gauge,
   HardDrive,
+  Heart,
   Image,
   Infinity as InfinityIcon,
   KeyRound,
@@ -25,6 +27,7 @@ import {
   Music4,
   Radio,
   RefreshCw,
+  ShoppingBag,
   SlidersHorizontal,
   FileAudio,
   FolderSync,
@@ -52,6 +55,9 @@ import { useUI, type MenuItem } from "../stores/ui";
 import { EQ_BANDS, listOutputDevices } from "../lib/audio";
 import type { OutputDeviceChoice } from "../lib/audio-output";
 import type { DiscordStatus } from "../../electron/discord";
+import type { JellyfinStatus } from "../../electron/jellyfin";
+import type { SubsonicStatus } from "../../electron/subsonic";
+import { syncFavorites } from "../lib/serverSync";
 
 /* ============================================================ settings chrome
    Settings are inset cards of rows: an uppercase group header, a
@@ -243,6 +249,105 @@ function DiscordGroup() {
             title="Create an application"
             subtitle="Discord Developer Portal → New Application → name it → copy its Application ID (free)"
             onClick={() => window.open(DISCORD_PORTAL, "_blank")}
+          />
+        </>
+      )}
+    </SettingsGroup>
+  );
+}
+
+/** Server sync — Liked Songs ↔ the servers' favorites, plays counted there
+    too (lib/serverSync.ts). Shown with a server connected. An API-key login
+    to Jellyfin belongs to no user, so it picks whose favorites and plays
+    these are; until then Jellyfin sits out. */
+function ServerSyncGroup() {
+  const sync = useSettings((st) => st.serverSync);
+  const plays = useSettings((st) => st.serverPlays);
+  const setSync = useSettings((st) => st.setServerSync);
+  const setPlays = useSettings((st) => st.setServerPlays);
+  const toast = useUI((st) => st.toast);
+  const [jf, setJf] = useState<JellyfinStatus | null>(null);
+  const [navidrome, setNavidrome] = useState<SubsonicStatus | null>(null);
+  useEffect(() => {
+    const bridge = window.bytune;
+    if (!bridge) return;
+    let alive = true;
+    void Promise.all([bridge.jellyfinStatus(), bridge.subsonicStatus()])
+      .then(([j, s]) => {
+        if (!alive) return;
+        setJf(j as JellyfinStatus);
+        setNavidrome(s as SubsonicStatus);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!jf?.connected && !navidrome?.connected) return null;
+
+  const servers = [jf?.connected ? "Jellyfin" : null, navidrome?.connected ? "Navidrome" : null].filter(Boolean).join(" and ");
+  const needsUser = !!jf?.connected && jf.apiKey && !jf.syncUserId;
+  const pickUser = (e: React.MouseEvent): void => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ui = useUI.getState();
+    const bridge = window.bytune;
+    if (ui.contextMenu) {
+      ui.closeContextMenu();
+      return;
+    }
+    if (!bridge) return;
+    void bridge
+      .jellyfinUsers()
+      .then((users) => {
+        const items: MenuItem[] = users.map((u) => ({
+          label: u.name,
+          icon: Check,
+          iconClassName: u.id === jf?.syncUserId ? "text-accent" : "opacity-0",
+          action: () => {
+            void bridge
+              .jellyfinSetSyncUser(u.id)
+              .then((s) => {
+                setJf(s);
+                void syncFavorites().catch(() => undefined);
+              })
+              .catch((err) => toast(err instanceof Error ? err.message : "Couldn't save the user", "error"));
+          },
+        }));
+        ui.openContextMenu(rect.right, rect.bottom + 6, items, { alignRight: true });
+      })
+      .catch((err) => toast(err instanceof Error ? err.message : "Couldn't list the Jellyfin users", "error"));
+  };
+
+  return (
+    <SettingsGroup
+      header="Server sync"
+      footer={`A like here becomes a favorite on ${servers}, and a favorite set in another app (Finamp, Jellyfin Web, a Subsonic app) shows up in Liked Songs — taking one back works both ways too. A play counts there once you've heard half a song, at most 4 minutes.`}
+    >
+      <SettingsRow
+        icon={Heart}
+        title="Liked Songs ↔ favorites"
+        subtitle={!sync ? `Keep Liked Songs and the ${servers} favorites the same` : needsUser ? "Jellyfin waits for a user — choose one below" : `Both ways with ${servers}`}
+        trailing={<Switch checked={sync} onChange={setSync} />}
+        onClick={() => setSync(!sync)}
+      />
+      <Divider />
+      <SettingsRow
+        icon={BarChart3}
+        title="Count plays on the server"
+        subtitle={`Play counts and “last played” on ${servers} include what you hear here`}
+        trailing={<Switch checked={plays} onChange={setPlays} />}
+        onClick={() => setPlays(!plays)}
+      />
+      {jf?.connected && jf.apiKey && (
+        <>
+          <Divider />
+          <SettingsRow
+            icon={UserRound}
+            title="Jellyfin user"
+            subtitle="Signed in with an API key, which belongs to no user: whose favorites and plays these are"
+            value={jf.syncUserName ?? "Choose…"}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={pickUser}
           />
         </>
       )}
@@ -919,6 +1024,14 @@ export function SettingsView() {
         />
         <Divider />
         <SettingsRow
+          icon={ShoppingBag}
+          title="Shop links for missing songs"
+          subtitle="In the Spotify import's “to buy” list: searches on Qobuz, Bandcamp, 7digital and Amazon"
+          trailing={<Switch checked={s.storeLinks} onChange={s.setStoreLinks} />}
+          onClick={() => s.setStoreLinks(!s.storeLinks)}
+        />
+        <Divider />
+        <SettingsRow
           icon={FolderSync}
           title="Watch folders"
           subtitle="New, changed and deleted files show up without rescanning"
@@ -928,6 +1041,8 @@ export function SettingsView() {
         <Divider />
         <FfmpegRow />
       </SettingsGroup>
+
+      <ServerSyncGroup />
 
       <OutputDeviceGroup />
 
@@ -946,6 +1061,22 @@ export function SettingsView() {
               onChange={s.setCrossfadeSeconds}
             />
             <Divider />
+            {s.crossfadeSeconds === 0 && (
+              <>
+                <SettingsRow
+                  icon={AudioLines}
+                  title="Gapless playback"
+                  subtitle={
+                    s.skipSilence
+                      ? "Off while Skip silence trims the song ends"
+                      : "The next song starts the moment this one ends — live albums and soundtracks run on"
+                  }
+                  trailing={<Switch checked={s.gapless} onChange={s.setGapless} />}
+                  onClick={() => s.setGapless(!s.gapless)}
+                />
+                <Divider />
+              </>
+            )}
           </>
         )}
         <SettingsRow
@@ -1086,6 +1217,14 @@ export function SettingsView() {
             />
           </>
         )}
+        <Divider />
+        <SettingsRow
+          icon={Languages}
+          title="Cyrillic in Latin letters"
+          subtitle="A Latin line under each line of Russian, Ukrainian or other Cyrillic lyrics"
+          trailing={<Switch checked={s.lyricsLatin} onChange={s.setLyricsLatin} />}
+          onClick={() => s.setLyricsLatin(!s.lyricsLatin)}
+        />
       </SettingsGroup>
 
       <SettingsGroup header="Local music">

@@ -11,7 +11,10 @@
  * hand. Decided songs leave the check list; "Your decisions" undoes them.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileDown, FileUp, Heart, RotateCcw, Search, Undo2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileDown, FileUp, Heart, PackageOpen, RotateCcw, Search, ShoppingBag, Undo2, X } from "lucide-react";
+import { importPurchase } from "../lib/archiveImport";
+import { storeLinks } from "../lib/storeLinks";
+import { useSettings } from "../stores/settings";
 import { TrackList } from "../components/TrackList";
 import { Artwork, Btn, IconBtn } from "../components/primitives";
 import { fmtTime } from "../lib/format";
@@ -182,6 +185,8 @@ export function SpotifyImportView() {
   const byId = useCatalog((s) => s.byId);
   const versions = useCatalog((s) => s.versions);
   const liked = useLibrary((s) => s.liked);
+  const showStores = useSettings((s) => s.storeLinks);
+  const setStoreLinks = useSettings((s) => s.setStoreLinks);
   const navigate = useUI((s) => s.navigate);
   const toast = useUI((s) => s.toast);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -435,7 +440,8 @@ export function SpotifyImportView() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[13px] text-ink-dim mr-auto">
                       Songs not in your library{dated ? ", newest like first" : ""}. The list saves as a spreadsheet that
-                      opens in Excel. Have one under another name? Use “I have it…”.
+                      opens in Excel. Have one under another name? Use “I have it…”. Bought one? Drop the store's ZIP
+                      anywhere on ByTune.
                     </p>
                     <Btn variant="white" size="sm" icon={FileDown} onClick={() => void saveList()}>
                       Save as list…
@@ -443,6 +449,20 @@ export function SpotifyImportView() {
                     <Btn variant="glass" size="sm" icon={Copy} onClick={() => void copyList()}>
                       Copy
                     </Btn>
+                    <Btn variant="glass" size="sm" icon={PackageOpen} onClick={() => void importPurchase()}>
+                      Import ZIP…
+                    </Btn>
+                    <button
+                      onClick={() => setStoreLinks(!showStores)}
+                      role="switch"
+                      aria-checked={showStores}
+                      title="Search links to Qobuz, Bandcamp, 7digital and Amazon"
+                      className={`h-8 px-3 rounded-full text-[12.5px] font-semibold transition-colors ${
+                        showStores ? "bg-accent/20 text-ink-hi" : "bg-ink-hi/[0.06] text-ink-dim hover:text-ink-hi"
+                      }`}
+                    >
+                      Shop links {showStores ? "on" : "off"}
+                    </button>
                   </div>
                   <div>
                     <div className="flex items-center gap-3 px-3 pb-2.5 mb-1 border-b border-ink-hi/[0.06] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-ghost">
@@ -450,7 +470,7 @@ export function SpotifyImportView() {
                       <div className="flex-1 min-w-0">Title</div>
                       <div className="w-56 hidden lg:block">Album</div>
                       <div className="w-28 hidden md:block">Liked</div>
-                      <div className="w-[150px]" />
+                      <div className={showStores ? "w-[210px]" : "w-[150px]"} />
                     </div>
                     {missing.map((row, n) => {
                       const link = spotifyLink(row.entry.uri);
@@ -466,7 +486,36 @@ export function SpotifyImportView() {
                           </div>
                           <div className="w-56 hidden lg:block text-[12.5px] text-ink-faint truncate">{row.entry.album}</div>
                           <div className="w-28 hidden md:block text-[12.5px] text-ink-faint tabular-nums">{likedOn(row.entry.addedAt)}</div>
-                          <div className="w-[150px] flex items-center justify-end gap-1">
+                          <div className={`${showStores ? "w-[210px]" : "w-[150px]"} flex items-center justify-end gap-1`}>
+                            {showStores && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const ui = useUI.getState();
+                                  if (ui.contextMenu) {
+                                    ui.closeContextMenu();
+                                    return;
+                                  }
+                                  ui.openContextMenu(
+                                    rect.right,
+                                    rect.bottom + 6,
+                                    storeLinks(row.entry, navigator.language).map((l) => ({
+                                      label: `Search on ${l.store}`,
+                                      icon: ExternalLink,
+                                      action: () => window.open(l.url, "_blank"),
+                                    })),
+                                    { alignRight: true }
+                                  );
+                                }}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                aria-label={`Where to buy ${row.entry.title}`}
+                                className="h-7 px-2.5 rounded-full inline-flex items-center gap-1 text-[12px] font-semibold text-ink-hi bg-accent/15 hover:bg-accent/25 transition-colors"
+                              >
+                                <ShoppingBag className="w-3.5 h-3.5" />
+                                Buy
+                              </button>
+                            )}
                             {row.decided === "different" ? (
                               <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>
                                 Undo
