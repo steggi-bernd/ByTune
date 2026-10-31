@@ -28,7 +28,7 @@ const LIBRARY_STORE = "jellyfin-library";
 const PAGE_SIZE = 500;
 const MAX_ITEMS = 100_000;
 const CLIENT = "ByTune";
-const VERSION = "1.0.1";
+const VERSION = "1.0.2";
 
 export interface JellyfinTrack {
   /** "jf:<itemId>" — the id prefix routes playback to this module */
