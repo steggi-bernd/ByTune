@@ -13,9 +13,10 @@ import { useEffect, useState } from "react";
 import { Music2, X } from "lucide-react";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
+import { useAvailabilityCheck } from "../stores/availability";
 import { Artwork, EqBars, IconBtn } from "./primitives";
 import { upgradeArtwork, wideArtwork } from "../lib/artwork";
-import { useDrag } from "../lib/dnd";
+import { dragHasQueueRow, readQueueIndex, useDrag } from "../lib/dnd";
 import { fmtTime } from "../lib/format";
 import { useArtistImage } from "../lib/artistImage";
 import { useArtistAbout } from "../lib/artistAbout";
@@ -50,22 +51,45 @@ function TrackRow({
   isPlaying,
   onPlay,
   onRemove,
+  queueIndex,
+  available = true,
+  dropEdge,
+  onDragOver,
+  onDrop,
 }: {
   track: Track;
   isCurrent?: boolean;
   isPlaying?: boolean;
   onPlay: () => void;
   onRemove?: () => void;
+  /** upcoming rows: their queue position — dragging them reorders the queue */
+  queueIndex?: number;
+  available?: boolean;
+  /** where a dragged row would land relative to this one */
+  dropEdge?: "before" | "after" | null;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
 }) {
-  const drag = useDrag({ track });
+  const drag = useDrag(queueIndex !== undefined ? { track, queueIndex } : { track });
   return (
     <div
       {...drag.props}
-      onClick={onPlay}
-      className={`group flex items-center gap-3 h-12 px-2 rounded-lg cursor-pointer select-none transition-colors ${
-        isCurrent ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"
-      } ${drag.dragging ? "opacity-40" : ""}`}
+      onClick={available ? onPlay : undefined}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      title={available ? undefined : "Not available right now — its drive or server can't be reached"}
+      className={`group relative flex items-center gap-3 h-12 px-2 rounded-lg select-none transition-colors ${
+        available ? "cursor-pointer" : "cursor-default"
+      } ${isCurrent ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"} ${drag.dragging || !available ? "opacity-40" : ""}`}
     >
+      {dropEdge && (
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute left-2 right-2 h-0.5 rounded-full bg-accent ${
+            dropEdge === "before" ? "-top-[2px]" : "-bottom-[2px]"
+          }`}
+        />
+      )}
       <Artwork src={track.thumb} className="w-9 h-9 rounded-md shrink-0" iconClassName="w-3.5 h-3.5" alt="" />
       <div className="flex-1 min-w-0">
         <div className={`text-[13px] truncate font-semibold ${isCurrent ? "text-ink-hi" : "text-ink-hi"}`}>
@@ -105,11 +129,47 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
   const playing = usePlayer((s) => s.playing);
   const playAt = usePlayer((s) => s.playQueue);
   const removeAt = usePlayer((s) => s.removeAt);
+  const moveInQueue = usePlayer((s) => s.moveInQueue);
   const history = useLibrary((s) => s.history);
   const playTrack = usePlayer((s) => s.playTrack);
+  const available = useAvailabilityCheck();
 
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
+
+  /* Drag to reorder "Next up": the row under the pointer shows where the
+     dragged song lands (above or below it, by the pointer's half); empty
+     space below the list means "to the end". The playing song stays put. */
+  const [drop, setDrop] = useState<{ index: number; before: boolean } | null>(null);
+  useEffect(() => {
+    const clear = (): void => setDrop(null);
+    window.addEventListener("dragend", clear);
+    return () => window.removeEventListener("dragend", clear);
+  }, []);
+  const edgeOf = (e: React.DragEvent): boolean => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2;
+  };
+  const moveTo = (from: number | null, insertAt: number): void => {
+    setDrop(null);
+    if (from === null || from <= index) return;
+    const to = from < insertAt ? insertAt - 1 : insertAt;
+    if (to !== from && to > index) moveInQueue(from, to);
+  };
+  const rowDragOver = (at: number) => (e: React.DragEvent): void => {
+    if (!dragHasQueueRow(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    const before = edgeOf(e);
+    setDrop((d) => (d?.index === at && d.before === before ? d : { index: at, before }));
+  };
+  const rowDrop = (at: number) => (e: React.DragEvent): void => {
+    if (!dragHasQueueRow(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveTo(readQueueIndex(e), edgeOf(e) ? at : at + 1);
+  };
   // Row keys must not depend on the current queue index: embedding `index`
   // shifted every key on each track advance, remounting the whole upcoming
   // list (new drag state, new <img> decode) per track. Key by id plus its
@@ -188,25 +248,50 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
           <div className="px-4 pt-2 pb-1">
             <h2 className="text-[20px] font-extrabold tracking-[-0.4px] text-ink-hi">Next up</h2>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-0.5">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-0.5"
+            onDragOver={(e) => {
+              if (!dragHasQueueRow(e) || !upcoming.length) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const last = queue.length - 1;
+              setDrop((d) => (d?.index === last && !d.before ? d : { index: last, before: false }));
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(null);
+            }}
+            onDrop={(e) => {
+              if (!dragHasQueueRow(e)) return;
+              e.preventDefault();
+              moveTo(readQueueIndex(e), queue.length);
+            }}
+          >
             {upcoming.length === 0 ? (
               <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">Your queue is empty.</div>
             ) : (
-              upcoming.map((t, i) => (
-                <TrackRow
-                  key={stableKey(t.id)}
-                  track={t}
-                  onPlay={() => playAt(queue, index + 1 + i)}
-                  onRemove={() => {
-                    // Removing a row shifts the list up under a stationary
-                    // pointer — the row now under it never fires mouseenter,
-                    // so clear the hover wash here (navigate() does the same
-                    // for view changes).
-                    useUI.getState().setTintThumb(null);
-                    removeAt(index + 1 + i);
-                  }}
-                />
-              ))
+              upcoming.map((t, i) => {
+                const at = index + 1 + i;
+                return (
+                  <TrackRow
+                    key={stableKey(t.id)}
+                    track={t}
+                    queueIndex={at}
+                    available={available(t)}
+                    dropEdge={drop?.index === at ? (drop.before ? "before" : "after") : null}
+                    onDragOver={rowDragOver(at)}
+                    onDrop={rowDrop(at)}
+                    onPlay={() => playAt(queue, at)}
+                    onRemove={() => {
+                      // Removing a row shifts the list up under a stationary
+                      // pointer — the row now under it never fires mouseenter,
+                      // so clear the hover wash here (navigate() does the same
+                      // for view changes).
+                      useUI.getState().setTintThumb(null);
+                      removeAt(at);
+                    }}
+                  />
+                );
+              })
             )}
           </div>
         </div>

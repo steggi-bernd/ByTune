@@ -36,10 +36,11 @@ async function fetchAudio(trackId: string): Promise<ArrayBuffer | null> {
   try {
     const { requireBridge } = await import("./bridge");
     const { useSettings } = await import("../stores/settings");
+    const { resolveLibrarySource } = await import("./librarySource");
     const bridge = requireBridge();
-    // Local files analyse through the same proxy route the element plays.
-    const url = trackId.startsWith("local:") || trackId.startsWith("jf:")
-      ? await bridge.localTrackUrl(trackId)
+    // Library songs analyse through the same proxy route (and copy) the element plays.
+    const url = /^(local|jf|ss):/.test(trackId)
+      ? (await resolveLibrarySource({ id: trackId, title: "", artist: "", duration: 0, thumb: "" }))?.url ?? null
       : await bridge.getStreamUrl(trackId, false, useSettings.getState().streamingQuality);
     if (!url) return null;
     const res = await fetch(url);

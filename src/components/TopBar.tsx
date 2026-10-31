@@ -4,8 +4,9 @@
  *  - Left: history chevrons + the brand mark (28dp), like Spotify's logo
  *    beside the back/forward buttons.
  *  - Centre: a centred floating search field, max 560px, on a glass pill.
- *  - Right: notifications, settings, and a round user avatar that opens the
- *    settings dropdown.
+ *  - Right: the library sources — Local Music, and Jellyfin / Navidrome once
+ *    connected, each with a dot for whether it can be reached — then the
+ *    settings gear.
  *
  * The bar itself is `chrome-glass` (rgba(0,0,0,0.72) + blur(24) saturate(140%),
  * per index.css) — the same recipe the mobile status bar uses.
@@ -16,92 +17,112 @@ import {
   ChevronRight,
   Copy,
   CornerDownLeft,
+  Disc3,
+  FolderOpen,
   History,
   Home,
   Minus,
   RefreshCw,
   Search,
+  Server,
+  Settings,
   Square,
   X,
+  type LucideIcon,
 } from "lucide-react";
+import { useAvailability } from "../stores/availability";
 import { useCatalog } from "../stores/catalog";
-import { useSession } from "../lib/session";
 import { isMac } from "../lib/platform";
 import { useUI } from "../stores/ui";
 import { usePlayer } from "../stores/player";
 import { useRecents } from "../stores/recents";
 import type { SearchSuggestion } from "../types";
 import brandLogo from "../assets/brand/bytune-logo.svg";
-import brandText from "../assets/brand/bytune-Text.svg";
 
-/** Brand mark + wordmark composed inline so the spacing follows the bar height.
-    Both SVGs are pure white — they sit directly on the dark `chrome-glass` bar.
-    Imported as assets so Vite hashes them and rewrites the URL relative to the
-    bundle (base: "./"), which is what makes them resolve under file:// in the
-    packaged app — a string like "/brand/x.svg" only works on the dev server. */
+/** The brand mark alone — no wordmark beside it. The SVG is pure white and
+    sits directly on the dark `chrome-glass` bar. Imported as an asset so Vite
+    hashes it and rewrites the URL relative to the bundle (base: "./"), which
+    is what makes it resolve under file:// in the packaged app — a string like
+    "/brand/x.svg" only works on the dev server. */
 function BrandHeader() {
-  return (
-    <div className="flex items-center gap-2">
-      <img
-        src={brandLogo}
-        alt=""
-        aria-hidden
-        className="h-7 w-auto block"
-      />
-      <img
-        src={brandText}
-        alt="ByTune"
-        className="h-[19px] w-auto block"
-      />
-    </div>
-  );
+  return <img src={brandLogo} alt="ByTune" className="h-7 w-auto block" />;
 }
 
-/* Palette for the avatar disc. Every tone is mid-saturation and light enough
-   that near-black text stays readable on it. */
-const AVATAR_COLORS = [
-  "#d97757", "#e0a458", "#d4c95a", "#8fc74f", "#5fc9a2",
-  "#59a5d8", "#8f9bf4", "#c58af9", "#e17bb0", "#e06c75",
-];
-
-/* Deterministic per-user colour: a simple FNV-1a hash of the username picks
-   the palette entry, so an account always gets the same colour across
-   launches while different users land on effectively random ones. */
-function avatarColor(seed: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
-}
-
-function Avatar({ onClick, active }: { onClick: () => void; active?: boolean }) {
-  const mode = useSession((s) => s.mode);
-  const username = useSession((s) => s.username);
-  // Signed-in users show their username's first letter; guest accounts (and
-  // sessions that haven't loaded yet) fall back to "G".
-  const letter =
-    mode === "account" && username?.trim()
-      ? username.trim().charAt(0).toUpperCase()
-      : "G";
-  const color = avatarColor(mode === "account" && username?.trim() ? username.trim().toLowerCase() : "guest");
+/** A round 40px button of the right cluster; `dot` marks a source as reachable (true) or away (false). */
+function ClusterButton({
+  icon: Icon,
+  label,
+  active,
+  dot,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  dot?: boolean | null;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
-      title="Settings"
-      aria-label="Settings"
-      className={`w-11 h-11 rounded-full grid place-items-center transition-colors select-none ${
-        active ? "bg-ink-hi/[0.16]" : "bg-ink-hi/[0.10] hover:bg-ink-hi/[0.16]"
+      title={label}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      className={`relative w-10 h-10 grid place-items-center rounded-full transition-colors ${
+        active ? "bg-ink-hi/[0.16] text-ink-hi" : "text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.08]"
       }`}
     >
-      <span
-        className="grid h-8 w-8 place-items-center rounded-full text-[15px] font-semibold leading-none text-black/85"
-        style={{ backgroundColor: color }}
-      >
-        {letter}
-      </span>
+      <Icon className="w-[19px] h-[19px]" />
+      {dot !== undefined && dot !== null && (
+        <span
+          aria-hidden
+          className={`absolute bottom-[7px] right-[7px] w-2 h-2 rounded-full ring-2 ring-[#0b0b0b] ${dot ? "bg-emerald-400" : "bg-red-400"}`}
+        />
+      )}
     </button>
+  );
+}
+
+/** The library sources and the settings gear (where the profile avatar used to sit). */
+function SourcesAndSettings() {
+  const view = useUI((s) => s.view);
+  const navigate = useUI((s) => s.navigate);
+  const offlineFolders = useAvailability((s) => s.offlineFolders.length);
+  const jellyfinConnected = useAvailability((s) => s.jellyfinConnected);
+  const subsonicConnected = useAvailability((s) => s.subsonicConnected);
+  const jellyfin = useAvailability((s) => s.jellyfin);
+  const subsonic = useAvailability((s) => s.subsonic);
+  const reach = (up: boolean | null): string => (up === false ? " — can't be reached" : up ? " — connected" : "");
+  return (
+    <div className="app-no-drag ml-1 mr-2 flex items-center gap-0.5">
+      <ClusterButton
+        icon={FolderOpen}
+        label={offlineFolders ? `Local Music — ${offlineFolders} ${offlineFolders === 1 ? "folder" : "folders"} can't be reached` : "Local Music"}
+        active={view.name === "local"}
+        dot={offlineFolders ? false : null}
+        onClick={() => navigate({ name: "local" })}
+      />
+      {jellyfinConnected && (
+        <ClusterButton
+          icon={Server}
+          label={`Jellyfin${reach(jellyfin)}`}
+          active={view.name === "jellyfin"}
+          dot={jellyfin}
+          onClick={() => navigate({ name: "jellyfin" })}
+        />
+      )}
+      {subsonicConnected && (
+        <ClusterButton
+          icon={Disc3}
+          label={`Navidrome${reach(subsonic)}`}
+          active={view.name === "subsonic"}
+          dot={subsonic}
+          onClick={() => navigate({ name: "subsonic" })}
+        />
+      )}
+      <div className="mx-1 h-6 w-px bg-ink-hi/15" />
+      <ClusterButton icon={Settings} label="Settings" active={view.name === "settings"} onClick={() => navigate({ name: "settings" })} />
+    </div>
   );
 }
 
@@ -296,7 +317,7 @@ export function TopBar() {
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={goHome}
-          className="app-no-drag flex items-center gap-2 pl-1 pr-2 h-10 rounded-full hover:bg-ink-hi/[0.06] transition-colors"
+          className="app-no-drag flex items-center justify-center px-1.5 h-10 rounded-full hover:bg-ink-hi/[0.06] transition-colors"
           title="ByTune"
         >
           <BrandHeader />
@@ -510,13 +531,12 @@ export function TopBar() {
         </div>
       </div>
 
-      {/* Right cluster — user badge, then (Windows only) the renderer-drawn
-          caption buttons flush to the window edge. macOS uses the native
-          traffic lights, so nothing is drawn here. */}
+      {/* Right cluster — the library sources and the settings gear, then
+          (Windows only) the renderer-drawn caption buttons flush to the
+          window edge. macOS uses the native traffic lights, so nothing is
+          drawn there. */}
       <div className="ml-auto h-full flex items-center gap-1 shrink-0">
-        <div className="app-no-drag ml-1 mr-2 flex items-center">
-          <Avatar onClick={() => navigate({ name: "settings" })} active={view.name === "settings"} />
-        </div>
+        <SourcesAndSettings />
         {!isMac && <CaptionButtons />}
       </div>
     </div>

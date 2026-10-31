@@ -451,6 +451,12 @@ function registerIpc(): void {
     return lib;
   });
   ipc.handle("library:folderStatuses", () => locallib.folderStatuses());
+  // What can play right now: imported folders that exist, servers that answer.
+  ipc.handle("library:availability", async () => {
+    const [jf, ss] = await Promise.all([jellyfin.ping(), subsonic.ping()]);
+    return { folders: locallib.folderStatuses(), jellyfin: jf, subsonic: ss };
+  });
+  ipc.handle("library:needsRescan", () => locallib.hasStaleScanRecords());
   ipc.handle("library:trackurl", async (_e, id: string) => {
     if (String(id ?? "").startsWith("jf:")) {
       await startStreamProxy();

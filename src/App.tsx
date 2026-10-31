@@ -26,6 +26,7 @@ import { useSettings } from "./stores/settings";
 import { useUI } from "./stores/ui";
 import { SmartPlaylistEditorHost } from "./components/SmartPlaylistEditor";
 import { watchCatalog } from "./stores/catalog";
+import { watchAvailability } from "./stores/availability";
 import { JellyfinView } from "./views/JellyfinView";
 import { LibraryAlbumView } from "./views/LibraryAlbumView";
 import { LibraryArtistView } from "./views/LibraryArtistView";
@@ -289,6 +290,9 @@ export default function App() {
 
   // The catalogue behind home, album/artist pages, mixes and smart playlists.
   useEffect(() => watchCatalog(), []);
+
+  // Which folders and servers can play right now (lists grey out the rest).
+  useEffect(() => watchAvailability(), []);
 
   // Folder watching follows its setting (main watches by default).
   const watchFolders = useSettings((s) => s.watchFolders);

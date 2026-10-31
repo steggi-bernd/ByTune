@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CloudDownload,
   CloudUpload,
+  Disc3,
   Download,
   Droplets,
   FileDown,
@@ -807,6 +808,13 @@ export function SettingsView() {
           title="Jellyfin"
           subtitle="Your own media server"
           onClick={() => useUI.getState().navigate({ name: "jellyfin" })}
+        />
+        <Divider />
+        <SettingsRow
+          icon={Disc3}
+          title="Navidrome"
+          subtitle="Navidrome or any Subsonic server"
+          onClick={() => useUI.getState().navigate({ name: "subsonic" })}
         />
         <Divider />
         <SettingsRow

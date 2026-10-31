@@ -11,14 +11,17 @@
  *    jfart:// scheme: the token stays in the main process, and plain-http
  *    LAN servers work without loosening the renderer's CSP
  *
- * Streams use Jellyfin's universal endpoint: the server direct-plays files
- * the player can decode and transcodes the rest (WMA, APE, ALAC …) to MP3.
+ * Streams are the original file wherever the player can decode it, and a
+ * server transcode otherwise — FLAC for lossless sources, MP3 for lossy ones
+ * (jellyfin-stream.ts). Never the universal endpoint: it needs a user, which
+ * API-key logins don't have.
  */
 import { app } from "electron";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
+import { jellyfinStreamPlan } from "./jellyfin-stream";
 import { openSecret, sealSecret } from "./secrets";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,7 +31,9 @@ const LIBRARY_STORE = "jellyfin-library";
 const PAGE_SIZE = 500;
 const MAX_ITEMS = 100_000;
 const CLIENT = "ByTune";
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
+/** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
+const LIB_VERSION = 2;
 
 export interface JellyfinTrack {
   /** "jf:<itemId>" — the id prefix routes playback to this module */
@@ -49,11 +54,20 @@ export interface JellyfinTrack {
   albumArtist?: string;
   /** Jellyfin's own loudness gain (dB to −18 LUFS), used like a ReplayGain track gain */
   gain?: number;
+  /** the file's container and audio stream, from the server's media info */
+  container?: string;
+  codec?: string;
+  sampleRate?: number;
+  bitsPerSample?: number;
+  /** bits per second */
+  bitrate?: number;
 }
 
 export interface JellyfinLibrary {
   fetchedAt: number;
   tracks: JellyfinTrack[];
+  /** LIB_VERSION the cache was listed with */
+  v?: number;
 }
 
 export interface JellyfinStatus {
@@ -63,6 +77,8 @@ export interface JellyfinStatus {
   userName: string | null;
   trackCount: number;
   fetchedAt: number;
+  /** the cached library predates fields this version reads — refresh it */
+  stale: boolean;
 }
 
 interface Config {
@@ -140,7 +156,20 @@ export function status(): JellyfinStatus {
     userName: cfg?.userName ?? null,
     trackCount: lib.tracks.length,
     fetchedAt: lib.fetchedAt,
+    stale: !!cfg && lib.fetchedAt > 0 && lib.v !== LIB_VERSION,
   };
+}
+
+/** Whether the server answers right now; null when no server is connected. */
+export async function ping(): Promise<boolean | null> {
+  const cfg = readConfig();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(`${cfg.server}/System/Ping`, { signal: AbortSignal.timeout(4000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function connect(input: {
@@ -217,6 +246,8 @@ function toTrack(item: any): JellyfinTrack | null {
   if (typeof item.ImageTags?.Primary === "string") art = artUrl(item.Id, item.ImageTags.Primary);
   else if (item.AlbumId && typeof item.AlbumPrimaryImageTag === "string") art = artUrl(item.AlbumId, item.AlbumPrimaryImageTag);
   const bounded = (v: unknown): string => (typeof v === "string" ? v.slice(0, 200) : "");
+  const positive = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+  const audio = Array.isArray(item.MediaStreams) ? item.MediaStreams.find((s: any) => s?.Type === "Audio") : undefined;
   return {
     id: `jf:${item.Id}`,
     itemId: String(item.Id),
@@ -233,6 +264,11 @@ function toTrack(item: any): JellyfinTrack | null {
     addedAt: item.DateCreated ? Date.parse(item.DateCreated) || undefined : undefined,
     albumArtist: bounded(item.AlbumArtist) || undefined,
     gain: typeof item.NormalizationGain === "number" && Number.isFinite(item.NormalizationGain) ? item.NormalizationGain : undefined,
+    container: bounded(item.Container).toLowerCase() || undefined,
+    codec: bounded(audio?.Codec).toLowerCase() || undefined,
+    sampleRate: positive(audio?.SampleRate),
+    bitsPerSample: positive(audio?.BitDepth),
+    bitrate: positive(audio?.BitRate),
   };
 }
 
@@ -248,7 +284,7 @@ export async function refreshLibrary(): Promise<JellyfinLibrary> {
       Recursive: "true",
       SortBy: "AlbumArtist,Album,ParentIndexNumber,IndexNumber,SortName",
       SortOrder: "Ascending",
-      Fields: "Genres,DateCreated",
+      Fields: "Genres,DateCreated,MediaStreams",
       EnableImageTypes: "Primary",
       StartIndex: String(start),
       Limit: String(PAGE_SIZE),
@@ -263,7 +299,7 @@ export async function refreshLibrary(): Promise<JellyfinLibrary> {
     const total = Number(page?.TotalRecordCount) || 0;
     if (items.length < PAGE_SIZE || tracks.length >= total) break;
   }
-  const lib = { fetchedAt: Date.now(), tracks };
+  const lib = { fetchedAt: Date.now(), tracks, v: LIB_VERSION };
   await persist.writeData(LIBRARY_STORE, lib);
   return lib;
 }
@@ -273,18 +309,23 @@ export async function fetchStream(itemId: string, range: string | undefined): Pr
   const cfg = readConfig();
   const token = openSecret(cfg?.token);
   if (!cfg || !token || !/^[a-f0-9-]{32,36}$/i.test(itemId)) return new Response(null, { status: 404 });
-  const params = new URLSearchParams({
-    DeviceId: cfg.deviceId,
-    MaxStreamingBitrate: "140000000",
-    Container: "opus,webm|opus,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg",
-    TranscodingContainer: "mp3",
-    TranscodingProtocol: "http",
-    AudioCodec: "mp3",
-  });
-  if (cfg.userId) params.set("UserId", cfg.userId);
+  const plan = jellyfinStreamPlan(readLibrary().tracks.find((t) => t.itemId === itemId));
+  const params = new URLSearchParams({ mediaSourceId: itemId, deviceId: cfg.deviceId });
+  let route: string;
+  if (plan === "static") {
+    params.set("static", "true");
+    route = `/Audio/${itemId}/stream`;
+  } else if (plan === "flac") {
+    params.set("audioCodec", "flac");
+    route = `/Audio/${itemId}/stream.flac`;
+  } else {
+    params.set("audioCodec", "mp3");
+    params.set("audioBitRate", "320000");
+    route = `/Audio/${itemId}/stream.mp3`;
+  }
   const headers: Record<string, string> = { Authorization: authHeader(token, cfg.deviceId) };
   if (range) headers.Range = range;
-  return fetch(`${cfg.server}/Audio/${itemId}/universal?${params}`, { headers });
+  return fetch(`${cfg.server}${route}?${params}`, { headers });
 }
 
 /**

@@ -14,25 +14,88 @@ import type { Track } from "../types";
 
 /* ------------------------------------------------------------- credits */
 
-/** Separators that always mean "more than one artist". */
-const CREDIT_SPLIT = /\s*(?:;|\s\/\s| feat\.? | ft\.? | featuring )\s*/i;
+/**
+ * Separators that always mean "more than one artist": a comma (Jellyfin
+ * itself joins several artists with ", "), a semicolon, " / " and
+ * feat./ft./featuring. "&" stays inside a name ("Simon & Garfunkel",
+ * "Sailor & I" are one artist each).
+ */
+const CREDIT_SPLIT = /\s*(?:,|;|\s\/\s| feat\.? | ft\.? | featuring )\s*/i;
 
-/** The first credited artist: "A feat. B" / "A; B" / "A / B" → "A". */
-export function leadArtist(artist: string): string {
-  const lead = artist.split(CREDIT_SPLIT)[0]?.trim();
-  return lead || artist.trim();
+/**
+ * Artists whose comma is part of the name, not a list — splitting them would
+ * invent artists that don't exist.
+ */
+const COMMA_NAMES = [
+  "earth, wind & fire",
+  "crosby, stills & nash",
+  "crosby, stills, nash & young",
+  "emerson, lake & palmer",
+  "tyler, the creator",
+  "peter, paul and mary",
+  "blood, sweat & tears",
+  "the good, the bad & the queen",
+];
+
+/** Hides the commas inside COMMA_NAMES (same length, so offsets hold) until the parts are split. */
+const KEPT_COMMA = "\u0000";
+function protectNames(artist: string): string {
+  let out = artist;
+  const lower = artist.toLowerCase();
+  for (const name of COMMA_NAMES) {
+    for (let at = lower.indexOf(name); at !== -1; at = lower.indexOf(name, at + name.length)) {
+      out = out.slice(0, at) + out.slice(at, at + name.length).replace(/,/g, KEPT_COMMA) + out.slice(at + name.length);
+    }
+  }
+  return out;
+}
+const restoreNames = (part: string): string => part.split(KEPT_COMMA).join(",");
+
+/** The credited artists of a credit line, in order: "A, B feat. C" → A, B, C. */
+export function splitCredits(artist: string): string[] {
+  return protectNames(artist)
+    .split(CREDIT_SPLIT)
+    .map((p) => restoreNames(p).trim())
+    .filter(Boolean);
 }
 
-/** Every name a track can be found under on an artist page. */
+/** The first credited artist: "A, B" / "A feat. B" / "A; B" / "A / B" → "A". */
+export function leadArtist(artist: string): string {
+  return splitCredits(artist)[0] || artist.trim();
+}
+
+/**
+ * A credit line split like splitCredits(), separators kept for display:
+ * "A, B feat. C" → A ", " B " feat. " C — each name links to its own page.
+ */
+export function creditParts(artist: string): { name: string; sep: string }[] {
+  const pieces = protectNames(artist).split(new RegExp(`(${CREDIT_SPLIT.source})`, "i"));
+  const parts: { name: string; sep: string }[] = [];
+  for (let i = 0; i < pieces.length; i += 2) {
+    const name = restoreNames(pieces[i] ?? "").trim();
+    const raw = pieces[i + 1] ?? "";
+    const sep = !raw ? "" : /[,;]/.test(raw) ? ", " : /\//.test(raw) ? " / " : ` ${raw.trim()} `;
+    if (name) parts.push({ name, sep });
+    else if (parts.length) parts[parts.length - 1].sep = sep || parts[parts.length - 1].sep;
+  }
+  if (parts.length) parts[parts.length - 1].sep = "";
+  return parts.length ? parts : [{ name: artist.trim(), sep: "" }];
+}
+
+/** Every name a track can be found under on an artist page (its artists and album artists, "&" pairs too). */
 export function creditedArtists(t: Pick<Track, "artist" | "albumArtist">): string[] {
   const names = new Set<string>();
   const add = (n: string | undefined): void => {
     const v = n?.trim();
     if (v && v.toLowerCase() !== "unknown artist") names.add(v.toLowerCase());
   };
-  add(t.artist);
-  add(t.albumArtist);
-  for (const part of t.artist.split(/\s*(?:,|;|\s\/\s|&| feat\.? | ft\.? | featuring | x )\s*/i)) add(part);
+  for (const line of [t.artist, t.albumArtist ?? ""]) {
+    add(line);
+    for (const name of splitCredits(line)) add(name);
+    for (const part of protectNames(line).split(/\s*(?:,|;|\s\/\s|&| feat\.? | ft\.? | featuring | x )\s*/i)) {
+      add(restoreNames(part));
+    }
+  }
   return [...names];
 }
 
@@ -89,12 +152,16 @@ export function localToTrack(t: LocalTrack): Track {
     albumArtist: t.albumArtist,
     trackNo: t.trackNo,
     discNo: t.discNo,
+    trackTotal: t.trackTotal,
+    releaseType: t.releaseType,
+    originalYear: t.originalYear,
     addedAt: t.addedAt ?? t.mtime,
     rg: t.rg,
     codec: t.codec,
     sampleRate: t.sampleRate,
     bitsPerSample: t.bitsPerSample,
     bitrate: t.bitrate,
+    lossless: t.lossless,
   });
 }
 
@@ -114,6 +181,11 @@ export function jellyfinToTrack(t: JellyfinTrack): Track {
     discNo: t.discNo,
     addedAt: t.addedAt,
     rg: t.gain !== undefined ? { trackGain: t.gain } : undefined,
+    container: t.container,
+    codec: t.codec,
+    sampleRate: t.sampleRate,
+    bitsPerSample: t.bitsPerSample,
+    bitrate: t.bitrate,
   });
 }
 
@@ -131,8 +203,12 @@ export function subsonicToTrack(t: SubsonicTrack): Track {
     albumArtist: t.albumArtist,
     trackNo: t.trackNo,
     discNo: t.discNo,
+    trackTotal: t.trackTotal,
+    releaseType: t.releaseType,
+    originalYear: t.originalYear,
     addedAt: t.addedAt,
     rg: t.rg,
+    container: t.suffix,
     codec: t.codec,
     sampleRate: t.sampleRate,
     bitsPerSample: t.bitsPerSample,

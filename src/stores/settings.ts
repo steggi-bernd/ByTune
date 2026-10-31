@@ -50,6 +50,8 @@ interface SettingsState {
   /* Appearance */
   /** Left library panel folded down to an icon rail */
   sidebarCollapsed: boolean;
+  /** order of the albums in the library panel */
+  librarySort: "recent" | "alpha" | "artist";
   /** Rescan imported folders automatically when files change */
   watchFolders: boolean;
   reduceAnimation: boolean;
@@ -86,6 +88,7 @@ interface SettingsState {
   setReplayGainMode(mode: "off" | "track" | "album"): void;
   setReplayGainTarget(lufs: number): void;
   setSidebarCollapsed(v: boolean): void;
+  setLibrarySort(v: "recent" | "alpha" | "artist"): void;
   setWatchFolders(v: boolean): void;
   setReduceAnimation(v: boolean): void;
   setReduceDynamicBlur(v: boolean): void;
@@ -123,6 +126,7 @@ export const useSettings = create<SettingsState>()(
       eqGains: Array(10).fill(0),
 
       sidebarCollapsed: false,
+      librarySort: "recent",
       watchFolders: true,
       reduceAnimation: false,
       reduceDynamicBlur: false,
@@ -156,6 +160,7 @@ export const useSettings = create<SettingsState>()(
       setReplayGainMode: (replayGainMode) => set({ replayGainMode }),
       setReplayGainTarget: (replayGainTarget) => set({ replayGainTarget }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setLibrarySort: (librarySort) => set({ librarySort }),
       setWatchFolders: (watchFolders) => set({ watchFolders }),
       setReduceAnimation: (reduceAnimation) => set({ reduceAnimation }),
       setReduceDynamicBlur: (reduceDynamicBlur) => set({ reduceDynamicBlur }),

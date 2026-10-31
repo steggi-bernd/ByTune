@@ -3,13 +3,43 @@
  * as the catalogue cards (Cards.tsx) — square cover over title/subtitle, the
  * translucent tile fading in on hover, a play button over the cover.
  */
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { resolveArtistAbout } from "../lib/artistAbout";
 import type { LibAlbum } from "../lib/catalogIndex";
+import { trackAvailable } from "../stores/availability";
+import { sameSong } from "../stores/catalog";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI } from "../stores/ui";
 import type { Track } from "../types";
 import { Artwork, PlayOverlay } from "./primitives";
+
+const NO_TRACKS: Track[] = [];
+
+/**
+ * Whether the playing song belongs to these tracks: the collection's play
+ * button then pauses and resumes it in place instead of starting over.
+ */
+export function useCollectionPlayback(tracks: Track[]): { active: boolean; playing: boolean } {
+  const currentId = usePlayer((s) => s.queue[s.index]?.id ?? null);
+  const playing = usePlayer((s) => s.playing);
+  const active = useMemo(() => !!currentId && tracks.some((t) => sameSong(t.id, currentId)), [tracks, currentId]);
+  return { active, playing: active && playing };
+}
+
+/** Play a collection; songs that can't be reached right now stay out of the queue. */
+export function playCollection(tracks: Track[], shuffle = false): void {
+  const list = tracks.filter((t) => trackAvailable(t));
+  if (!list.length) {
+    useUI.getState().toast("None of these songs can be reached right now — their drive or server is away", "warning");
+    return;
+  }
+  usePlayer.getState().playQueue(shuffle ? [...list].sort(() => Math.random() - 0.5) : list, 0);
+}
+
+/** The cover/header play button: plays the collection, or pauses/resumes it once it's playing. */
+function playOrToggle(active: boolean, play: () => void): () => void {
+  return () => (active ? usePlayer.getState().toggle() : play());
+}
 
 const CARD =
   "group w-[184px] shrink-0 text-left cursor-pointer active:scale-[0.98] rounded-xl p-2 transition-colors duration-200 hover:bg-ink-hi/[0.08]";
@@ -32,6 +62,7 @@ function Tile({
   subtitle,
   onOpen,
   onPlay,
+  playing,
   art,
 }: {
   thumb: string;
@@ -40,6 +71,8 @@ function Tile({
   subtitle: string;
   onOpen: () => void;
   onPlay?: () => void;
+  /** the collection is playing: the button shows pause and stays visible */
+  playing?: boolean;
   /** custom artwork (mix collage) instead of a single cover */
   art?: ReactNode;
 }) {
@@ -62,7 +95,7 @@ function Tile({
             iconClassName="w-7 h-7"
           />
         )}
-        {onPlay && <PlayOverlay onClick={onPlay} />}
+        {onPlay && <PlayOverlay onClick={onPlay} playing={playing} />}
       </div>
       <div className="mt-2.5">
         <div className={CARD_TITLE} title={title}>
@@ -76,14 +109,15 @@ function Tile({
 
 export function AlbumTile({ album, subtitle }: { album: LibAlbum; subtitle?: string }) {
   const navigate = useUI((s) => s.navigate);
-  const playQueue = usePlayer((s) => s.playQueue);
+  const { active, playing } = useCollectionPlayback(album.tracks);
   return (
     <Tile
       thumb={album.thumb}
       title={album.title}
       subtitle={subtitle ?? `${album.year ? `${album.year} · ` : ""}${album.artist}`}
       onOpen={() => navigate({ name: "album", param: album.route })}
-      onPlay={() => playQueue(album.tracks, 0)}
+      onPlay={playOrToggle(active, () => playCollection(album.tracks))}
+      playing={playing}
     />
   );
 }
@@ -131,31 +165,44 @@ export function CoverCollage({ tracks, className = "" }: { tracks: Track[]; clas
 
 export function MixTile({ title, subtitle, tracks, route }: { title: string; subtitle: string; tracks: Track[]; route: string }) {
   const navigate = useUI((s) => s.navigate);
-  const playQueue = usePlayer((s) => s.playQueue);
+  const { active, playing } = useCollectionPlayback(tracks);
   return (
     <Tile
       thumb={tracks[0]?.thumb ?? ""}
       title={title}
       subtitle={subtitle}
       onOpen={() => navigate({ name: "mix", param: route })}
-      onPlay={() => playQueue(tracks, 0)}
+      onPlay={playOrToggle(active, () => playCollection(tracks))}
+      playing={playing}
       art={<CoverCollage tracks={tracks} className="rounded-xl transition-transform duration-300 ease-out origin-top group-hover:scale-[1.05]" />}
     />
   );
 }
 
-/** Spotify's round green play button for page headers. */
-export function BigPlayButton({ onClick, label = "Play" }: { onClick: () => void; label?: string }) {
+/**
+ * Spotify's round green play button for page headers. Given the page's
+ * tracks, it turns into pause while one of them plays and resumes in place.
+ */
+export function BigPlayButton({ onClick, label = "Play", tracks }: { onClick: () => void; label?: string; tracks?: Track[] }) {
+  const { active, playing } = useCollectionPlayback(tracks ?? NO_TRACKS);
+  const title = playing ? "Pause" : label;
   return (
     <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
+      onClick={playOrToggle(active, onClick)}
+      title={title}
+      aria-label={title}
       className="w-14 h-14 rounded-full bg-primary text-on-primary grid place-items-center shadow-float hover:scale-105 active:scale-95 transition-transform"
     >
-      <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current ml-0.5" aria-hidden>
-        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
-      </svg>
+      {playing ? (
+        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current" aria-hidden>
+          <rect x="6" y="5" width="4" height="14" rx="1" />
+          <rect x="14" y="5" width="4" height="14" rx="1" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current ml-0.5" aria-hidden>
+          <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
+        </svg>
+      )}
     </button>
   );
 }
@@ -204,7 +251,6 @@ export function CollectionHeader({
   tracks: Track[];
   actions?: ReactNode;
 }) {
-  const playQueue = usePlayer((s) => s.playQueue);
   const length = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
   const h = Math.floor(length / 3600);
   const m = Math.floor((length % 3600) / 60);
@@ -227,9 +273,9 @@ export function CollectionHeader({
         </div>
       </header>
       <div className="flex items-center gap-5">
-        <BigPlayButton onClick={() => tracks.length && playQueue(tracks, 0)} label={`Play ${title}`} />
+        <BigPlayButton onClick={() => tracks.length && playCollection(tracks)} label={`Play ${title}`} tracks={tracks} />
         <button
-          onClick={() => tracks.length && playQueue([...tracks].sort(() => Math.random() - 0.5), 0)}
+          onClick={() => tracks.length && playCollection(tracks, true)}
           title="Shuffle play"
           aria-label="Shuffle play"
           className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"

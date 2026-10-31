@@ -5,13 +5,17 @@
 import { useMemo } from "react";
 import { useCatalog, type PlayCounts } from "../stores/catalog";
 import type { Track } from "../types";
-import { albumKeyOf, albumRoute, artistRoute, creditedArtists, leadArtist } from "./libraryTracks";
+import { albumKeyOf, albumRoute, artistRoute, creditedArtists, leadArtist, splitCredits } from "./libraryTracks";
+import { classifyRelease, releaseYear, type ReleaseKind } from "./releases";
 
 export interface LibAlbum {
   key: string;
   route: string;
   title: string;
   artist: string;
+  /** album, EP, single or compilation (lib/releases.ts) */
+  kind: ReleaseKind;
+  /** the year it first came out (original year where tagged) */
   year?: number;
   thumb: string;
   tracks: Track[];
@@ -52,13 +56,14 @@ export function buildAlbums(tracks: Track[]): LibAlbum[] {
       counts.set(a, (counts.get(a) ?? 0) + 1);
     }
     const artist = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? first.artist;
-    const years = list.map((t) => t.year).filter((y): y is number => !!y);
+    const title = first.album ?? "";
     albums.push({
       key,
       route: albumRoute(key),
-      title: first.album ?? "",
+      title,
       artist,
-      year: years.length ? Math.min(...years) : undefined,
+      kind: classifyRelease(title, artist, list),
+      year: releaseYear(list),
       thumb: list.find((t) => t.thumb)?.thumb ?? "",
       tracks: list,
       addedAt: Math.max(0, ...list.map((t) => t.addedAt ?? 0)),
@@ -71,16 +76,20 @@ export function buildAlbums(tracks: Track[]): LibAlbum[] {
 export function buildArtists(tracks: Track[], albums: LibAlbum[]): LibArtist[] {
   const byName = new Map<string, { name: string; tracks: number; thumb: string }>();
   for (const t of tracks) {
-    const name = leadArtist(t.artist);
-    if (!name || name.toLowerCase() === "unknown artist") continue;
-    const key = name.toLowerCase();
-    const cur = byName.get(key) ?? { name, tracks: 0, thumb: "" };
-    cur.tracks += 1;
-    if (!cur.thumb && t.thumb) cur.thumb = t.thumb;
-    byName.set(key, cur);
+    // Every credited artist counts on their own — "A, B" is two artists, not one.
+    for (const name of splitCredits(t.artist)) {
+      if (name.toLowerCase() === "unknown artist") continue;
+      const key = name.toLowerCase();
+      const cur = byName.get(key) ?? { name, tracks: 0, thumb: "" };
+      cur.tracks += 1;
+      if (!cur.thumb && t.thumb) cur.thumb = t.thumb;
+      byName.set(key, cur);
+    }
   }
   const albumCount = new Map<string, number>();
-  for (const a of albums) albumCount.set(a.artist.toLowerCase(), (albumCount.get(a.artist.toLowerCase()) ?? 0) + 1);
+  for (const a of albums) {
+    for (const name of splitCredits(a.artist)) albumCount.set(name.toLowerCase(), (albumCount.get(name.toLowerCase()) ?? 0) + 1);
+  }
   return [...byName.entries()]
     .map(([key, v]) => ({
       name: v.name,
@@ -98,17 +107,23 @@ export function artistTracks(tracks: Track[], name: string): Track[] {
   return tracks.filter((t) => creditedArtists(t).includes(key));
 }
 
-/** Albums owned by the artist, then albums they only appear on. */
+/** Newest first — the latest release on top; releases without a year go last. */
+export const newestFirst = (a: LibAlbum, b: LibAlbum): number =>
+  (b.year ?? -Infinity) - (a.year ?? -Infinity) || a.title.localeCompare(b.title);
+
+/**
+ * Releases owned by the artist (an album by "A, B" belongs to both), then
+ * releases they only appear on — each newest first.
+ */
 export function artistAlbums(albums: LibAlbum[], name: string): { own: LibAlbum[]; appearsOn: LibAlbum[] } {
   const key = name.trim().toLowerCase();
   const own: LibAlbum[] = [];
   const appearsOn: LibAlbum[] = [];
   for (const a of albums) {
-    if (a.artist.toLowerCase() === key) own.push(a);
+    if (splitCredits(a.artist).some((n) => n.toLowerCase() === key)) own.push(a);
     else if (a.tracks.some((t) => creditedArtists(t).includes(key))) appearsOn.push(a);
   }
-  const byYear = (a: LibAlbum, b: LibAlbum): number => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title);
-  return { own: own.sort(byYear), appearsOn: appearsOn.sort(byYear) };
+  return { own: own.sort(newestFirst), appearsOn: appearsOn.sort(newestFirst) };
 }
 
 /** Genre names of a track: "Rock; Indie" / "Rock/Indie" / "Rock, Indie" → two genres. */

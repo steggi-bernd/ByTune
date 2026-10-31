@@ -49,6 +49,9 @@ import { analyseTrackHead, detectEdgeSilence } from "./analysis";
 import { upgradeArtwork } from "./artwork";
 import { createMediaKeyTap } from "./media-key-tap";
 import { isLibraryTrack, loadAllLibraryTracks } from "./libraryTracks";
+import { playableVersions, resolveLibrarySource } from "./librarySource";
+import { sourceOf, trackAvailable, useAvailability, versionAvailable } from "../stores/availability";
+import { songKey, useCatalog, versionsOf } from "../stores/catalog";
 import {
   deviceChoices,
   outputChangeAction,
@@ -68,6 +71,10 @@ let retryCount = 0;
 let consecutiveFailures = 0;
 /** the unlinked-local-folder explainer fires once per failing streak, not per skip */
 let localMissingToasted = false;
+/** the "isn't reachable right now" note fires once per failing streak, too */
+let unreachableToasted = false;
+/** versions of the loading song that already failed this play — the next one is tried instead */
+const failedVersions = new Set<string>();
 let historyForId: string | null = null;
 /** track id the engine itself is advancing to via crossfade — suppresses reload */
 let advancingToId: string | null = null;
@@ -259,9 +266,15 @@ function prefetchLoudness(track: Track | null): void {
  */
 const MASTER_TRIM = 1.0;
 
+/**
+ * The volume slider is perceptual: hearing is logarithmic, so a linear gain
+ * crams nearly all the audible change into the bottom fifth of the slider
+ * and leaves "very low" still loud. A cube law spreads it evenly — ¾ of the
+ * way is −7.5 dB, half −18 dB, a tenth −60 dB.
+ */
 function userVolume(): number {
   const s = usePlayer.getState();
-  return s.muted ? 0 : s.volume;
+  return s.muted ? 0 : Math.pow(Math.min(1, Math.max(0, s.volume)), 3);
 }
 
 /* ------------------- play/pause volume ramp ------------------- */
@@ -658,8 +671,11 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
     // Library tracks (local files, Jellyfin) resolve through their own route
     // and play at their original level; streams carry a measured gain.
     const library = isLibraryTrack(nextTrack);
+    // A song found in several places fades in from the copy it plays from
+    // (the local file before a server stream).
+    const source = library ? await resolveLibrarySource(nextTrack) : null;
     const url = library
-      ? await requireBridge().localTrackUrl(nextTrack.id)
+      ? source?.url ?? null
       : await requireBridge().getStreamUrl(nextTrack.id, false, useSettings.getState().streamingQuality);
     if (!url) {
       armed = null;
@@ -667,8 +683,10 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
     }
     // The fade's standby element carries the incoming track's own loudness
     // gain; the load-time prefetch usually already did this — cheap retry.
-    if (library) rememberGain(nextTrack.id, replayGainFor(nextTrack));
-    else void fetchLoudness(url, nextTrack.id);
+    if (source) {
+      rememberGain(nextTrack.id, replayGainFor(source.version));
+      usePlayer.getState()._setSource(nextTrack.id, source.version);
+    } else void fetchLoudness(url, nextTrack.id);
     // The world may have moved on while we resolved.
     const cur = usePlayer.getState().queue[usePlayer.getState().index];
     if (stale() || !armed || armed.toId !== nextTrack.id || fade || cur?.id === nextTrack.id) {
@@ -980,9 +998,9 @@ function requestSilenceAnalysis(track: Track): void {
   void (async () => {
     try {
       const bridge = requireBridge();
-      // Local files decode through the same proxy route the element plays.
+      // Library songs decode through the same proxy route (and copy) the element plays.
       const url = isLocal
-        ? await bridge.localTrackUrl(track.id)
+        ? (await resolveLibrarySource(track))?.url ?? null
         : await bridge.getStreamUrl(track.id, false, useSettings.getState().streamingQuality);
       if (!url) return;
       const res = await fetch(url);
@@ -1053,6 +1071,7 @@ export function initAudioEngine(): void {
       usePlayer.getState()._setBuffering(false);
       consecutiveFailures = 0;
       localMissingToasted = false;
+      unreachableToasted = false;
       const cur = usePlayer.getState().queue[usePlayer.getState().index];
       if (cur && historyForId !== cur.id) {
         historyForId = cur.id;
@@ -1199,10 +1218,18 @@ export function initAudioEngine(): void {
     if (st.replayGainMode !== prev.replayGainMode || st.replayGainTarget !== prev.replayGainTarget) {
       const state = usePlayer.getState();
       for (const t of [state.queue[state.index], state.queue[state.index + 1]]) {
-        if (t && isLibraryTrack(t)) rememberGain(t.id, replayGainFor(t));
+        if (t && isLibraryTrack(t)) rememberGain(t.id, replayGainFor(state.sources[t.id] ?? t));
       }
       refreshVolumes();
     }
+  });
+
+  // A queue saved before a song's copies were merged — or filled from a list
+  // holding both copies — keeps one copy of each song once the catalogue
+  // knows them. The playing entry stays as it is, so nothing restarts.
+  usePlayer.getState().collapseCopies();
+  useCatalog.subscribe((s, prev) => {
+    if (s.versions !== prev.versions) usePlayer.getState().collapseCopies();
   });
 
   setupMediaSession();
@@ -1255,15 +1282,18 @@ async function autoplayNext(): Promise<void> {
   if (autoplaying) return;
   autoplaying = true;
   try {
-    const pool = await loadAllLibraryTracks();
+    // The catalogue lists every song once (duplicates merged); only songs that can play right now.
+    const catalog = useCatalog.getState();
+    const pool = (catalog.loaded ? catalog.tracks : await loadAllLibraryTracks()).filter((t) => trackAvailable(t));
     const state = usePlayer.getState();
     // Never append a track the queue already holds. "Don't repeat
     // suggestions" additionally keeps everything from recent history out.
-    const heard = new Set(state.queue.map((t) => t.id));
+    // By song, not by copy: a song queued as its Jellyfin copy is the same song as its local file.
+    const heard = new Set(state.queue.map((t) => songKey(t.id)));
     if (useSettings.getState().dontRepeatSuggestions) {
-      for (const t of useLibrary.getState().history) heard.add(t.id);
+      for (const t of useLibrary.getState().history) heard.add(songKey(t.id));
     }
-    const fresh = pool.filter((t) => !heard.has(t.id));
+    const fresh = pool.filter((t) => !heard.has(songKey(t.id)));
     const from = fresh.length ? fresh : pool;
     const pick = from[Math.floor(Math.random() * from.length)];
     if (!pick) {
@@ -1311,6 +1341,7 @@ async function loadTrack(track: Track | null, autoplay: boolean): Promise<void> 
   loadedId = null;
   historyForId = null;
   retryCount = 0;
+  failedVersions.clear();
   pendingSeek = usePlayer.getState().position;
   usePlayer.setState({
     buffering: true,
@@ -1336,15 +1367,17 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
       // Local files stream through the main-process proxy (a file:// src is
       // blocked from the http renderer origin). Always resolve fresh — the
       // proxy port changes between launches, so cached URLs would go stale,
-      // and the IPC lookup is a local roundtrip.
-      const src = await requireBridge().localTrackUrl(track.id);
-      if (!src) {
-        if (track.id.startsWith("jf:")) throw new Error("Jellyfin server is not connected");
-        throw new LibrarySourceError((await requireBridge().localTrackError(track.id).catch(() => null)) ?? "missing");
-      }
+      // and the IPC lookup is a local roundtrip. A song found in several
+      // places plays its local file first, a server stream when that's away.
+      const found = await resolveLibrarySource(track, failedVersions);
+      if (!found) throw await librarySourceError(track);
+      const { url: src, version } = found;
+      const now = usePlayer.getState().queue[usePlayer.getState().index];
+      if (now?.id !== track.id) return; // user moved on while we were resolving
+      usePlayer.getState()._setSource(track.id, version);
       // Library songs are levelled by ReplayGain (when tagged and enabled);
       // otherwise they play at their original level — no trim.
-      rememberGain(track.id, replayGainFor(track));
+      rememberGain(track.id, replayGainFor(version));
       // Apply immediately: without this the element keeps the PREVIOUS
       // track's gain (streams land their own via fetchLoudness, locals
       // would otherwise never get a volume write).
@@ -1412,11 +1445,26 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
   }
 }
 
-/** Why a local track produced no stream URL: "missing" | "ffmpeg-missing" | "transcode-failed". */
+/**
+ * Why a library song produced no stream URL: "missing" | "ffmpeg-missing" |
+ * "transcode-failed" (its local file), or "unreachable" — no copy can be
+ * reached right now (the folder's drive is away, the server doesn't answer).
+ */
 class LibrarySourceError extends Error {
   constructor(readonly reason: string) {
-    super(`local source unavailable: ${reason}`);
+    super(`library source unavailable: ${reason}`);
   }
+}
+
+async function librarySourceError(track: Track): Promise<LibrarySourceError> {
+  const versions = versionsOf(track);
+  const local = versions.find((v) => sourceOf(v) === "local");
+  if (local && versionAvailable(local)) {
+    const reason = (await requireBridge().localTrackError(local.id).catch(() => null)) ?? "missing";
+    // A conversion problem says the most; a vanished file only when no server copy could stand in.
+    if (reason !== "missing" || versions.length === 1) return new LibrarySourceError(reason);
+  }
+  return new LibrarySourceError("unreachable");
 }
 
 function handleFailure(track: Track, err?: unknown): void {
@@ -1428,7 +1476,24 @@ function handleFailure(track: Track, err?: unknown): void {
   // spot for play() promises aborted by an immediate pause). The next play
   // re-attempts the load from the top.
   if (!state.playing) return;
-  if (retryCount < 1) {
+  const reason = err instanceof LibrarySourceError ? err.reason : null;
+  if (isLibraryTrack(track)) {
+    // Something may have gone away (drive unplugged, server down): look
+    // again, so the lists grey it out.
+    void useAvailability.getState().refresh();
+    // The copy that failed sits out the rest of this play while another
+    // copy of the song gets its turn (a server stream for a broken file).
+    const playingFrom = state.sources[track.id];
+    if (!reason && playingFrom && loadedId === track.id) {
+      const tried = new Set([...failedVersions, playingFrom.id]);
+      if (playableVersions(track, tried).length) {
+        failedVersions.add(playingFrom.id);
+        void loadUrl(track, true, false);
+        return;
+      }
+    }
+  }
+  if (retryCount < 1 && reason !== "unreachable") {
     retryCount += 1;
     void loadUrl(track, true, true);
     return;
@@ -1439,7 +1504,6 @@ function handleFailure(track: Track, err?: unknown): void {
   // away. The entries survive in synced playlists, and re-importing the
   // folder relinks them (ids are hashes of the file's absolute path).
   const isLocal = !!track.localPath || track.id.startsWith("local:");
-  const reason = err instanceof LibrarySourceError ? err.reason : null;
   const ext = (track.localPath?.split(".").pop() ?? "").toUpperCase();
   const localGoneMsg =
     reason === "ffmpeg-missing"
@@ -1447,9 +1511,16 @@ function handleFailure(track: Track, err?: unknown): void {
       : reason === "transcode-failed"
         ? `Couldn't convert "${track.title}" for playback — the file may be damaged.`
         : `Couldn't play "${track.title}" — its local file can't be reached on this device. Re-add the folder in Local Music to relink your songs.`;
+  const unreachableMsg = `"${track.title}" can't be reached right now — its drive or server is away.`;
   if (state.playing && consecutiveFailures <= MAX_SKIPS) {
     console.warn(`[bytune] playback failed for ${track.id}`, err);
-    if (isLocal) {
+    if (reason === "unreachable") {
+      // One note per streak: a queue full of away songs must not stack toasts.
+      if (!unreachableToasted) {
+        unreachableToasted = true;
+        useUI.getState().toast(`${unreachableMsg} Skipping what can't play.`, "warning", 6000);
+      }
+    } else if (isLocal) {
       // One explainer per failing streak — a whole playlist of unlinked
       // locals must not stack five identical toasts.
       if (!localMissingToasted) {
@@ -1462,7 +1533,10 @@ function handleFailure(track: Track, err?: unknown): void {
     state.next(false);
   } else {
     usePlayer.setState({ playing: false, error: "Playback failed" });
-    if (isLocal) {
+    if (reason === "unreachable") {
+      unreachableToasted = false;
+      useUI.getState().toast(unreachableMsg, "warning", 6000);
+    } else if (isLocal) {
       localMissingToasted = false;
       useUI.getState().toast(localGoneMsg, "warning", 7000);
     } else {

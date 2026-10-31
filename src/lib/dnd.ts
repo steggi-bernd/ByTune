@@ -18,6 +18,17 @@ export const TRACK_MIME = "application/x-bytune-track";
 export const PLAYLIST_MIME = "application/x-bytune-playlist";
 export const ARTIST_MIME = "application/x-bytune-artist";
 export const ALBUM_MIME = "application/x-bytune-album";
+/** A queue row's position, alongside its track payload — the queue reorders on it. */
+export const QUEUE_MIME = "application/x-bytune-queue-index";
+
+export function dragHasQueueRow(e: React.DragEvent): boolean {
+  return e.dataTransfer.types.includes(QUEUE_MIME);
+}
+
+export function readQueueIndex(e: React.DragEvent): number | null {
+  const n = Number.parseInt(e.dataTransfer.getData(QUEUE_MIME), 10);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
 
 export interface PlaylistPayload {
   /** YouTube playlist id (VL prefix optional) */
@@ -281,7 +292,7 @@ export function useTrackDrop(
  */
 export function useDrag(
   payload:
-    | { track: Track }
+    | { track: Track; /** queue rows: their queue position, so the queue can reorder */ queueIndex?: number }
     | { playlist: PlaylistPayload }
     | { artist: ArtistPayload }
     | { album: AlbumPayload }
@@ -341,8 +352,13 @@ export function useDrag(
           e.preventDefault();
           return;
         }
-        if ("track" in payload) beginTrackDrag(e, payload.track);
-        else if ("playlist" in payload) beginPlaylistDrag(e, payload.playlist);
+        if ("track" in payload) {
+          beginTrackDrag(e, payload.track);
+          if (payload.queueIndex !== undefined) {
+            e.dataTransfer.setData(QUEUE_MIME, String(payload.queueIndex));
+            e.dataTransfer.effectAllowed = "copyMove";
+          }
+        } else if ("playlist" in payload) beginPlaylistDrag(e, payload.playlist);
         else if ("artist" in payload) beginArtistDrag(e, payload.artist);
         else beginAlbumDrag(e, payload.album);
         suppressClick.current = true;

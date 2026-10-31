@@ -1,10 +1,19 @@
-/** Player state — pure data; playback side effects live in lib/audio.ts. */
+/**
+ * Player state — pure data; playback side effects live in lib/audio.ts.
+ *
+ * A song found in several places (a local file and its Jellyfin copy) is ONE
+ * song here too: the queue never holds two copies of it, and "play this
+ * song" finds it whichever copy it is handed. Which copy sounds is the
+ * engine's business at play time (local first) — invisible to the queue.
+ */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { withoutOtherCopies } from "../lib/duplicates";
 // Coalescing storage: the engine bumps `position` ~4Hz and persist writes on
 // every change — raw writes would hit disk/IPC several times a second.
 import { coalescedStorage } from "../lib/persist";
 import type { Track } from "../types";
+import { songKey } from "./catalog";
 
 export type RepeatMode = "off" | "all" | "one";
 
@@ -24,6 +33,8 @@ interface PlayerState {
   /** bumped whenever the engine should hard-seek to `position` */
   seekNonce: number;
   error: string | null;
+  /** the copy each loaded track plays from (a local file or a server stream) — written by the engine */
+  sources: Record<string, Track>;
 
   current(): Track | null;
   playQueue(tracks: Track[], startIndex?: number): void;
@@ -32,6 +43,8 @@ interface PlayerState {
   removeAt(i: number): void;
   moveInQueue(from: number, to: number): void;
   clearUpcoming(): void;
+  /** drop second copies of a song from the queue (e.g. one saved before the copies were merged) */
+  collapseCopies(): void;
   next(manual?: boolean): void;
   prev(): void;
   toggle(): void;
@@ -47,6 +60,7 @@ interface PlayerState {
   _setBuffered(ratio: number): void;
   _setBuffering(buffering: boolean): void;
   _setError(error: string | null): void;
+  _setSource(trackId: string, version: Track): void;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -67,6 +81,7 @@ export const usePlayer = create<PlayerState>()(
       repeat: "off",
       seekNonce: 0,
       error: null,
+      sources: {},
 
       current() {
         const { queue, index } = get();
@@ -75,9 +90,12 @@ export const usePlayer = create<PlayerState>()(
 
       playQueue(tracks, startIndex = 0) {
         if (!tracks.length) return;
+        // A list holding two copies of a song (a playlist with the local file
+        // and its server copy) still queues it once — the clicked one stays.
+        const { list, keep } = withoutOtherCopies(tracks, songKey, clamp(startIndex, 0, tracks.length - 1));
         set({
-          queue: tracks,
-          index: clamp(startIndex, 0, tracks.length - 1),
+          queue: list,
+          index: Math.max(0, keep),
           playing: true,
           position: 0,
           error: null,
@@ -86,7 +104,8 @@ export const usePlayer = create<PlayerState>()(
 
       playTrack(track) {
         const { queue, index } = get();
-        const at = queue.findIndex((t) => t.id === track.id);
+        const key = songKey(track.id);
+        const at = queue.findIndex((t) => songKey(t.id) === key);
         if (at >= 0) {
           set({ index: at, playing: true, position: 0, error: null });
         } else {
@@ -96,7 +115,7 @@ export const usePlayer = create<PlayerState>()(
       },
 
       addToQueue(tracks, playNext = false) {
-        const list = Array.isArray(tracks) ? tracks : [tracks];
+        const list = withoutOtherCopies(Array.isArray(tracks) ? tracks : [tracks], songKey).list;
         if (!list.length) return;
         const { queue, index } = get();
         if (!queue.length) {
@@ -136,6 +155,14 @@ export const usePlayer = create<PlayerState>()(
       clearUpcoming() {
         const { index } = get();
         set({ queue: get().queue.slice(0, index + 1) });
+      },
+
+      collapseCopies() {
+        // The playing entry stays put (same object, same index offset), so
+        // the engine never reloads it — only other copies of songs go.
+        const { queue, index } = get();
+        const { list, keep } = withoutOtherCopies(queue, songKey, index);
+        if (list.length !== queue.length) set({ queue: list, index: Math.max(0, keep) });
       },
 
       next(manual = false) {
@@ -230,9 +257,30 @@ export const usePlayer = create<PlayerState>()(
       _setError(error) {
         set({ error });
       },
+
+      _setSource(trackId, version) {
+        // Only the decks' tracks matter: the current one and the one fading in.
+        const { queue, index, sources } = get();
+        const keep = new Set([trackId, queue[index]?.id, queue[index + 1]?.id]);
+        const next: Record<string, Track> = {};
+        for (const [id, v] of Object.entries(sources)) if (keep.has(id)) next[id] = v;
+        next[trackId] = version;
+        set({ sources: next });
+      },
     }),
     {
       name: "player",
+      // v1: the volume slider is perceptual (output gain = slider³, see
+      // lib/audio.ts). The stored value used to BE the gain — move the slider
+      // to the position that produces it, so nothing sounds different.
+      version: 1,
+      migrate: (persisted, version) => {
+        const s = persisted as Partial<PlayerState> | null;
+        if (s && version < 1 && typeof s.volume === "number" && Number.isFinite(s.volume)) {
+          s.volume = Math.cbrt(clamp(s.volume, 0, 1));
+        }
+        return s as PlayerState;
+      },
       storage: createJSONStorage(() => coalescedStorage),
       partialize: (s) =>
         ({

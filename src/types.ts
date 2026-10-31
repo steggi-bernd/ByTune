@@ -36,6 +36,16 @@ export interface Track {
   bitsPerSample?: number;
   /** bits per second */
   bitrate?: number;
+  /** lossless source, when the decoder said so (local files) */
+  lossless?: boolean;
+  /** the file's container where a server names it ("flac", "m4a" …) */
+  container?: string;
+  /** songs on the release, when tagged or listed */
+  trackTotal?: number;
+  /** release type tags, space-separated ("album", "ep", "single", "album compilation" …) */
+  releaseType?: string;
+  /** first release year — a reissue's own `year` can be decades later */
+  originalYear?: number;
 }
 
 export interface Album {

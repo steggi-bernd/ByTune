@@ -1,30 +1,40 @@
 /**
  * Sidebar — the whole left panel is "Your Library", Spotify-style.
  *
- * One glass pill: a "Your Library" header (create button only) and a
- * scrollable list of the user's library — Liked Songs, Downloads,
- * playlists, folders, artists and Local Music. Main navigation lives in
- * the top bar (home beside the search field).
+ * One glass pill: a "Your Library" header (create button), filter chips
+ * (Playlists / Albums / Artists) and a scrollable list of the user's
+ * library — Liked Songs, playlists, folders, artists and the library's
+ * albums. Main navigation lives in the top bar (home beside the search
+ * field; the library sources — Local Music, Jellyfin, Navidrome — beside the
+ * settings gear).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUpDown,
+  Check,
   ChevronDown,
   ChevronRight,
+  Disc3,
   Download,
   Folder,
-  FolderOpen,
   Heart,
   Library,
+  ListEnd,
   ListPlus,
   Music2,
   PanelLeftClose,
   PanelLeftOpen,
   Pin,
   PinOff,
-  Server,
+  Play,
+  Shuffle,
   Sparkles,
   User,
 } from "lucide-react";
+import { newestFirst, useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
+import { artistRoute, splitCredits } from "../lib/libraryTracks";
+import { RELEASE_LABEL } from "../lib/releases";
+import { useAvailabilityCheck } from "../stores/availability";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useSettings } from "../stores/settings";
@@ -42,19 +52,28 @@ import type { Track } from "../types";
 
 /* ============================================================ nav */
 
+type LibFilter = "playlists" | "albums" | "artists";
+const FILTER_LABEL: Record<LibFilter, string> = { playlists: "Playlists", albums: "Albums", artists: "Artists" };
+type AlbumSort = "recent" | "alpha" | "artist";
+const SORT_LABEL: Record<AlbumSort, string> = { recent: "Recently added", alpha: "Alphabetical", artist: "Artist" };
+
 interface LibRow {
   id: string;
   title: string;
   subtitle: string;
   thumb?: string;
-  kind: "playlist" | "artist" | "folder" | "local" | "jellyfin" | "subsonic" | "smart" | "downloads";
+  kind: "playlist" | "artist" | "folder" | "album" | "smart" | "downloads";
+  /** album rows: the library album */
+  release?: LibAlbum;
+  /** album rows: false while none of its songs can be reached */
+  available?: boolean;
   /** artist-imported playlists open the artist page instead of the list */
   artistId?: string;
   /** playlists: the folder they're filed in; folders: their own id */
   folderId?: string;
-  /** Liked / Downloads / Local shortcut rows carry their pin state */
+  /** Liked / Downloads shortcut rows carry their pin state */
   pinned?: boolean;
-  /** which shortcut pin this row toggles (liked / downloads / local) */
+  /** which shortcut pin this row toggles (liked / downloads) */
   singleKey?: "liked" | "downloads" | "local";
 }
 
@@ -76,6 +95,35 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
   const openContextMenu = useUI((s) => s.openContextMenu);
   const current = usePlayer((s) => s.queue[s.index] ?? null);
   const playing = usePlayer((s) => s.playing);
+  const { albums } = useLibraryIndex();
+  const albumSort = useSettings((s) => s.librarySort);
+  const available = useAvailabilityCheck();
+
+  /** Spotify's filter chips: one category at a time, a second click shows everything again. */
+  const [filter, setFilter] = useState<LibFilter | null>(null);
+  const sortedAlbums = useMemo(() => {
+    const list = [...albums];
+    if (albumSort === "alpha") return list.sort((a, b) => a.title.localeCompare(b.title));
+    if (albumSort === "artist") return list.sort((a, b) => a.artist.localeCompare(b.artist) || newestFirst(a, b));
+    return list.sort((a, b) => b.addedAt - a.addedAt || a.title.localeCompare(b.title));
+  }, [albums, albumSort]);
+  const sortButtonRef = useRef<HTMLButtonElement | null>(null);
+  const openSortMenu = (): void => {
+    const rect = sortButtonRef.current?.getBoundingClientRect();
+    openContextMenu(
+      rect?.right ?? 0,
+      rect?.bottom ?? 0,
+      [
+        { header: true, label: "Sort albums by" },
+        ...(Object.keys(SORT_LABEL) as AlbumSort[]).map((k) => ({
+          label: SORT_LABEL[k],
+          icon: albumSort === k ? Check : undefined,
+          action: () => useSettings.getState().setLibrarySort(k),
+        })),
+      ],
+      { alignRight: true }
+    );
+  };
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /** the row a drag is currently hovering — drives the drop highlight */
@@ -117,12 +165,13 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     };
   }, []);
 
-  // Spotify's library contents: Liked Songs, Downloads, the user's playlists,
-  // folders (collapsible), followed artists and Local Music. Recently-played
-  // history is NOT library material — it lives in the queue panel's
-  // "Recently played" tab.
-  // Liked / Downloads / Local are pinned by default; unpinning sends the row
-  // to the bottom of the list (re-pin from its right-click menu).
+  // Spotify's library contents: Liked Songs, the user's playlists, folders
+  // (collapsible), followed artists and the library's albums. The library
+  // sources (Local Music, Jellyfin, Navidrome) live in the top bar.
+  // Recently-played history is NOT library material — it lives in the queue
+  // panel's "Recently played" tab.
+  // Liked Songs is pinned by default; unpinning sends the row to the bottom
+  // of the list (re-pin from its right-click menu).
   const singlePinned = (k: "liked" | "downloads" | "local"): boolean =>
     pinnedSingles?.[k] ?? true;
 
@@ -135,67 +184,63 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     pinned: singlePinned("liked"),
     singleKey: "liked",
   };
-  const localRow: LibRow = {
-    id: "__local__",
-    title: "Local Music",
-    subtitle: "On this device",
-    kind: "local",
-    pinned: singlePinned("local"),
-    singleKey: "local",
-  };
-  const jellyfinRow: LibRow = {
-    id: "__jellyfin__",
-    title: "Jellyfin",
-    subtitle: "Your media server",
-    kind: "jellyfin",
-    pinned: true,
-  };
-  const subsonicRow: LibRow = {
-    id: "__subsonic__",
-    title: "Navidrome",
-    subtitle: "Subsonic server",
-    kind: "subsonic",
-    pinned: true,
-  };
   // Local player: no Downloads row — there is no catalogue to download from.
-  const singles: LibRow[] = [localRow, jellyfinRow, subsonicRow, likedRow];
+  const singles: LibRow[] = [likedRow];
 
+  const show = (k: LibFilter): boolean => filter === null || filter === k;
   const rows: LibRow[] = [];
-  for (const r of singles.filter((r) => r.pinned)) rows.push(r);
-  for (const a of followedArtists) {
-    rows.push({ id: a.id, title: a.name, subtitle: "Artist", thumb: a.thumb, kind: "artist" });
+  if (show("playlists")) for (const r of singles.filter((r) => r.pinned)) rows.push(r);
+  if (show("artists")) {
+    for (const a of followedArtists) {
+      rows.push({ id: a.id, title: a.name, subtitle: "Artist", thumb: a.thumb, kind: "artist" });
+    }
   }
-  for (const sp of smartPlaylists) {
-    rows.push({ id: sp.id, title: sp.name, subtitle: "Smart playlist", kind: "smart" });
-  }
-  const unfiled = playlists.filter((p) => !p.folderId);
-  for (const p of [...unfiled.filter((x) => x.pinned), ...unfiled.filter((x) => !x.pinned)]) {
-    rows.push({
-      id: p.id,
-      title: p.name,
-      subtitle: `Playlist · ${p.tracks.length} ${p.tracks.length === 1 ? "track" : "tracks"}`,
-      thumb: p.artistThumb ?? p.tracks[0]?.thumb,
-      kind: "playlist",
-      artistId: p.artistId,
-    });
-  }
-  for (const f of folders) {
-    rows.push({ id: f.id, title: f.name, subtitle: "Folder", kind: "folder", folderId: f.id });
-    if (expanded.has(f.id)) {
-      for (const p of playlists.filter((pl) => pl.folderId === f.id)) {
-        rows.push({
-          id: p.id,
-          title: p.name,
-          subtitle: `Playlist · ${p.tracks.length} ${p.tracks.length === 1 ? "track" : "tracks"}`,
-          thumb: p.artistThumb ?? p.tracks[0]?.thumb,
-          kind: "playlist",
-          folderId: f.id,
-          artistId: p.artistId,
-        });
+  if (show("playlists")) {
+    for (const sp of smartPlaylists) {
+      rows.push({ id: sp.id, title: sp.name, subtitle: "Smart playlist", kind: "smart" });
+    }
+    const unfiled = playlists.filter((p) => !p.folderId);
+    for (const p of [...unfiled.filter((x) => x.pinned), ...unfiled.filter((x) => !x.pinned)]) {
+      rows.push({
+        id: p.id,
+        title: p.name,
+        subtitle: `Playlist · ${p.tracks.length} ${p.tracks.length === 1 ? "track" : "tracks"}`,
+        thumb: p.artistThumb ?? p.tracks[0]?.thumb,
+        kind: "playlist",
+        artistId: p.artistId,
+      });
+    }
+    for (const f of folders) {
+      rows.push({ id: f.id, title: f.name, subtitle: "Folder", kind: "folder", folderId: f.id });
+      if (expanded.has(f.id)) {
+        for (const p of playlists.filter((pl) => pl.folderId === f.id)) {
+          rows.push({
+            id: p.id,
+            title: p.name,
+            subtitle: `Playlist · ${p.tracks.length} ${p.tracks.length === 1 ? "track" : "tracks"}`,
+            thumb: p.artistThumb ?? p.tracks[0]?.thumb,
+            kind: "playlist",
+            folderId: f.id,
+            artistId: p.artistId,
+          });
+        }
       }
     }
   }
-  for (const r of singles.filter((r) => !r.pinned)) rows.push(r);
+  if (show("albums")) {
+    for (const a of sortedAlbums) {
+      rows.push({
+        id: a.route,
+        title: a.title,
+        subtitle: `${RELEASE_LABEL[a.kind]} · ${a.artist}`,
+        thumb: a.thumb,
+        kind: "album",
+        release: a,
+        available: a.tracks.some((t) => available(t)),
+      });
+    }
+  }
+  if (show("playlists")) for (const r of singles.filter((r) => !r.pinned)) rows.push(r);
 
   const toggleFolder = (id: string): void => {
     setExpanded((prev) => {
@@ -516,14 +561,8 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       case "folder":
         toggleFolder(r.id);
         break;
-      case "local":
-        navigate({ name: "local" });
-        break;
-      case "jellyfin":
-        navigate({ name: "jellyfin" });
-        break;
-      case "subsonic":
-        navigate({ name: "subsonic" });
+      case "album":
+        navigate({ name: "album", param: r.id });
         break;
       case "smart":
         navigate({ name: "smart", param: r.id });
@@ -531,8 +570,42 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     }
   };
 
-  /** Right-click a row: pin/unpin shortcuts, playlist options, folder options. */
+  /** Right-click a row: pin/unpin shortcuts, album, playlist and folder options. */
   const onRowContextMenu = (e: React.MouseEvent, r: LibRow): void => {
+    if (r.kind === "album" && r.release) {
+      const album = r.release;
+      e.preventDefault();
+      e.stopPropagation();
+      // Only songs that can play right now go into the queue.
+      const playable = album.tracks.filter((t) => available(t));
+      const none = playable.length === 0;
+      openContextMenu(e.clientX, e.clientY, [
+        { label: "Play", icon: Play, disabled: none, action: () => usePlayer.getState().playQueue(playable, 0) },
+        {
+          label: "Shuffle",
+          icon: Shuffle,
+          disabled: none,
+          action: () => usePlayer.getState().playQueue([...playable].sort(() => Math.random() - 0.5), 0),
+        },
+        {
+          label: "Add to queue",
+          icon: ListEnd,
+          disabled: none,
+          action: () => {
+            usePlayer.getState().addToQueue(playable);
+            useUI.getState().toast(`Added “${album.title}” to the queue`);
+          },
+        },
+        // One entry per credited artist — "A, B" are two artists, two pages.
+        ...splitCredits(album.artist).map((name, i, all) => ({
+          label: all.length === 1 ? "Go to artist" : `Go to ${name}`,
+          icon: User,
+          separatorBefore: i === 0,
+          action: () => navigate({ name: "artist", param: artistRoute(name) }),
+        })),
+      ]);
+      return;
+    }
     if (r.singleKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -746,6 +819,42 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
         </div>
       )}
 
+      {/* Filter chips, Spotify's: one category at a time (a second click shows
+          everything again); the sort button orders the albums. */}
+      {!collapsed && (
+        <div className="flex items-center gap-2 px-4 pb-2">
+          {(Object.keys(FILTER_LABEL) as LibFilter[])
+            .filter((k) => k !== "artists" || followedArtists.length > 0)
+            .map((k) => (
+              <button
+                key={k}
+                onClick={() => setFilter((f) => (f === k ? null : k))}
+                aria-pressed={filter === k}
+                className={`h-8 px-3 rounded-full text-[13px] font-medium transition-colors ${
+                  filter === k ? "bg-ink-hi text-black" : "bg-ink-hi/[0.07] text-ink-hi hover:bg-ink-hi/[0.12]"
+                }`}
+              >
+                {FILTER_LABEL[k]}
+              </button>
+            ))}
+          {show("albums") && albums.length > 1 && (
+            <button
+              ref={sortButtonRef}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                openSortMenu();
+              }}
+              title={`Sort albums: ${SORT_LABEL[albumSort]}`}
+              aria-label={`Sort albums: ${SORT_LABEL[albumSort]}`}
+              className="ml-auto w-8 h-8 grid place-items-center rounded-full text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Rows — drops bubble to the panel root, which imports playlists and
           artists anywhere they land; specific rows handle their own targets. */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 pt-1 space-y-0.5">
@@ -755,7 +864,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           </div>
         ) : (
           rows.map((r) => {
-            const isCurrent = current?.id === r.id;
+            const isCurrent = r.kind === "album" ? current?.albumId === r.id : current?.id === r.id;
             return (
               <button
                 key={`${r.kind}-${r.id}`}
@@ -764,20 +873,32 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                 onDragOver={(e) => onRowDragOver(e, r)}
                 onDragLeave={(e) => onRowDragLeave(e, r)}
                 onDrop={(e) => onRowDrop(e, r)}
-                title={collapsed ? `${r.title} · ${r.subtitle}` : undefined}
+                title={
+                  r.available === false
+                    ? `${r.title} · not available right now`
+                    : collapsed
+                      ? `${r.title} · ${r.subtitle}`
+                      : undefined
+                }
                 aria-label={collapsed ? r.title : undefined}
+                // Hundreds of album rows: only the ones on screen are laid out and painted.
+                style={r.kind === "album" ? { contentVisibility: "auto", containIntrinsicSize: "auto 64px" } : undefined}
                 className={`group w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-ink-hi/[0.05] active:bg-ink-hi/[0.09] transition-all duration-150 ${
                   collapsed ? "justify-center" : r.kind === "playlist" && r.folderId ? "pl-6" : ""
                 } ${dropHover === r.id ? "ring-2 ring-inset ring-accent/60 bg-ink-hi/[0.08] scale-[1.02]" : ""} ${
                   pulse === r.id ? "animate-drop-pulse" : ""
-                }`}
+                } ${r.available === false ? "opacity-40" : ""}`}
               >
+                {/* max-w-none on the artwork: the base styles cap images at
+                    their row's width, and in the icon rail (narrower still
+                    once the list scrolls) that squeezed covers into
+                    portrait rectangles. */}
                 {r.kind === "artist" ? (
                   r.thumb ? (
                     <img
                       src={upgradeArtwork(r.thumb)}
                       alt=""
-                      className="w-12 h-12 rounded-full object-cover art-hairline shrink-0"
+                      className="w-12 h-12 max-w-none rounded-full object-cover art-hairline shrink-0"
                     />
                   ) : (
                     <span className="w-12 h-12 rounded-full bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
@@ -788,20 +909,26 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                   <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
                     <Folder className="w-5 h-5 text-ink-hi/55" />
                   </span>
-                ) : r.kind === "local" ? (
-                  <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
-                    <FolderOpen className="w-5 h-5 text-ink-hi/55" />
-                  </span>
-                ) : r.kind === "jellyfin" || r.kind === "subsonic" ? (
-                  <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
-                    <Server className="w-5 h-5 text-ink-hi/55" />
-                  </span>
+                ) : r.kind === "album" ? (
+                  r.thumb ? (
+                    <img
+                      src={upgradeArtwork(r.thumb)}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="w-12 h-12 max-w-none rounded-md object-cover art-hairline shrink-0"
+                    />
+                  ) : (
+                    <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
+                      <Disc3 className="w-5 h-5 text-ink-hi/55" />
+                    </span>
+                  )
                 ) : r.kind === "smart" ? (
                   <span className="w-12 h-12 rounded-md bg-accent/15 art-hairline shrink-0 grid place-items-center">
                     <Sparkles className="w-5 h-5 text-accent" />
                   </span>
                 ) : r.thumb ? (
-                  <img src={upgradeArtwork(r.thumb)} alt="" className="w-12 h-12 rounded-md object-cover art-hairline shrink-0" />
+                  <img src={upgradeArtwork(r.thumb)} alt="" className="w-12 h-12 max-w-none rounded-md object-cover art-hairline shrink-0" />
                 ) : (
                   <div className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
                     {r.kind === "downloads" ? (

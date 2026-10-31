@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import type { ReleaseMeta } from "../../electron/metadata";
 import type { Track } from "../types";
 import { resolveArtistAbout } from "./artistAbout";
+import { leadArtist } from "./libraryTracks";
 
 export interface ArtistPanelData {
   /** artist photo, distinct from the track's artwork */
@@ -23,7 +24,8 @@ const cache = new Map<string, ArtistPanelData>();
 async function resolve(track: Track): Promise<ArtistPanelData> {
   const needsAlbum = !track.album || track.album === "Unknown album";
   const [about, release] = await Promise.all([
-    resolveArtistAbout(track.artist),
+    // The first credited artist's photo — "A, B" is two artists, not one.
+    resolveArtistAbout(leadArtist(track.artist)),
     needsAlbum && window.bytune?.metaRecording
       ? (window.bytune.metaRecording(track.title, track.artist, track.duration) as Promise<ReleaseMeta | null>).catch(() => null)
       : Promise.resolve(null),

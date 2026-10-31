@@ -5,7 +5,7 @@
  * stay consistent across the entire application.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Music2, Play, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Music2, Pause, Play, type LucideIcon } from "lucide-react";
 import { extractPalette, type Palette } from "../lib/ambient";
 import { upgradeArtwork } from "../lib/artwork";
 import { useUI } from "../stores/ui";
@@ -510,21 +510,27 @@ export function EqBars() {
  * `group`). While hidden it is hit-test-transparent: an invisible button
  * parked over the artwork's corner would otherwise win the pointer on those
  * pixels, so drags started from the corner/edge would hit the control
- * instead of the card and the drag would never start.
+ * instead of the card and the drag would never start. While its collection
+ * plays it shows pause and stays visible, Spotify's way.
  */
-export function PlayOverlay({ onClick, title = "Play" }: { onClick: () => void; title?: string }) {
+export function PlayOverlay({ onClick, title = "Play", playing = false }: { onClick: () => void; title?: string; playing?: boolean }) {
+  const label = playing ? "Pause" : title;
   return (
     <button
-      title={title}
-      aria-label={title}
+      title={label}
+      aria-label={label}
       data-no-drag
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
-      className="absolute bottom-2.5 right-2.5 w-11 h-11 rounded-full bg-primary text-on-primary grid place-items-center shadow-float opacity-0 translate-y-1.5 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:translate-y-0 focus-visible:pointer-events-auto transition-all duration-200 hover:scale-105 active:scale-95"
+      className={`absolute bottom-2.5 right-2.5 w-11 h-11 rounded-full bg-primary text-on-primary grid place-items-center shadow-float transition-all duration-200 hover:scale-105 active:scale-95 ${
+        playing
+          ? "opacity-100 translate-y-0 pointer-events-auto"
+          : "opacity-0 translate-y-1.5 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:translate-y-0 focus-visible:pointer-events-auto"
+      }`}
     >
-      <Play className="w-[18px] h-[18px] fill-current ml-0.5" />
+      {playing ? <Pause className="w-[18px] h-[18px] fill-current" /> : <Play className="w-[18px] h-[18px] fill-current ml-0.5" />}
     </button>
   );
 }

@@ -28,6 +28,8 @@ const PAGE_SIZE = 500;
 const MAX_ITEMS = 100_000;
 const API_VERSION = "1.16.1";
 const CLIENT = "ByTune";
+/** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
+const LIB_VERSION = 2;
 /** Formats Chromium can't decode — the server transcodes these to MP3. */
 const SERVER_TRANSCODE = new Set(["aif", "aiff", "aifc", "wma", "wv", "ape", "dsf", "dff", "alac"]);
 
@@ -39,9 +41,17 @@ export interface SubsonicTrack {
   artist: string;
   album: string;
   albumArtist?: string;
+  /** the server's album id — joins the song to its album's release facts */
+  albumId?: string;
   duration: number;
   trackNo?: number;
   discNo?: number;
+  /** songs on the album, from the album list */
+  trackTotal?: number;
+  /** OpenSubsonic release types, space-separated ("album", "ep", "single", "compilation" …) */
+  releaseType?: string;
+  /** OpenSubsonic original release year */
+  originalYear?: number;
   year?: number;
   genre?: string;
   art?: string;
@@ -57,6 +67,8 @@ export interface SubsonicTrack {
 export interface SubsonicLibrary {
   fetchedAt: number;
   tracks: SubsonicTrack[];
+  /** LIB_VERSION the cache was listed with */
+  v?: number;
 }
 
 export interface SubsonicStatus {
@@ -66,6 +78,8 @@ export interface SubsonicStatus {
   userName: string | null;
   trackCount: number;
   fetchedAt: number;
+  /** the cached library predates fields this version reads — refresh it */
+  stale: boolean;
 }
 
 interface Config {
@@ -94,10 +108,11 @@ async function call(
   server: string,
   method: string,
   auth: { user: string; salt: string; token: string },
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
+  timeoutMs = 20000
 ): Promise<any> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(`${server}/rest/${method}.view?${query(auth.user, auth.salt, auth.token, params)}`, {
       signal: ctrl.signal,
@@ -144,7 +159,20 @@ export function status(): SubsonicStatus {
     userName: cfg?.userName ?? null,
     trackCount: lib.tracks.length,
     fetchedAt: lib.fetchedAt,
+    stale: !!cfg && lib.fetchedAt > 0 && lib.v !== LIB_VERSION,
   };
+}
+
+/** Whether the server answers right now; null when no server is connected. */
+export async function ping(): Promise<boolean | null> {
+  const s = session();
+  if (!s) return null;
+  try {
+    await call(s.cfg.server, "ping", s.auth, {}, 4000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function connect(input: { server: string; username: string; password: string }): Promise<SubsonicStatus> {
@@ -190,6 +218,7 @@ function toTrack(s: any): SubsonicTrack | null {
     artist: bounded(s.displayArtist) || bounded(s.artist) || "Unknown artist",
     album: bounded(s.album) || "Unknown album",
     albumArtist: bounded(s.displayAlbumArtist) || bounded(s.albumArtists?.[0]?.name) || undefined,
+    albumId: s.albumId ? String(s.albumId).slice(0, 128) : undefined,
     duration: Math.round(Number(s.duration) || 0),
     trackNo: num(s.track),
     discNo: num(s.discNumber),
@@ -219,6 +248,18 @@ export async function refreshLibrary(): Promise<SubsonicLibrary> {
       tracks.push(t);
     }
   };
+  /** Release facts per album id — songs carry only the album's id. */
+  const albumFacts = new Map<string, Pick<SubsonicTrack, "trackTotal" | "releaseType" | "originalYear">>();
+  const noteAlbum = (a: any): void => {
+    if (!a?.id) return;
+    const facts: Pick<SubsonicTrack, "trackTotal" | "releaseType" | "originalYear"> = {};
+    if (typeof a.songCount === "number" && a.songCount > 0) facts.trackTotal = a.songCount;
+    const types: string[] = Array.isArray(a.releaseTypes) ? a.releaseTypes.filter((x: unknown) => typeof x === "string") : [];
+    if (types.length) facts.releaseType = types.join(" ").toLowerCase().slice(0, 80);
+    const year = a.originalReleaseDate?.year;
+    if (typeof year === "number" && year > 0) facts.originalYear = year;
+    albumFacts.set(String(a.id), facts);
+  };
   // Navidrome (and most OpenSubsonic servers) list every song for an empty search.
   for (let offset = 0; offset < MAX_ITEMS; offset += PAGE_SIZE) {
     const reply = await call(s.cfg.server, "search3", s.auth, {
@@ -242,13 +283,35 @@ export async function refreshLibrary(): Promise<SubsonicLibrary> {
       });
       const albums: any[] = reply.albumList2?.album ?? [];
       for (const album of albums) {
+        noteAlbum(album);
         const full = await call(s.cfg.server, "getAlbum", s.auth, { id: String(album.id) });
         (full.album?.song ?? []).forEach(push);
       }
       if (albums.length < PAGE_SIZE) break;
     }
+  } else {
+    // The song search carries no release facts: list the albums once for
+    // song counts, release types and original years (best-effort).
+    try {
+      for (let offset = 0; offset < MAX_ITEMS; offset += PAGE_SIZE) {
+        const reply = await call(s.cfg.server, "getAlbumList2", s.auth, {
+          type: "alphabeticalByName",
+          size: String(PAGE_SIZE),
+          offset: String(offset),
+        });
+        const albums: any[] = reply.albumList2?.album ?? [];
+        albums.forEach(noteAlbum);
+        if (albums.length < PAGE_SIZE) break;
+      }
+    } catch {
+      /* the songs alone still make a library */
+    }
   }
-  const lib = { fetchedAt: Date.now(), tracks };
+  for (const t of tracks) {
+    const facts = t.albumId ? albumFacts.get(t.albumId) : undefined;
+    if (facts) Object.assign(t, facts);
+  }
+  const lib = { fetchedAt: Date.now(), tracks, v: LIB_VERSION };
   await persist.writeData(LIBRARY_STORE, lib);
   return lib;
 }

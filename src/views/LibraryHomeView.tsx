@@ -11,7 +11,7 @@ import { AlbumTile, ArtistTile, CoverCollage, MixTile, QuickTile } from "../comp
 import { TrackCard } from "../components/Cards";
 import { ShelfScroller } from "../components/primitives";
 import { useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
-import { albumKeyOf, leadArtist } from "../lib/libraryTracks";
+import { albumKeyOf, splitCredits } from "../lib/libraryTracks";
 import { allMixes } from "../lib/mixes";
 import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useLibrary } from "../stores/library";
@@ -83,8 +83,11 @@ export function LibraryHomeView() {
     for (const t of tracks) {
       const n = playCounts[t.id]?.plays ?? 0;
       if (!n) continue;
-      const key = leadArtist(t.artist).toLowerCase();
-      plays.set(key, (plays.get(key) ?? 0) + n);
+      // Every credited artist earns the plays — "A, B" counts for A and for B.
+      for (const name of splitCredits(t.artist)) {
+        const key = name.toLowerCase();
+        plays.set(key, (plays.get(key) ?? 0) + n);
+      }
     }
     return artists
       .filter((a) => plays.has(a.name.toLowerCase()))

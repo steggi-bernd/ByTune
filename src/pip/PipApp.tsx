@@ -53,6 +53,7 @@ import {
   SpVolumeHigh,
   SpVolumeOff,
 } from "../components/SpotifyIcons";
+import { Slider } from "../components/Slider";
 import { fmtTime } from "../lib/format";
 import { upgradeArtwork } from "../lib/artwork";
 import { isWindows } from "../lib/platform";
@@ -299,9 +300,8 @@ export function PipApp() {
   const position = Math.min(snap?.position ?? 0, duration > 0 ? duration : Infinity);
   const max = duration > 0 ? duration : 1;
   const shownSeek = Math.min(seekValue ?? position, max);
-  const commitSeek = (): void => {
-    if (seekValue === null) return;
-    send({ type: "seek", sec: Math.min(seekValue, max) });
+  const commitSeek = (fraction: number): void => {
+    send({ type: "seek", sec: Math.min(fraction * max, max) });
     setSeekValue(null);
   };
   const canShare = sharableId(track?.id ?? null);
@@ -455,16 +455,13 @@ export function PipApp() {
                   style={noDragRegion}
                 >
                   <div className="w-[96px] rounded-xl bg-[#282828] px-2.5 py-2 shadow-elev">
-                    <input
-                      type="range"
-                      aria-label="Volume"
-                      min={0}
-                      max={1}
-                      step={0.01}
+                    <Slider
+                      size="mini"
+                      label="Volume"
                       value={snap?.muted ? 0 : snap?.volume ?? 0.8}
-                      onChange={(e) => send({ type: "volume", v: Number(e.target.value) })}
-                      className="slider mp-slider w-full"
-                      style={{ "--fill": `${Math.round((snap?.muted ? 0 : (snap?.volume ?? 0.8)) * 100)}%` } as React.CSSProperties}
+                      onChange={(v) => send({ type: "volume", v })}
+                      step={0.05}
+                      className="w-full"
                     />
                   </div>
                 </div>
@@ -524,22 +521,17 @@ export function PipApp() {
             <span className="w-7 shrink-0 text-right text-[10px] tabular-nums leading-none text-white/70">
               {fmtTime(shownSeek)}
             </span>
-            <input
-              type="range"
-              aria-label="Seek"
-              className="slider mp-slider min-w-0 flex-1"
-              min={0}
-              max={max}
-              step={0.5}
-              value={shownSeek}
+            <Slider
+              size="mini"
+              label="Seek"
+              className="min-w-0 flex-1"
+              value={shownSeek / max}
               disabled={!track}
-              onChange={(e) => setSeekValue(Number(e.target.value))}
-              onPointerUp={commitSeek}
-              onKeyUp={commitSeek}
-              onBlur={() => {
-                if (seekValue !== null) commitSeek();
+              step={5 / max}
+              onScrub={(v) => {
+                if (v !== null) setSeekValue(v * max);
               }}
-              style={{ "--fill": `${Math.min(100, (shownSeek / max) * 100)}%` } as React.CSSProperties}
+              onCommit={commitSeek}
             />
             <span className="w-7 shrink-0 text-[10px] tabular-nums leading-none text-white/70">
               {fmtTime(duration)}

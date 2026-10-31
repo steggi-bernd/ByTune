@@ -7,10 +7,11 @@
  *  - black 88px bar (measured off the desktop app), 56px content row
  *    centred → 16px inset top/bottom; 16px to the cover on the left, 8px
  *    footer padding + 8px button padding = 16px to the last glyph on the right
- *  - left: 56px cover (4px radius, #282828 placeholder), 10px gap,
- *    title 14/19 white + artists 12/17 #b3b3b3, both with Spotify's
- *    6px underline-padding trick and hover underline; like button 16×32
- *    with a 16px icon (#b3b3b3 → white), 16px after the text
+ *  - left: 56px cover (4px radius, #282828 placeholder; opens Now
+ *    Playing), 10px gap, title 14/19 white (opens the album) + artists
+ *    12/17 #b3b3b3 (each opens its artist page), hover underline, then the
+ *    playback format line; like button 16×32 with a 16px icon (#b3b3b3 →
+ *    white), 16px after the text
  *  - centre: [shuffle, prev] —16px— play disc —16px— [next, repeat], the
  *    groups flex-1 so the disc sits dead centre; buttons 32×32 (8px pad,
  *    full radius), icons 16×16 #b3b3b3 → white on hover; disc 32px white
@@ -22,7 +23,7 @@
  *  - right: lyrics / queue / volume (speaker 32px + 67px track)
  *    / miniplayer / fullscreen — 16px icons white @70% → white on hover
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, Heart, ListMusic, ListPlus, Loader2 } from "lucide-react";
 import {
   SpCheck,
@@ -48,8 +49,107 @@ import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useSettings } from "../stores/settings";
 import { useUI, type MenuItem } from "../stores/ui";
+import { sourceOf } from "../stores/availability";
+import { useCatalog } from "../stores/catalog";
 import { upgradeArtwork } from "../lib/artwork";
 import { useDrag } from "../lib/dnd";
+import { isLibraryTrack } from "../lib/libraryTracks";
+import { ArtistLinks } from "./ArtistLinks";
+import { describePlayback, formatLine } from "../lib/playbackFormat";
+import type { Track } from "../types";
+
+const SOURCE_NAME = { local: "a file on this device", jellyfin: "Jellyfin", subsonic: "Navidrome" } as const;
+
+/**
+ * What is playing, after any conversion on the way: a Hi-Res / Lossless /
+ * Lossy tag and the format line ("FLAC 24-bit / 96 kHz", "MP3 320 kbps").
+ * A song found in several places shows the copy it actually plays from.
+ */
+function PlaybackFormatLine({ track }: { track: Track }) {
+  const playingFrom = usePlayer((s) => s.sources[track.id]) ?? track;
+  // The catalogue's copy carries the media info a queue entry saved by an older version may lack.
+  const listed = useCatalog((s) => s.byId.get(playingFrom.id));
+  const version = listed ?? playingFrom;
+  const format = describePlayback(version);
+  if (!format) return null;
+  const tier = format.hiRes ? "Hi-Res" : format.lossless ? "Lossless" : "Lossy";
+  const line = formatLine(format);
+  const from = SOURCE_NAME[sourceOf(version) ?? "local"];
+  const details = [
+    `${format.hiRes ? "Hi-Res lossless" : format.lossless ? "Lossless" : "Lossy"} · ${line}`,
+    `Playing from ${from}`,
+    format.note ? `${format.note.charAt(0).toUpperCase()}${format.note.slice(1)}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return (
+    <span className="mt-[3px] flex min-w-0 items-center gap-1.5 text-[11px] leading-[14px] text-[#b3b3b3]" title={details}>
+      <span
+        className={`shrink-0 rounded-[3px] px-1 text-[9px] font-bold uppercase leading-[14px] tracking-[0.06em] ${
+          format.hiRes
+            ? "bg-[#e6c35c]/[0.16] text-[#e6c35c]"
+            : format.lossless
+              ? "bg-white/[0.12] text-white"
+              : "bg-white/[0.06] text-[#8f8f8f]"
+        }`}
+      >
+        {tier}
+      </span>
+      <span className="truncate tabular-nums">{line}</span>
+    </span>
+  );
+}
+
+/** A span that acts as a link — inline, so a long credit line still truncates with an ellipsis. */
+function linkProps(go: () => void) {
+  return {
+    role: "link",
+    tabIndex: 0,
+    onClick: go,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "Enter") go();
+    },
+  };
+}
+
+/**
+ * Title and artists, Spotify's way: the title opens the album, each credited
+ * artist their own page (the cover opens the Now Playing view).
+ */
+function TrackMeta({ track }: { track: Track | null }) {
+  const navigate = useUI((s) => s.navigate);
+  if (!track) {
+    return (
+      <div className="ml-2.5 min-w-0">
+        <span className="block truncate text-[14px] leading-[19px] text-white">Nothing playing</span>
+        <span className="block truncate text-[12px] leading-[17px] text-[#b3b3b3]">Search for something to play</span>
+      </div>
+    );
+  }
+  const library = isLibraryTrack(track);
+  const album = track.albumId?.startsWith("lib:album:") ? track.albumId : null;
+  return (
+    <div className="ml-2.5 min-w-0" key={`meta-${track.id}`}>
+      <span className="block truncate text-[14px] leading-[19px] text-white">
+        {album ? (
+          <span
+            {...linkProps(() => navigate({ name: "album", param: album }))}
+            title={track.album ? `Go to ${track.album}` : undefined}
+            className="cursor-pointer hover:underline"
+          >
+            {track.title}
+          </span>
+        ) : (
+          track.title
+        )}
+      </span>
+      <span className="block truncate text-[12px] leading-[17px] text-[#b3b3b3]">
+        {library ? <ArtistLinks artist={track.artist} className="hover:text-white" /> : track.artist}
+      </span>
+      <PlaybackFormatLine track={track} />
+    </div>
+  );
+}
 
 /* Transport button — 32×32, 16px glyph, colour-only hover (Spotify). */
 function TransportButton({
@@ -260,16 +360,7 @@ export function PlayerBar() {
               </div>
             )}
           </button>
-          <div className="ml-2.5 min-w-0">
-            <button onClick={toggleNowPlaying} className="block w-full text-left" key={track ? `meta-${track.id}` : "meta-none"}>
-              <span className="block truncate px-1.5 -mx-1.5 text-[14px] leading-[19px] text-white hover:underline">
-                {track ? track.title : "Nothing playing"}
-              </span>
-              <span className="block truncate px-1.5 -mx-1.5 text-[12px] leading-[17px] text-[#b3b3b3] hover:underline">
-                {track ? track.artist : "Search for something to play"}
-              </span>
-            </button>
-          </div>
+          <TrackMeta track={track} />
           {track && (
             <button
               ref={addToPlaylistRef}

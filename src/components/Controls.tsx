@@ -1,73 +1,51 @@
-import { useState, type CSSProperties } from "react";
+import { useCallback, useState } from "react";
 import { Volume1, Volume2 } from "lucide-react";
+import { getPlaybackPosition } from "../lib/audio";
 import { fmtTime } from "../lib/format";
 import { usePlayer } from "../stores/player";
-
-/**
- * Releasing the pointer must not leave focus parked on a range input: the
- * global shortcut handler treats a focused INPUT as typing, so Space
- * (play/pause) went dead until the user clicked somewhere else. Blur on
- * release instead — keyboard users are untouched, since Tab focus and
- * arrow-key adjustments never fire pointer events.
- */
-function releasePointerFocus(e: React.PointerEvent<HTMLInputElement>): void {
-  e.currentTarget.blur();
-}
+import { Slider } from "./Slider";
 
 interface SeekBarProps {
   large?: boolean;
   showRemaining?: boolean;
-  /** slimmer hairline track — the player-bar variant */
+  /** the player-bar variant (kept for callers; every seek bar is the slim line now) */
   thin?: boolean;
 }
 
-export function SeekBar({ large = false, showRemaining = false, thin = false }: SeekBarProps) {
+export function SeekBar({ large = false, showRemaining = false }: SeekBarProps) {
   const position = usePlayer((s) => s.position);
   const duration = usePlayer((s) => s.duration);
   const buffered = usePlayer((s) => s.buffered);
+  const playing = usePlayer((s) => s.playing);
   const seek = usePlayer((s) => s.seek);
-  // While the thumb is held down the drag is purely visual — the audio keeps
-  // playing untouched. Range inputs fire onChange continuously mid-drag, so
-  // seeking there would make playback jump around under the cursor. The real
-  // seek happens once, on release (pointer up / keyboard key up).
-  const [dragValue, setDragValue] = useState<number | null>(null);
-  const max = duration > 0 ? duration : 1;
-  const shown = dragValue ?? Math.min(position, max);
-  const pct = Math.min(100, (shown / max) * 100);
-  const bufPct = Math.min(100, Math.max(buffered * 100, pct));
-
-  const commit = () => {
-    if (dragValue !== null) seek(Math.min(dragValue, max));
-    setDragValue(null);
-  };
+  // While the handle is held the drag is purely visual — the audio keeps
+  // playing untouched; the real seek happens once, on release.
+  const [scrub, setScrub] = useState<number | null>(null);
+  const max = duration > 0 ? duration : 0;
+  const shown = scrub !== null ? scrub * max : max > 0 ? Math.min(position, max) : position;
+  // While playing, the fill follows the element's clock every frame instead
+  // of ticking with the store's ~4 Hz position updates.
+  const live = useCallback(() => (max > 0 ? getPlaybackPosition() / max : 0), [max]);
+  const label = large ? "text-ink-faint w-12 text-[13px]" : "w-[50px] text-[12px] leading-[17px] text-[#b3b3b3]";
 
   return (
     <div className={`flex items-center ${large ? "gap-3 w-full" : "gap-2 w-full"}`}>
-      <span
-        className={`shrink-0 text-right tabular-nums ${large ? "text-ink-faint w-12 text-[13px]" : "w-[50px] text-[12px] leading-[17px] text-[#b3b3b3]"}`}
-      >
-        {fmtTime(shown)}
-      </span>
-      <input
-        type="range"
-        aria-label="Seek"
-        min={0}
-        max={max}
-        step={0.5}
-        value={shown}
-        onChange={(e) => setDragValue(Number(e.target.value))}
-        onPointerUp={(e) => {
-          commit();
-          releasePointerFocus(e);
+      <span className={`shrink-0 text-right tabular-nums ${label}`}>{fmtTime(shown)}</span>
+      <Slider
+        className="flex-1"
+        label="Seek"
+        value={max > 0 ? position / max : 0}
+        buffered={max > 0 ? Math.max(buffered, position / max) : 0}
+        live={playing && max > 0 ? live : undefined}
+        onScrub={setScrub}
+        onCommit={(v) => {
+          if (max > 0) seek(v * max);
         }}
-        onKeyUp={commit}
-        onBlur={() => {
-          if (dragValue !== null) commit();
-        }}
-        className={`slider flex-1 ${thin ? "slider-thin" : ""} ${large ? "h-1.5" : ""}`}
-        style={{ "--fill": `${pct}%`, "--buffered": `${bufPct}%` } as CSSProperties}
+        step={max > 0 ? 5 / max : 0.01}
+        valueText={`${fmtTime(shown)} of ${fmtTime(duration)}`}
+        disabled={max <= 0}
       />
-      <span className={`shrink-0 tabular-nums ${large ? "text-ink-faint w-12 text-[13px]" : "w-[50px] text-[12px] leading-[17px] text-[#b3b3b3]"}`}>
+      <span className={`shrink-0 tabular-nums ${label}`}>
         {showRemaining ? `-${fmtTime(Math.max(0, duration - shown))}` : fmtTime(duration)}
       </span>
     </div>
@@ -79,7 +57,7 @@ export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }
   const muted = usePlayer((s) => s.muted);
   const setVolume = usePlayer((s) => s.setVolume);
   const toggleMute = usePlayer((s) => s.toggleMute);
-  const pct = (muted ? 0 : volume) * 100;
+  const shown = muted ? 0 : volume;
 
   return (
     <div className="flex items-center">
@@ -93,17 +71,13 @@ export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }
           <VolIcon className="w-4 h-4" />
         </span>
       </button>
-      <input
-        type="range"
-        aria-label="Volume"
-        min={0}
-        max={1}
-        step={0.01}
-        value={muted ? 0 : volume}
-        onChange={(e) => setVolume(Number(e.target.value))}
-        onPointerUp={releasePointerFocus}
-        className="slider slider-bar w-[93px]"
-        style={{ "--fill": `${pct}%` } as CSSProperties}
+      <Slider
+        className="w-[93px]"
+        label="Volume"
+        value={shown}
+        onChange={setVolume}
+        step={0.05}
+        valueText={`${Math.round(shown * 100)}%`}
       />
     </div>
   );
@@ -119,7 +93,7 @@ export function VolumeRow() {
   const muted = usePlayer((s) => s.muted);
   const setVolume = usePlayer((s) => s.setVolume);
   const toggleMute = usePlayer((s) => s.toggleMute);
-  const pct = (muted ? 0 : volume) * 100;
+  const shown = muted ? 0 : volume;
 
   return (
     <div className="w-full flex items-center gap-3">
@@ -131,17 +105,13 @@ export function VolumeRow() {
       >
         <Volume1 className="w-5 h-5" />
       </button>
-      <input
-        type="range"
-        aria-label="Volume"
-        min={0}
-        max={1}
-        step={0.01}
-        value={muted ? 0 : volume}
-        onChange={(e) => setVolume(Number(e.target.value))}
-        onPointerUp={releasePointerFocus}
-        className="slider flex-1"
-        style={{ "--fill": `${pct}%` } as CSSProperties}
+      <Slider
+        className="flex-1"
+        label="Volume"
+        value={shown}
+        onChange={setVolume}
+        step={0.05}
+        valueText={`${Math.round(shown * 100)}%`}
       />
       <button
         onClick={toggleMute}

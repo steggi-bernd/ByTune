@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import type { ArtistMeta } from "../../electron/metadata";
 import type { Track } from "../types";
+import { leadArtist } from "./libraryTracks";
 
 export interface ArtistAbout {
   /** MusicBrainz artist id */
@@ -66,9 +67,9 @@ export function seedArtistAbout(_page: unknown, _artistId: string, _fallbackName
   /* nothing to seed — answers come from the open databases */
 }
 
-/** The playing track's artist about-card data. */
+/** The playing track's artist about-card data — its first credited artist ("A, B" asks about A). */
 export function useArtistAbout(track: Track | null): ArtistAbout | null {
-  const artist = track?.artist ?? "";
+  const artist = track ? leadArtist(track.artist) : "";
   const [data, setData] = useState<ArtistAbout | null>(null);
 
   useEffect(() => {

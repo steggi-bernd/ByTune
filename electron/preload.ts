@@ -22,7 +22,7 @@ const documentScope = (): Promise<string> => {
 const api = {
   platform: process.platform,
   versions: {
-    app: "1.0.2",
+    app: "1.0.3",
     electron: process.versions.electron ?? "",
     chrome: process.versions.chrome ?? "",
     node: process.versions.node ?? "",
@@ -66,6 +66,15 @@ const api = {
     ipcRenderer.invoke("library:renameFolder", folderPath, displayName),
   removeLibraryFolder: (folderPath: string) => ipcRenderer.invoke("library:removeFolder", folderPath),
   libraryFolderStatuses: () => ipcRenderer.invoke("library:folderStatuses"),
+  /** What can play right now: each imported folder's existence, and whether the servers answer (null = none connected). */
+  libraryAvailability: () =>
+    ipcRenderer.invoke("library:availability") as Promise<{
+      folders: { path: string; exists: boolean }[];
+      jellyfin: boolean | null;
+      subsonic: boolean | null;
+    }>,
+  /** True when songs were read with an older scan schema — one rescan fills the new fields. */
+  libraryNeedsRescan: () => ipcRenderer.invoke("library:needsRescan") as Promise<boolean>,
   localTrackUrl: (id: string) => ipcRenderer.invoke("library:trackurl", id),
   /** Why localTrackUrl answered null: "missing" | "ffmpeg-missing" | "transcode-failed". */
   localTrackError: (id: string) => ipcRenderer.invoke("library:trackerror", id) as Promise<string | null>,

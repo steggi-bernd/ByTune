@@ -22,7 +22,7 @@ import {
   User,
 } from "lucide-react";
 import { TrackList } from "../components/TrackList";
-import { albumKeyOf, albumRoute, artistRoute, leadArtist, localToTrack } from "../lib/libraryTracks";
+import { albumKeyOf, albumRoute, artistRoute, leadArtist, localToTrack, splitCredits } from "../lib/libraryTracks";
 import { Artwork, EmptyState, Pills } from "../components/primitives";
 import { isUnderPath } from "../../electron/local-paths";
 import { useSettings } from "../stores/settings";
@@ -227,10 +227,14 @@ export function LocalMusicView() {
   const artists = useMemo(() => {
     const map = new Map<string, { name: string; count: number; art?: string }>();
     for (const t of scoped) {
-      const cur = map.get(t.artist) ?? { name: t.artist, count: 0, art: t.art };
-      cur.count += 1;
-      if (!cur.art && t.art) cur.art = t.art;
-      map.set(t.artist, cur);
+      // Every credited artist on their own — "A, B" is two artists, not one.
+      for (const name of splitCredits(t.artist)) {
+        const key = name.toLowerCase();
+        const cur = map.get(key) ?? { name, count: 0, art: t.art };
+        cur.count += 1;
+        if (!cur.art && t.art) cur.art = t.art;
+        map.set(key, cur);
+      }
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [scoped]);

@@ -44,6 +44,12 @@ export interface LocalTrack {
   albumArtist?: string;
   trackNo?: number;
   discNo?: number;
+  /** songs on the release (TRACKTOTAL), when tagged */
+  trackTotal?: number;
+  /** MusicBrainz release type tags, space-separated ("album", "ep", "single", "album compilation" …) */
+  releaseType?: string;
+  /** first release year (ORIGINALYEAR) — a reissue's own year can be decades later */
+  originalYear?: number;
   /** ReplayGain 2.0 values (dB, linear peak), from the tags; Opus R128 tags converted */
   rg?: ReplayGainTags;
   sampleRate?: number;
@@ -65,7 +71,7 @@ export interface ReplayGainTags {
 }
 
 /** Bump when the scan reads new fields: unchanged files are then re-read once. */
-const SCAN_VERSION = 2;
+const SCAN_VERSION = 3;
 
 /** ReplayGain from the tags; Opus files carry R128 gains (Q7.8 dB, −23 LUFS) instead. */
 function readReplayGain(meta: import("music-metadata").IAudioMetadata): ReplayGainTags | undefined {
@@ -468,6 +474,11 @@ export function folderStatuses(): FolderStatus[] {
   return readLocalLibrary().folders.map((f) => ({ path: f.path, exists: isDirectory(f.path) }));
 }
 
+/** Records read with an older scan schema: one rescan fills in the fields they lack. */
+export function hasStaleScanRecords(): boolean {
+  return readLocalLibrary().tracks.some((t) => t.v !== SCAN_VERSION);
+}
+
 /** Legacy replace-all shape (pre-multi-folder callers). Entries are reused so a re-set never wipes display names. */
 export function setLibraryFolders(folders: string[]): Promise<LocalLibrary> {
   return mutateLibrary(() => setLibraryFoldersExclusive(folders));
@@ -638,6 +649,9 @@ export async function scanLibrary(
         albumArtist: bounded(c.albumartist?.trim()),
         trackNo: num(c.track?.no),
         discNo: num(c.disk?.no),
+        trackTotal: num(c.track?.of),
+        releaseType: bounded(c.releasetype?.join(" ").toLowerCase()),
+        originalYear: num(c.originalyear),
         rg: readReplayGain(meta),
         sampleRate: num(meta.format.sampleRate),
         bitsPerSample: num(meta.format.bitsPerSample),
