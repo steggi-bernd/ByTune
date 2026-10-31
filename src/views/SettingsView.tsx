@@ -818,6 +818,13 @@ export function SettingsView() {
         />
         <Divider />
         <SettingsRow
+          icon={FileUp}
+          title="Import from Spotify"
+          subtitle="Your Liked Songs: which you have, which to buy"
+          onClick={() => useUI.getState().navigate({ name: "spotify" })}
+        />
+        <Divider />
+        <SettingsRow
           icon={FolderSync}
           title="Watch folders"
           subtitle="New, changed and deleted files show up without rescanning"

@@ -34,6 +34,7 @@ import { LibraryHomeView } from "./views/LibraryHomeView";
 import { MixView } from "./views/MixView";
 import { SmartPlaylistView } from "./views/SmartPlaylistView";
 import { SubsonicView } from "./views/SubsonicView";
+import { SpotifyImportView } from "./views/SpotifyImportView";
 import { LibrarySearchView } from "./views/LibrarySearchView";
 import { LibraryView } from "./views/LibraryView";
 import { LocalMusicView } from "./views/LocalMusicView";
@@ -245,6 +246,8 @@ function CurrentView(): ReactNode {
       return <JellyfinView />;
     case "replay":
       return <ReplayView />;
+    case "spotify":
+      return <SpotifyImportView />;
     case "settings":
       return <SettingsView />;
     default:

@@ -20,6 +20,7 @@ export type ViewName =
   | "mix"
   | "smart"
   | "replay"
+  | "spotify"
   | "settings";
 
 export interface View {

@@ -614,6 +614,23 @@ function registerIpc(): void {
   }));
 
   ipc.handle("app:defaultDownloadDir", () => downloads.defaultDownloadDir());
+  // A text file the renderer composed (the Spotify import's shopping list),
+  // written only where the user picks in the native save dialog.
+  ipc.handle("file:saveText", async (_e, suggestedName: unknown, content: unknown) => {
+    if (typeof suggestedName !== "string" || typeof content !== "string") throw new Error("Invalid file");
+    if (content.length > 20 * 1024 * 1024) throw new Error("File too large");
+    const name = suggestedName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim().slice(0, 120) || "list.csv";
+    const csv = path.extname(name).toLowerCase() !== ".txt";
+    if (!mainWindow) return null;
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: "Save list",
+      defaultPath: path.join(app.getPath("downloads"), csv && !/\.csv$/i.test(name) ? `${name}.csv` : name),
+      filters: csv ? [{ name: "Spreadsheet (CSV)", extensions: ["csv"] }] : [{ name: "Text", extensions: ["txt"] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    await fs.promises.writeFile(res.filePath, content, "utf-8");
+    return res.filePath;
+  });
   ipc.handle("app:pickFolder", async () => {
     if (!mainWindow) return null;
     const res = await dialog.showOpenDialog(mainWindow, {

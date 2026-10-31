@@ -4,7 +4,9 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { coalescedStorage } from "../lib/persist";
 import { recordDeletionChanges } from "../lib/deletion-sync";
 import type { DeletionChange, DeletionSync } from "../lib/deletion-sync";
+import { withoutOtherCopies } from "../lib/duplicates";
 import type { Track } from "../types";
+import { songKey } from "./catalog";
 
 export interface Playlist {
   id: string;
@@ -66,6 +68,8 @@ interface LibraryState {
 
   isLiked(id: string): boolean;
   toggleLike(track: Track): void;
+  /** likes brought over from another service, in its order — returns how many songs are newly liked */
+  importLikes(tracks: Track[]): number;
   togglePinSingle(key: PinnedSingleKey): void;
   createPlaylist(name: string): Playlist;
   renamePlaylist(id: string, name: string): void;
@@ -136,6 +140,29 @@ export const useLibrary = create<LibraryState>()(
           withChanges(set, get, { liked: [track, ...liked] },
             [{ kind: "add", group: "liked", id: track.id }]);
         }
+      },
+
+      importLikes(tracks) {
+        // The import's order, newest first, one copy per song. Songs liked
+        // here that the import doesn't hold stay on top — they're the newer
+        // likes. A song liked here as its other copy (the Jellyfin one, say)
+        // is the same like: the imported copy takes its place.
+        const { liked } = get();
+        const imported = withoutOtherCopies(tracks, songKey).list;
+        const importedKeys = new Set(imported.map((t) => songKey(t.id)));
+        const importedIds = new Set(imported.map((t) => t.id));
+        const likedKeys = new Set(liked.map((t) => songKey(t.id)));
+        const likedIds = new Set(liked.map((t) => t.id));
+        const keep = liked.filter((t) => !importedKeys.has(songKey(t.id)));
+        const replaced = liked.filter((t) => importedKeys.has(songKey(t.id)) && !importedIds.has(t.id));
+        const added = imported.filter((t) => !likedIds.has(t.id));
+        for (const t of imported) hydrationLikes?.set(t.id, { track: t, liked: true });
+        for (const t of replaced) hydrationLikes?.set(t.id, { track: t, liked: false });
+        withChanges(set, get, { liked: [...keep, ...imported] }, [
+          ...added.map((t): DeletionChange => ({ kind: "add", group: "liked", id: t.id })),
+          ...replaced.map((t): DeletionChange => ({ kind: "delete", group: "liked", id: t.id })),
+        ]);
+        return imported.filter((t) => !likedKeys.has(songKey(t.id))).length;
       },
 
       createPlaylist(name) {

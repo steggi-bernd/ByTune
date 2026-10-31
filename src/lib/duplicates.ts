@@ -30,7 +30,7 @@ export function foldTag(s: string | undefined): string {
 }
 
 /** Title without "(feat. X)" / " ft. X" credits — sources disagree on where those go. */
-function titleKey(title: string): string {
+export function titleKey(title: string): string {
   return foldTag(
     title
       .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/gi, "")

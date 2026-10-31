@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileUp,
   Folder,
   FolderOpen,
   Heart,
@@ -572,6 +573,9 @@ export function LibraryView() {
                 <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(liked)}>
                   Shuffle
                 </Btn>
+                <Btn variant="glass" size="md" icon={FileUp} onClick={() => navigate({ name: "spotify" })} className="ml-auto">
+                  Import from Spotify
+                </Btn>
               </div>
               <div className="mt-5">
                 <TrackList tracks={liked} showAlbum emptyTitle="No liked songs yet" />
@@ -581,11 +585,16 @@ export function LibraryView() {
             <EmptyState
               icon={Heart}
               title="Songs you like will show up here"
-              body="Click the heart on any track — in the player, a playlist, or search — and it lands in this list."
+              body="Click the heart on any track — in the player, a playlist, or search — and it lands in this list. Or bring your Liked Songs over from Spotify."
               action={
-                <Btn variant="white" onClick={() => navigate({ name: "search" })}>
-                  Find something to like
-                </Btn>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Btn variant="white" icon={FileUp} onClick={() => navigate({ name: "spotify" })}>
+                    Import from Spotify
+                  </Btn>
+                  <Btn variant="glass" onClick={() => navigate({ name: "search" })}>
+                    Find something to like
+                  </Btn>
+                </div>
               }
             />
           )}

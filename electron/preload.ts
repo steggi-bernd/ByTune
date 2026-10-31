@@ -234,6 +234,9 @@ const api = {
   // Filesystem helpers
   defaultDownloadDir: () => ipcRenderer.invoke("app:defaultDownloadDir"),
   pickFolder: () => ipcRenderer.invoke("app:pickFolder"),
+  /** Save text the app composed (e.g. a CSV list) where the user picks; resolves to the path, or null if cancelled. */
+  saveTextFile: (suggestedName: string, content: string) =>
+    ipcRenderer.invoke("file:saveText", suggestedName, content) as Promise<string | null>,
   revealPath: (p: string) => ipcRenderer.invoke("app:revealPath", p),
   openPath: (p: string) => ipcRenderer.invoke("app:openPath", p),
 
