@@ -14,6 +14,30 @@
 
 ---
 
+## Local edition (this branch)
+
+This branch turns ByTune into a **local music player**: no YouTube Music, no account, no sign-in screen.
+The app starts in your library and plays two sources side by side:
+
+- **Local files** — your imported folders, as before.
+- **Jellyfin** — sign in to your own server with user name + password (only the session token is kept,
+  sealed by the OS keychain) or an API key. Songs stream through ByTune's local proxy, covers through
+  the `jfart://` scheme, so plain-http LAN servers work too.
+
+Everything the files' tags don't say comes from **public, open databases**:
+
+| What | Source |
+| --- | --- |
+| Missing covers and album names | MusicBrainz + Cover Art Archive, iTunes Search as fallback |
+| Artist bio, photo, facts, genres | MusicBrainz → Wikidata → Wikipedia (app language, English fallback) / Wikimedia Commons |
+| Synced lyrics | LRCLIB, KuGou and the other open lyric providers (the YouTube sources are off) |
+
+Lookups are paced to MusicBrainz's one-request-per-second rule, run in the background after a scan
+(`electron/enrich.ts`), and are cached on disk (`open-metadata` store) — a temporary outage is never
+cached as "not found". Search, AutoPlay and the "More by …" menu all work on your own library only.
+
+The YouTube code is still in the repository but no longer reachable from the UI.
+
 ## What is ByTune?
 
 ByTune is a free, open-source music player for Windows and macOS, built with Electron, React and TypeScript. It plays streaming music from YouTube Music (no login required) alongside your own local files, and wraps both in a proper desktop player: a queue, synced lyrics, playlists, downloads, listening stats and keyboard shortcuts.

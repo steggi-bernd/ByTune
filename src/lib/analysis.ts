@@ -38,7 +38,7 @@ async function fetchAudio(trackId: string): Promise<ArrayBuffer | null> {
     const { useSettings } = await import("../stores/settings");
     const bridge = requireBridge();
     // Local files analyse through the same proxy route the element plays.
-    const url = trackId.startsWith("local:")
+    const url = trackId.startsWith("local:") || trackId.startsWith("jf:")
       ? await bridge.localTrackUrl(trackId)
       : await bridge.getStreamUrl(trackId, false, useSettings.getState().streamingQuality);
     if (!url) return null;

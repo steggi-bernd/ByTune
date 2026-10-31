@@ -13,27 +13,23 @@ import { TopBar } from "./components/TopBar";
 import { engineBoot } from "./lib/audio";
 import { setAmbientFromArtwork } from "./lib/ambient";
 import { listenForDownloadProgress } from "./lib/downloads";
+import { watchLibraryEnrichment } from "./lib/libraryEnrichment";
 import { watchMenuCommands } from "./lib/menuCommands";
 import { usePanelDrop } from "./lib/panelDrop";
 import { useArtworkPalette } from "./lib/palette";
 import { watchSession, useSession } from "./lib/session";
 import { watchSyncRestores } from "./lib/syncRestore";
-import { takeOnboardingIntent } from "./lib/onboardingIntent";
 import { startPipSync } from "./pip/pipSync";
 import { usePlayer } from "./stores/player";
 import { useLibrary } from "./stores/library";
 import { useSettings } from "./stores/settings";
 import { useUI } from "./stores/ui";
-import { AlbumView } from "./views/AlbumView";
-import { ArtistView } from "./views/ArtistView";
-import { DownloadsView } from "./views/DownloadsView";
-import { ExploreView } from "./views/ExploreView";
-import { HomeView } from "./views/HomeView";
-import { RemotePlaylistView } from "./views/RemotePlaylistView";
-import { LibraryView } from "./views/LibraryView";import { LocalMusicView } from "./views/LocalMusicView";
+import { JellyfinView } from "./views/JellyfinView";
+import { LibrarySearchView } from "./views/LibrarySearchView";
+import { LibraryView } from "./views/LibraryView";
+import { LocalMusicView } from "./views/LocalMusicView";
 import { PlaylistView } from "./views/PlaylistView";
 import { ReplayView } from "./views/ReplayView";
-import { SearchView } from "./views/SearchView";
 import { SettingsView } from "./views/SettingsView";
 
 /**
@@ -202,36 +198,30 @@ function useAppearance(): void {
   }, [reduceAnimation, reduceDynamicBlur, liquidGlass]);
 }
 
+/**
+ * Local player routing: the library is home. The streaming routes (explore,
+ * remote playlists, catalogue album/artist pages, downloads) are gone — a
+ * stale link to one (an old history entry, a synced playlist row) lands on
+ * the library instead of a YouTube page.
+ */
 function CurrentView(): ReactNode {
   const view = useUI((s) => s.view);
   switch (view.name) {
-    case "home":
-      return <HomeView />;
-    case "explore":
-      return <ExploreView />;
     case "search":
-      return <SearchView />;
+      return <LibrarySearchView />;
     case "library":
     case "playlists":
       return <LibraryView />;
     case "playlist":
       return <PlaylistView playlistId={view.param ?? ""} />;
-    case "ytplaylist":
-      return <RemotePlaylistView playlistId={view.param ?? ""} />;
-    case "album":
-      return <AlbumView albumId={view.param ?? ""} />;
-    case "artist":
-      return <ArtistView artistId={view.param ?? ""} />;
-    case "downloads":
-      return <DownloadsView />;
-    case "local":
-      return <LocalMusicView />;
+    case "jellyfin":
+      return <JellyfinView />;
     case "replay":
       return <ReplayView />;
     case "settings":
       return <SettingsView />;
     default:
-      return <HomeView />;
+      return <LocalMusicView />;
   }
 }
 
@@ -267,6 +257,21 @@ export default function App() {
     const unsubscribe = listenForDownloadProgress();
     return unsubscribe;
   }, []);
+
+  // Covers/albums filled in from the open databases arrive in batches.
+  useEffect(() => watchLibraryEnrichment(), []);
+
+  // No account needed for a local player: the first launch (or a reinstall
+  // that found an old guest profile) goes straight in as a guest instead of
+  // stopping at the sign-in screen.
+  const needsGuest = session.loaded && (session.mode === null || (session.mode === "guest" && session.freshInstall));
+  useEffect(() => {
+    if (!needsGuest) return;
+    void window.bytune
+      ?.authContinueGuest()
+      .catch(() => undefined)
+      .then(() => useSession.getState().refresh());
+  }, [needsGuest]);
 
   // Native miniplayer bridge: push playback snapshots to the PiP window and
   // execute transport commands coming back from it.
@@ -329,9 +334,7 @@ export default function App() {
   useAppearance();
 
   // First run / reinstall gate — no shell is rendered until a mode is chosen.
-  if (!session.loaded) return <div className="h-screen bg-canvas" />;
-  if (session.mode === null) return <Onboarding initial={takeOnboardingIntent() ?? "choose"} />;
-  if (session.mode === "guest" && session.freshInstall) return <Onboarding initial="resume" />;
+  if (!session.loaded || needsGuest) return <div className="h-screen bg-canvas" />;
   // A fresh Google user must choose their username before entering.
   if (session.mode === "account" && session.needsUsername) return <Onboarding initial="pickusername" />;
 

@@ -22,6 +22,7 @@ import {
   Music4,
   RefreshCw,
   SlidersHorizontal,
+  Server,
   SlidersVertical,
   Speaker,
   Sparkles,
@@ -720,67 +721,26 @@ export function SettingsView() {
         Settings
       </h1>
 
-      <CloudAccountGroup />
-
-      <SettingsGroup header="Audio quality">
+      <SettingsGroup
+        header="Library sources"
+        footer="Covers your files lack, album names and artist bios come from open databases: MusicBrainz, Cover Art Archive, iTunes Search and Wikipedia/Wikidata. Answers are cached on this device."
+      >
         <SettingsRow
-          icon={Wifi}
-          title="Streaming quality"
-          subtitle="Ceiling for streamed audio"
-          value={STREAM_QUALITY_LABEL[s.streamingQuality]}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) =>
-            toggleDropdownAt(
-              e,
-              qualityMenu(
-                ["low", "medium", "high", "lossless"],
-                STREAM_QUALITY_LABEL,
-                s.streamingQuality,
-                s.setStreamingQuality
-              )
-            )
-          }
+          icon={FolderOpen}
+          title="Local Music"
+          subtitle="Folders on this device"
+          onClick={() => useUI.getState().navigate({ name: "local" })}
+        />
+        <Divider />
+        <SettingsRow
+          icon={Server}
+          title="Jellyfin"
+          subtitle="Your own media server"
+          onClick={() => useUI.getState().navigate({ name: "jellyfin" })}
         />
       </SettingsGroup>
 
       <OutputDeviceGroup />
-
-      <SettingsGroup
-        header="Downloads"
-        footer="Export compatible saves into your Music library (Music/ByTune) so other players can use the files; otherwise downloads stay in the folder above."
-      >
-        <SettingsRow
-          icon={FolderOpen}
-          title="Download folder"
-          subtitle={s.downloadDir ?? "Default: your system Downloads folder / ByTune"}
-          onClick={() => void browse()}
-        />
-        <Divider />
-        <SettingsRow
-          icon={Download}
-          title="Download quality"
-          subtitle="What a saved track costs on disk"
-          value={DOWNLOAD_QUALITY_LABEL[s.downloadQuality]}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) =>
-            toggleDropdownAt(
-              e,
-              qualityMenu(
-                ["standard", "high", "lossless"],
-                DOWNLOAD_QUALITY_LABEL,
-                s.downloadQuality,
-                s.setDownloadQuality
-              )
-            )
-          }
-        />
-        <SettingsSubRow
-          title="Export compatible downloads"
-          checked={s.exportDownloads}
-          onChange={s.setExportDownloads}
-          badge={s.exportDownloads ? "Music/ByTune" : undefined}
-        />
-      </SettingsGroup>
 
       <SettingsGroup header="Playback">
         {!s.smartFade && (

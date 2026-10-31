@@ -1,16 +1,14 @@
 /** Builds right-click / "more" menu items for tracks and playlists. */
 import {
-  Disc3,
-  Download,
   FolderOpen,
   Heart,
-  Link2,
   ListMusic,
   ListPlus,
   ListStart,
   Pencil,
   Play,
   RotateCcw,
+  Search,
   Trash2,
 } from "lucide-react";
 import { startDownload } from "./downloads";
@@ -23,8 +21,6 @@ export function trackMenuItems(track: Track): MenuItem[] {
   const lib = useLibrary.getState();
   const ui = useUI.getState();
   const liked = lib.isLiked(track.id);
-  const dl = lib.downloads[track.id];
-  const done = dl?.status === "done";
 
   const items: MenuItem[] = [
     {
@@ -89,38 +85,28 @@ export function trackMenuItems(track: Track): MenuItem[] {
     },
   });
 
-  items.push({
-    separatorBefore: true,
-    label: done ? "Show in folder" : "Download",
-    icon: done ? FolderOpen : Download,
-    action: () => {
-      if (done && dl?.path) {
-        requireReveal(dl.path);
-      } else {
-        void startDownload(track);
-      }
-    },
-  });
-
-  if (track.albumId) {
+  // Local player: no downloads or share links — a song's home is a file on
+  // this device or an item on the user's Jellyfin server.
+  if (track.localPath) {
     items.push({
       separatorBefore: true,
-      label: "Go to album",
-      icon: Disc3,
-      action: () => useUI.getState().navigate({ name: "album", param: track.albumId }),
+      label: "Show in folder",
+      icon: FolderOpen,
+      action: () => requireReveal(track.localPath as string),
     });
   }
 
-  items.push({
-    label: "Copy link",
-    icon: Link2,
-    action: () => {
-      void navigator.clipboard
-        .writeText(`https://music.youtube.com/watch?v=${track.id}`)
-        .then(() => useUI.getState().toast("Link copied"))
-        .catch(() => useUI.getState().toast("Couldn't copy link", "error"));
-    },
-  });
+  if (track.artist && track.artist.toLowerCase() !== "unknown artist") {
+    items.push({
+      separatorBefore: !track.localPath,
+      label: `More by ${track.artist}`,
+      icon: Search,
+      action: () => {
+        useUI.getState().setSearchQuery(track.artist);
+        useUI.getState().navigate({ name: "search" });
+      },
+    });
+  }
 
   return items;
 }

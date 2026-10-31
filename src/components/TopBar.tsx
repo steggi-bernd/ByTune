@@ -14,7 +14,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  Compass,
   Copy,
   CornerDownLeft,
   History,
@@ -25,7 +24,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { reloadHomeFeed } from "../lib/recs/feed";
+import { loadAllLibraryTracks } from "../lib/libraryTracks";
 import { useSession } from "../lib/session";
 import { isMac } from "../lib/platform";
 import { useUI } from "../stores/ui";
@@ -188,16 +187,25 @@ export function TopBar() {
       return;
     }
     const seq = ++suggestSeq.current;
+    // Completions come from the user's own library (artists, albums, titles
+    // that start with the typed text) — there is no catalogue to ask.
     const timer = window.setTimeout(() => {
-      window.bytune
-        ?.suggestions(q)
-        .then((res) => {
+      void loadAllLibraryTracks()
+        .then((tracks) => {
           if (suggestSeq.current !== seq) return; // a newer keystroke won
-          // Row 0 already offers the typed query — don't echo it back.
-          const items = ((res?.items ?? []) as SearchSuggestion[]).filter(
-            (s) => s.text.trim().toLowerCase() !== q.toLowerCase()
-          );
-          setSuggests(items.slice(0, 8));
+          const lower = q.toLowerCase();
+          const seen = new Set<string>([lower]);
+          const items: SearchSuggestion[] = [];
+          for (const t of tracks) {
+            for (const text of [t.artist, t.album ?? "", t.title]) {
+              const key = text.toLowerCase();
+              if (!key.startsWith(lower) || seen.has(key)) continue;
+              seen.add(key);
+              items.push({ text });
+            }
+            if (items.length >= 8) break;
+          }
+          setSuggests(items);
           setSuggestOpen(items.length > 0);
           setActiveIdx(-1);
         })
@@ -219,7 +227,7 @@ export function TopBar() {
     setSuggests([]);
     setFieldFocused(false);
     inputRef.current?.blur();
-    navigate({ name: "home" });
+    navigate({ name: "local" });
   };
 
   /** Mobile model: an empty focused field drops the recent-searches panel. */
@@ -266,8 +274,7 @@ export function TopBar() {
   const refreshCurrentView = (): void => {
     if (feedRefreshing) return;
     setFeedRefreshing(true);
-    if (view.name === "home") reloadHomeFeed();
-    else useUI.getState().bumpViewReload();
+    useUI.getState().bumpViewReload();
     window.setTimeout(() => setFeedRefreshing(false), 800);
   };
 
@@ -339,9 +346,9 @@ export function TopBar() {
           onClick={goHome}
           title="Home"
           aria-label="Home"
-          aria-current={view.name === "home" ? "page" : undefined}
+          aria-current={view.name === "local" ? "page" : undefined}
           className={`app-no-drag w-12 h-12 shrink-0 grid place-items-center rounded-full transition-colors ${
-            view.name === "home"
+            view.name === "local"
               ? "bg-elevated text-ink-hi"
               : "bg-panel text-ink-hi/75 hover:text-ink-hi hover:bg-ink-hi/[0.06]"
           }`}
@@ -490,7 +497,7 @@ export function TopBar() {
                   setSuggests([]);
                   setFieldFocused(false);
                   inputRef.current?.blur();
-                  if (view.name === "search") navigate({ name: "home" });
+                  if (view.name === "search") navigate({ name: "local" });
                 }}
                 title="Clear search"
                 aria-label="Clear search"
@@ -499,19 +506,6 @@ export function TopBar() {
                 <X className="w-[18px] h-[18px]" />
               </button>
             )}
-            <div className="h-6 w-px bg-ink-hi/20" />
-            <button
-              onClick={() => navigate({ name: "explore" })}
-              title="Explore"
-              aria-label="Explore"
-              className={`p-1.5 rounded-full transition-colors ${
-                view.name === "explore"
-                  ? "text-ink-hi bg-ink-hi/[0.10]"
-                  : "text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.08]"
-              }`}
-            >
-              <Compass className="w-[18px] h-[18px]" />
-            </button>
           </div>
         </div>
       </div>

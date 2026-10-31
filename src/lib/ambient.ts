@@ -76,7 +76,8 @@ export async function loadArtworkImage(
 ): Promise<{ image: HTMLImageElement; cleanup: () => void } | null> {
   let src = url;
   let revoke: string | null = null;
-  if (url.startsWith("localart://")) {
+  // Jellyfin covers (jfart://) are a custom scheme too — same IPC path.
+  if (url.startsWith("localart://") || url.startsWith("jfart://")) {
     try {
       const bytes = (await window.bytune?.localArtBytes(url)) as unknown;
       const u8 =

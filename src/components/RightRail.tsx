@@ -2,15 +2,15 @@
  * Right rail — the always-on song-details panel, Spotify-style.
  *
  * Default mode ("details"): a sharp artwork tile over the track title and an
- * About-the-artist card in Spotify's shape — photo header, verified name,
- * monthly listeners beside a View profile pill, and the editorial blurb — clicking
- * it opens that artist's page. The queue button in the player bar swaps the
+ * About-the-artist card in Spotify's shape — photo header, name, facts line
+ * beside a Wikipedia pill, and the Wikipedia lead — clicking it searches the
+ * library for that artist. The queue button in the player bar swaps the
  * body to the queue sheet ("Queue" / "Recently played" text tabs with the
  * underline treatment, X returns to details). Lyrics live in the centre pane
  * (see LyricsCenter.tsx), not here.
  */
 import { useEffect, useState } from "react";
-import { BadgeCheck, Music2, X } from "lucide-react";
+import { Music2, X } from "lucide-react";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import { Artwork, EqBars, IconBtn } from "./primitives";
@@ -18,7 +18,7 @@ import { upgradeArtwork, wideArtwork } from "../lib/artwork";
 import { useDrag } from "../lib/dnd";
 import { fmtTime } from "../lib/format";
 import { useArtistImage } from "../lib/artistImage";
-import { monthlyListenersLabel, useArtistAbout } from "../lib/artistAbout";
+import { useArtistAbout } from "../lib/artistAbout";
 import { useLibrary } from "../stores/library";
 import type { Track } from "../types";
 
@@ -279,12 +279,11 @@ function DetailsBody() {
 
 /**
  * About the artist, Spotify-panel style: photo header with the section label
- * over its top edge, the artist's name with their verified seal, monthly
- * listeners beside a View profile pill, and the editorial blurb — the same
- * "About the artist" writing the artist page shows. Clicking it opens that
- * artist page; the whole card is also an artist drag source (the home page's
- * artist cards carry the identical payload), so dropping it on Your Library
- * follows the artist.
+ * over its top edge, the artist's name, the MusicBrainz facts line and the
+ * Wikipedia lead. Everything comes from the open databases (artistAbout.ts).
+ * Clicking the card searches the library for the artist; the Wikipedia
+ * button opens the source article in the browser, which is also the credit
+ * the CC BY-SA licence of the text asks for.
  */
 function AboutArtistCard({
   track,
@@ -295,25 +294,26 @@ function AboutArtistCard({
 }) {
   const about = useArtistAbout(track);
   const navigate = useUI((s) => s.navigate);
-  const listeners = monthlyListenersLabel(about);
   const photo = about?.thumb ?? fallbackImage;
-  // Hooks rule: called before the early return. The card renders only when
-  // `about` exists, so the empty fallback payload can never begin a drag.
-  const drag = useDrag({
-    artist: { id: about?.artistId ?? "", name: about?.name ?? "", thumb: photo ?? undefined },
-  });
 
   if (!about) return null;
 
+  const showInLibrary = (): void => {
+    useUI.getState().setSearchQuery(about.name);
+    navigate({ name: "search" });
+  };
+
   return (
-    <button
-      onClick={() => navigate({ name: "artist", param: about.artistId })}
-      title={`Open ${about.name} — or drag into Your Library`}
-      aria-label={`About the artist — open ${about.name}`}
-      {...drag.props}
-      className={`group rounded-xl bg-ink-hi/[0.04] overflow-hidden text-left cursor-pointer hover:bg-ink-hi/[0.06] transition-colors animate-fade-in ${
-        drag.dragging ? "opacity-40" : ""
-      }`}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={showInLibrary}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") showInLibrary();
+      }}
+      title={`Show ${about.name} in your library`}
+      aria-label={`About the artist — show ${about.name} in your library`}
+      className="group rounded-xl bg-ink-hi/[0.04] overflow-hidden text-left cursor-pointer hover:bg-ink-hi/[0.06] transition-colors animate-fade-in"
     >
       {/* Photo header with the label over its top edge, Spotify-style — a tall
           3:2 frame showing the whole artist shot, not a cropped strip. */}
@@ -328,24 +328,27 @@ function AboutArtistCard({
       </div>
 
       <div className="p-3.5 pt-3">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[15px] font-bold text-ink-hi truncate">{about.name}</span>
-          <BadgeCheck className="w-[18px] h-[18px] shrink-0 text-[#4cb3ff]" fill="#4cb3ff" stroke="#0a0a0a" />
-        </div>
+        <div className="text-[15px] font-bold text-ink-hi truncate">{about.name}</div>
+        {about.genres.length > 0 && (
+          <div className="text-[12.5px] text-ink-hi/55 truncate mt-0.5">{about.genres.slice(0, 3).join(" · ")}</div>
+        )}
 
         <div className="flex items-center justify-between gap-3 mt-2.5">
-          <span className="text-[13px] text-ink-hi/70 truncate">
-            {listeners ?? about.subscriberCount ?? "Artist"}
+          <span className="text-[13px] text-ink-hi/70 truncate" title={about.facts ?? undefined}>
+            {about.facts ?? "Artist"}
           </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate({ name: "artist", param: about.artistId });
-            }}
-            className="shrink-0 h-8 px-4 rounded-full border border-ink-hi/30 text-[13px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
-          >
-            View profile
-          </button>
+          {about.wikiUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // The main window's open handler sends web links to the system browser.
+                window.open(about.wikiUrl as string, "_blank");
+              }}
+              className="shrink-0 h-8 px-4 rounded-full border border-ink-hi/30 text-[13px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
+            >
+              Wikipedia
+            </button>
+          )}
         </div>
 
         {about.description && (
@@ -353,7 +356,7 @@ function AboutArtistCard({
             className="mt-2.5 text-[13px] leading-relaxed text-ink-hi/70"
             style={{
               display: "-webkit-box",
-              WebkitLineClamp: 3,
+              WebkitLineClamp: 5,
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
             }}
@@ -362,7 +365,7 @@ function AboutArtistCard({
           </p>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 

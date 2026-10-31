@@ -590,6 +590,40 @@ export async function scanLibrary(
   return lib;
 }
 
+/**
+ * Store a cover fetched from an open database in the same cache the tag
+ * covers live in, so it is served (and palette-read) exactly like they are.
+ * `key` names the release, so every track of one album shares one file.
+ */
+export function storeFetchedArt(key: string, picture: { data: Uint8Array; format: string }): string | undefined {
+  return extractArt(hashPath(`meta:${key}`), picture, false);
+}
+
+/**
+ * Fill what a file's tags left empty — cover, album — from open metadata.
+ * Only gaps are written: a value the file's own tags carry always wins. The
+ * fill rides on the track record, so an unchanged file keeps it across
+ * rescans; a re-tagged file is re-parsed and looked up again.
+ */
+export function applyTrackFills(fills: Map<string, { art?: string; album?: string }>): Promise<LocalLibrary> {
+  return mutateLibrary(async () => {
+    const lib = readLocalLibrary();
+    let changed = false;
+    const tracks = lib.tracks.map((t) => {
+      const fill = fills.get(t.id);
+      if (!fill) return t;
+      const next = { ...t };
+      if (fill.art && !t.art) next.art = fill.art;
+      if (fill.album && (!t.album || t.album === "Unknown album")) next.album = fill.album;
+      if (next.art !== t.art || next.album !== t.album) changed = true;
+      return next;
+    });
+    const out = { ...lib, tracks };
+    if (changed) await saveLocalLibrary(out);
+    return out;
+  });
+}
+
 /** Read one extracted cover off disk for the localart:// protocol. */
 export function readArtFile(name: string): { data: Buffer; mime: string } | null {
   if (!/^[a-f0-9]{16}\.(jpg|png)$/.test(name)) return null;

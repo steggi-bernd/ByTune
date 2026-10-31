@@ -1,178 +1,86 @@
 /**
- * About-the-artist data for the playing track — the Spotify-panel card.
+ * About-the-artist data for the playing track — the right rail's card.
  *
- * Resolves the artist page the same way the app resolves artist imagery:
- * by the track's artist id when it has one, otherwise by an artist search on
- * the name (never for placeholder credits — "Unknown artist" has no one
- * behind it). The editorial blurb, photo and listener counts come from the
- * same artist page the artist screen shows.
- *
- * Resolutions live in a disk-backed cache (same channel as the artist
- * identity and bundle caches), so reopening the app paints the panel
- * instantly from the last session instead of waiting on a network round
- * trip. The Home feed's bundle refreshes seed this cache too — see
- * seedArtistAbout.
+ * Resolved by name through the open databases in the main process
+ * (electron/metadata.ts): MusicBrainz for identity and facts, Wikidata for
+ * the links, Wikipedia (in the app's language, English as fallback) for the
+ * bio and Wikimedia Commons for the photo. The main process keeps the
+ * answers on disk; this module only memoizes them for the session.
  */
 import { useEffect, useState } from "react";
-import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { storage } from "./persist";
+import type { ArtistMeta } from "../../electron/metadata";
 import type { Track } from "../types";
 
 export interface ArtistAbout {
+  /** MusicBrainz artist id */
   artistId: string;
   name: string;
   thumb: string | null;
-  /** The "About the artist" editorial blurb, when YouTube wrote one. */
+  /** Wikipedia lead section */
   description: string | null;
-  /** "332M monthly audience" off the page header — re-worded for display. */
-  monthlyListeners: string | null;
-  subscriberCount: string | null;
+  /** "Band · Germany · since 1994" */
+  facts: string | null;
+  /** the Wikipedia article the bio came from */
+  wikiUrl: string | null;
+  genres: string[];
 }
 
 const JUNK_ARTIST = "unknown artist";
-const MAX_ABOUT = 120;
 
-interface AboutEntry {
-  about: ArtistAbout | null;
-  at: number;
-}
+const memo = new Map<string, Promise<ArtistAbout | null>>();
 
-interface AboutCacheState {
-  byKey: Record<string, AboutEntry>;
-  /** Bumped on rehydrate and on every write — the panel re-reads when the
-      disk-backed cache lands (cold start) or a seed arrives. */
-  version: number;
-  put(key: string, about: ArtistAbout | null): void;
-  bump(): void;
-}
-
-export const useAboutCache = create<AboutCacheState>()(
-  persist(
-    (set, get) => ({
-      byKey: {},
-      version: 0,
-      put(key, about) {
-        const byKey = { ...get().byKey, [key]: { about, at: Date.now() } };
-        const keys = Object.keys(byKey);
-        if (keys.length > MAX_ABOUT) {
-          keys
-            .sort((a, b) => byKey[a].at - byKey[b].at)
-            .slice(0, keys.length - MAX_ABOUT)
-            .forEach((k) => delete byKey[k]);
-        }
-        set({ byKey, version: get().version + 1 });
-      },
-      bump() {
-        set({ version: get().version + 1 });
-      },
-    }),
-    {
-      name: "artist-about-cache",
-      storage: createJSONStorage(() => storage),
-      onRehydrateStorage: () => (state) => {
-        state?.bump();
-      },
-    }
-  )
-);
-
-async function resolveAbout(track: Track): Promise<ArtistAbout | null> {
-  try {
-    let id = track.artistId ?? null;
-    let name = track.artist;
-    if (!id) {
-      if (!track.artist || track.artist.trim().toLowerCase() === JUNK_ARTIST) return null;
-      const res = (await window.bytune?.search(track.artist)) as {
-        artists?: Array<{ id?: string; name?: string }>;
-      } | null;
-      const top = res?.artists?.[0];
-      if (!top?.id) return null;
-      id = top.id;
-      name = top.name || track.artist;
-    }
-    if (!window.bytune?.getArtist || !id) return null;
-    const page = (await window.bytune.getArtist(id)) as {
-      artist?: { name?: string; thumb?: string };
-      description?: string | null;
-      monthlyListeners?: string | null;
-      subscriberCount?: string | null;
-    } | null;
-    if (!page?.artist) return null;
-    return {
-      artistId: id,
-      name: page.artist.name || name,
-      thumb: page.artist.thumb ?? null,
-      description: page.description ?? null,
-      monthlyListeners: page.monthlyListeners ?? null,
-      subscriberCount: page.subscriberCount ?? null,
-    };
-  } catch {
-    return null;
+export function resolveArtistAbout(artist: string): Promise<ArtistAbout | null> {
+  const key = artist.trim().toLowerCase();
+  if (!key || key === JUNK_ARTIST || !window.bytune?.metaArtist) return Promise.resolve(null);
+  let job = memo.get(key);
+  if (!job) {
+    job = (window.bytune.metaArtist(artist) as Promise<ArtistMeta | null>)
+      .then((m) =>
+        m
+          ? {
+              artistId: m.mbid,
+              name: m.name,
+              thumb: m.image,
+              description: m.description,
+              facts: m.facts,
+              wikiUrl: m.wikiUrl,
+              genres: m.genres ?? [],
+            }
+          : null
+      )
+      .catch(() => {
+        memo.delete(key); // transient failure — let the next play retry
+        return null;
+      });
+    memo.set(key, job);
   }
+  return job;
 }
 
 /**
- * Seed the about cache from an artist-page fetch made elsewhere — the Home
- * feed's bundle refreshes read the same page this panel needs, so the
- * playing panel is instant even for artists it has never resolved itself.
+ * The YouTube home feed used to pre-seed this card from artist pages. The
+ * feed is gone in the local player; kept so the (unrouted) feed module still
+ * compiles.
  */
-export function seedArtistAbout(
-  page: {
-    artist?: { name?: string; thumb?: string };
-    description?: string | null;
-    monthlyListeners?: string | null;
-    subscriberCount?: string | null;
-  },
-  artistId: string,
-  fallbackName = ""
-): void {
-  if (!page?.artist || !artistId) return;
-  useAboutCache.getState().put(artistId, {
-    artistId,
-    name: page.artist.name || fallbackName,
-    thumb: page.artist.thumb ?? null,
-    description: page.description ?? null,
-    monthlyListeners: page.monthlyListeners ?? null,
-    subscriberCount: page.subscriberCount ?? null,
-  });
+export function seedArtistAbout(_page: unknown, _artistId: string, _fallbackName = ""): void {
+  /* nothing to seed — answers come from the open databases */
 }
 
-/** The playing track's artist about-card data, cached per artist. */
+/** The playing track's artist about-card data. */
 export function useArtistAbout(track: Track | null): ArtistAbout | null {
-  const key = track ? track.artistId ?? `name:${track.artist}` : "";
-  const cacheVersion = useAboutCache((s) => s.version);
-  const [data, setData] = useState<ArtistAbout | null>(() => {
-    if (!key) return null;
-    return useAboutCache.getState().byKey[key]?.about ?? null;
-  });
+  const artist = track?.artist ?? "";
+  const [data, setData] = useState<ArtistAbout | null>(null);
 
   useEffect(() => {
-    if (!track || !key) return;
-    const hit = useAboutCache.getState().byKey[key];
-    if (hit) {
-      setData(hit.about);
-      return;
-    }
     let cancelled = false;
     setData(null);
-    void resolveAbout(track).then((res) => {
-      useAboutCache.getState().put(key, res);
+    void resolveArtistAbout(artist).then((res) => {
       if (!cancelled) setData(res);
     });
     return () => {
       cancelled = true;
     };
-    // cacheVersion: the disk-backed cache rehydrating (cold start) or a seed
-    // landing must re-read before falling back to the network.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, cacheVersion]);
+  }, [artist]);
 
   return data;
-}
-
-/** "332M monthly audience" → the chip text the app shows everywhere else. */
-export function monthlyListenersLabel(about: ArtistAbout | null): string | null {
-  const count = about?.monthlyListeners?.split(" ")[0];
-  return count ? `${count} monthly listeners` : null;
 }

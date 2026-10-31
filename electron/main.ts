@@ -6,13 +6,17 @@ import * as fs from "fs";
 import * as path from "path";
 import * as downloads from "./downloads";
 import * as canvas from "./canvas";
+import { enrichLocalLibrary } from "./enrich";
+import * as jellyfin from "./jellyfin";
+import { fetchLyrics, type FetchedLyrics } from "./lyrics";
+import * as meta from "./metadata";
 import * as music from "./music-service";
 import { backupExport, backupImport } from "./backup";
 import * as locallib from "./local-library";
 import * as persist from "./persist";
 import * as pip from "./pip";
 import * as stats from "./stats";
-import { proxyUrlFor, proxyUrlForLocalTrack, startStreamProxy } from "./stream-proxy";
+import { proxyUrlFor, proxyUrlForJellyfin, proxyUrlForLocalTrack, startStreamProxy } from "./stream-proxy";
 import * as auth from "./supabase";
 import * as sync from "./sync";
 import * as transition from "./data-transition";
@@ -26,6 +30,9 @@ const isMac = process.platform === "darwin";
 // scheme; registered privileged so <img> can use it everywhere.
 protocol.registerSchemesAsPrivileged([
   { scheme: "localart", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // Jellyfin covers: fetched (and disk-cached) by the main process, which
+  // holds the server token — see jellyfin.ts.
+  { scheme: "jfart", privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
 // Library internals (BotGuard VM, parser JIT) can throw asynchronously;
@@ -288,6 +295,37 @@ function createWindow(): void {
   });
 }
 
+/**
+ * Lyrics for the local player: the open lyric databases only (LRCLIB, KuGou,
+ * the Apple-TTML mirrors …). The YouTube caption and YT Music sources are
+ * left out — local files and Jellyfin items have no video behind them.
+ */
+const lyricCache = new Map<string, FetchedLyrics | null>();
+async function localLyrics(q: music.LyricsMeta): Promise<FetchedLyrics | null> {
+  if (!q?.id) return null;
+  if (lyricCache.has(q.id)) return lyricCache.get(q.id) ?? null;
+  const duration = typeof q.duration === "number" && Number.isFinite(q.duration) ? Math.round(q.duration) : 0;
+  const found = await fetchLyrics(
+    { id: q.id, title: q.title || "", artist: q.artist || "", album: q.album, duration },
+    { prioritizeWordSync: true },
+    {}
+  ).catch(() => null);
+  lyricCache.set(q.id, found);
+  if (lyricCache.size > 200) lyricCache.delete(lyricCache.keys().next().value as string);
+  return found;
+}
+
+/** Background cover/album fill; each batch is pushed to the renderer. */
+function startEnrichment(): void {
+  enrichLocalLibrary((lib) => {
+    try {
+      mainWindow?.webContents.send("library:enriched", lib);
+    } catch {
+      /* window gone */
+    }
+  });
+}
+
 /** googlevideo rejects media requests that carry a foreign Referer/Origin. */
 function stripMediaReferer(): void {
   const cleanUA =
@@ -363,7 +401,7 @@ function registerIpc(): void {
   ipc.handle("music:charts", () => music.getCharts());
   ipc.handle("music:moods", () => music.getMoods());
   ipc.handle("market:current", () => music.currentMarket());
-  ipc.handle("music:lyrics", (_e, meta: music.LyricsMeta) => music.getLyrics(meta));
+  ipc.handle("music:lyrics", (_e, q: music.LyricsMeta) => localLyrics(q));
   ipc.handle("music:enrich", (_e, ids: string[]) => music.enrichDurations(Array.isArray(ids) ? ids : []));
   ipc.handle("music:stream", async (_e, id: string, forceRotate?: boolean, quality?: string) => {
     // Hand the renderer a localhost proxy URL — the main process does the
@@ -380,7 +418,11 @@ function registerIpc(): void {
   });
 
   ipc.handle("library:get", () => locallib.readLocalLibrary());
-  ipc.handle("library:scan", async (_e, filterNonMusic?: boolean) => locallib.scanLibrary(filterNonMusic !== false));
+  ipc.handle("library:scan", async (_e, filterNonMusic?: boolean) => {
+    const lib = await locallib.scanLibrary(filterNonMusic !== false);
+    startEnrichment();
+    return lib;
+  });
   ipc.handle("library:setFolders", async (_e, folders: string[]) => {
     const clean = approvedFolderInputs(folders, 8);
     return locallib.setLibraryFolders(clean);
@@ -401,14 +443,19 @@ function registerIpc(): void {
     locallib.removeLibraryFolder(String(folderPath ?? ""))
   );
   ipc.handle("library:folderStatuses", () => locallib.folderStatuses());
-  ipc.handle("library:trackurl", (_e, id: string) => {
+  ipc.handle("library:trackurl", async (_e, id: string) => {
+    if (String(id ?? "").startsWith("jf:")) {
+      await startStreamProxy();
+      return jellyfin.status().connected ? proxyUrlForJellyfin(String(id)) : null;
+    }
     const p = locallib.localStreamPath(String(id ?? ""));
     if (!p) return null;
     // Serve over the stream proxy — Chromium blocks file:// media when the
     // renderer runs on an http origin (dev server / packaged build).
     return proxyUrlForLocalTrack(String(id)) ?? pathToFileURL(p).toString();
   });
-  ipc.handle("library:artbytes", (_e, thumb: string) => {
+  ipc.handle("library:artbytes", async (_e, thumb: string) => {
+    if (String(thumb ?? "").startsWith("jfart://")) return (await jellyfin.artBytes(String(thumb)))?.data ?? null;
     // Raw cover bytes for the palette extractors: Chromium blocks CORS-mode
     // loads (and fetch) to the custom localart:// scheme at the scheme level,
     // so canvas pixel reads can never go through the URL. The renderer turns
@@ -416,6 +463,20 @@ function registerIpc(): void {
     const art = locallib.readLocalArtThumb(String(thumb ?? ""));
     return art ? art.data : null;
   });
+
+  // Open metadata (MusicBrainz · Cover Art Archive · iTunes · Wikidata/Wikipedia).
+  ipc.handle("meta:artist", (_e, name: string) => meta.lookupArtist(String(name ?? "")));
+  ipc.handle("meta:recording", (_e, title: string, artist: string, durationSec?: number) =>
+    meta.lookupRecording(String(title ?? ""), String(artist ?? ""), Number(durationSec) || 0)
+  );
+  // Jellyfin server as a second library source.
+  ipc.handle("jellyfin:status", () => jellyfin.status());
+  ipc.handle("jellyfin:connect", (_e, input: { server: string; username?: string; password?: string; apiKey?: string }) =>
+    jellyfin.connect(input ?? { server: "" })
+  );
+  ipc.handle("jellyfin:disconnect", () => jellyfin.disconnect());
+  ipc.handle("jellyfin:library", () => jellyfin.readLibrary());
+  ipc.handle("jellyfin:refresh", () => jellyfin.refreshLibrary());
 
   ipc.handle("canvas:get", (_e, q: { title?: string; artist?: string; album?: string }) =>
     canvas.canvasFor(String(q?.title ?? ""), String(q?.artist ?? ""), q?.album ? String(q.album) : undefined)
@@ -759,6 +820,14 @@ if (!gotLock) {
     for (const d of (persist.readData("approved-dirs") as string[] | null) ?? []) {
       if (typeof d === "string") approvedDirs.add(path.resolve(d));
     }
+
+    protocol.handle("jfart", async (req) => {
+      const art = await jellyfin.artBytes(req.url);
+      if (!art) return new Response("not found", { status: 404 });
+      return new Response(new Uint8Array(art.data), { headers: { "Content-Type": art.mime } });
+    });
+    // Covers the tags lack are filled from the open databases in the background.
+    startEnrichment();
 
     protocol.handle("localart", (req) => {
       // For localart://<hash>.<ext> the filename lands in `hostname` and

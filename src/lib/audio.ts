@@ -48,6 +48,7 @@ import { emitPlayEvent } from "./playEvents";
 import { analyseTrackHead, detectEdgeSilence } from "./analysis";
 import { upgradeArtwork } from "./artwork";
 import { createMediaKeyTap } from "./media-key-tap";
+import { isLibraryTrack, loadAllLibraryTracks } from "./libraryTracks";
 import {
   deviceChoices,
   outputChangeAction,
@@ -221,7 +222,7 @@ async function fetchLoudness(proxyUrl: string, trackId: string): Promise<void> {
  * transition itself never waits on a getBasicInfo roundtrip.
  */
 function prefetchLoudness(track: Track | null): void {
-  if (!track || track.localPath || track.id.startsWith("local:")) return;
+  if (!track || isLibraryTrack(track)) return;
   // No loudnessGains shortcut: a replayed track knows its gain but its
   // resolution has likely expired, and a warm `?meta=1` hit costs nothing.
   void (async () => {
@@ -580,10 +581,20 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
   /** The arming this continuation belongs to is still the live one. */
   const stale = (): boolean => token !== transitionToken;
   try {
-    const url = await requireBridge().getStreamUrl(nextTrack.id, false, useSettings.getState().streamingQuality);
+    // Library tracks (local files, Jellyfin) resolve through their own route
+    // and play at their original level; streams carry a measured gain.
+    const library = isLibraryTrack(nextTrack);
+    const url = library
+      ? await requireBridge().localTrackUrl(nextTrack.id)
+      : await requireBridge().getStreamUrl(nextTrack.id, false, useSettings.getState().streamingQuality);
+    if (!url) {
+      armed = null;
+      return;
+    }
     // The fade's standby element carries the incoming track's own loudness
     // gain; the load-time prefetch usually already did this — cheap retry.
-    void fetchLoudness(url, nextTrack.id);
+    if (library) rememberGain(nextTrack.id, 1);
+    else void fetchLoudness(url, nextTrack.id);
     // The world may have moved on while we resolved.
     const cur = usePlayer.getState().queue[usePlayer.getState().index];
     if (stale() || !armed || armed.toId !== nextTrack.id || fade || cur?.id === nextTrack.id) {
@@ -890,7 +901,7 @@ function requestSilenceAnalysis(track: Track): void {
   if (!s.skipSilence) return;
   if (silenceTrims.has(track.id) || silenceAnalysing.has(track.id)) return;
   if (!track.duration || track.duration < 10) return;
-  const isLocal = !!track.localPath || track.id.startsWith("local:");
+  const isLocal = isLibraryTrack(track);
   silenceAnalysing.add(track.id);
   void (async () => {
     try {
@@ -1152,30 +1163,25 @@ function onTrackEnded(): void {
 let autoplaying = false;
 
 /**
- * AutoPlay: the queue ran out, so fetch the home feed and append one track the
- * listener hasn't heard this session, then jump straight to it.
+ * AutoPlay: the queue ran out, so pick a song from the user's own library
+ * (local files + Jellyfin) that this session hasn't played yet, append it
+ * and jump straight to it.
  */
 async function autoplayNext(): Promise<void> {
   if (autoplaying) return;
   autoplaying = true;
   try {
-    const shelves = await requireBridge().getHome();
-    const pool: Track[] = [];
-    for (const shelf of shelves ?? []) {
-      for (const item of shelf.items ?? []) {
-        if (item.kind === "track" && item.track) pool.push(item.track);
-      }
-    }
+    const pool = await loadAllLibraryTracks();
     const state = usePlayer.getState();
-    // Never append a track the queue already holds — the old unconditional
-    // pool[0] pick repeated one song forever once the queue drained.
-    // "Don't repeat suggestions" additionally keeps everything from recent
-    // history out of the pick.
+    // Never append a track the queue already holds. "Don't repeat
+    // suggestions" additionally keeps everything from recent history out.
     const heard = new Set(state.queue.map((t) => t.id));
     if (useSettings.getState().dontRepeatSuggestions) {
       for (const t of useLibrary.getState().history) heard.add(t.id);
     }
-    const pick = pool.find((t) => !heard.has(t.id)) ?? pool[0];
+    const fresh = pool.filter((t) => !heard.has(t.id));
+    const from = fresh.length ? fresh : pool;
+    const pick = from[Math.floor(Math.random() * from.length)];
     if (!pick) {
       usePlayer.setState({ playing: false });
       return;
@@ -1241,14 +1247,14 @@ async function loadTrack(track: Track | null, autoplay: boolean): Promise<void> 
 async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): Promise<void> {
   if (!elements) return;
   try {
-    if (track.localPath || track.id.startsWith("local:")) {
+    if (isLibraryTrack(track)) {
       const a = el();
       // Local files stream through the main-process proxy (a file:// src is
       // blocked from the http renderer origin). Always resolve fresh — the
       // proxy port changes between launches, so cached URLs would go stale,
       // and the IPC lookup is a local roundtrip.
       const src = await requireBridge().localTrackUrl(track.id);
-      if (!src) throw new Error("Local file is missing on disk");
+      if (!src) throw new Error(track.id.startsWith("jf:") ? "Jellyfin server is not connected" : "Local file is missing on disk");
       // Local files play at their original level — no normalisation, no trim.
       rememberGain(track.id, 1);
       // Apply immediately: without this the element keeps the PREVIOUS

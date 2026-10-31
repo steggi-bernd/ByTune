@@ -8,7 +8,7 @@ import { Clock3 } from "lucide-react";
 import { Artwork, EmptyState, ErrorState, Pills } from "../components/primitives";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
-import { resolveArtistMeta } from "../stores/artistMeta";
+import { resolveArtistAbout } from "../lib/artistAbout";
 import { useLibrary } from "../stores/library";
 import type { Track } from "../types";
 
@@ -85,7 +85,8 @@ export function ReplayView() {
     void Promise.all(
       data.artists.slice(0, 10).map(async (a) => {
         if (a.thumb || artistThumbs[a.name]) return;
-        const meta = await resolveArtistMeta(a.name);
+        // Artist photos from the open databases (Wikimedia Commons).
+        const meta = await resolveArtistAbout(a.name);
         if (meta?.thumb && alive && !artistThumbs[a.name]) {
           setArtistThumbs((prev) => ({ ...prev, [a.name]: meta.thumb as string }));
         }

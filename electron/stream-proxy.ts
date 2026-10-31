@@ -13,6 +13,7 @@ import fs from "fs";
 import http from "http";
 import path from "path";
 import type { AddressInfo } from "net";
+import { fetchStream as fetchJellyfinStream } from "./jellyfin";
 import { localStreamPath } from "./local-library";
 import { resolveStream } from "./music-service";
 
@@ -82,6 +83,15 @@ export function proxyUrlFor(trackId: string, forceRotate = false, maxKbps?: numb
 export function proxyUrlForLocalTrack(localId: string): string | null {
   if (!proxyPort) return null;
   return `http://127.0.0.1:${proxyPort}/?lid=${encodeURIComponent(localId)}`;
+}
+
+/* Jellyfin items stream through the proxy as well: the main process holds
+ * the server token (it never reaches the renderer), and plain-http LAN
+ * servers play without opening the renderer's CSP to arbitrary hosts. */
+export function proxyUrlForJellyfin(trackId: string): string | null {
+  if (!proxyPort) return null;
+  const itemId = trackId.replace(/^jf:/, "");
+  return `http://127.0.0.1:${proxyPort}/?jf=${encodeURIComponent(itemId)}`;
 }
 
 const LOCAL_MIME: Record<string, string> = {
@@ -168,7 +178,8 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const trackId = url.searchParams.get("id");
     const localId = url.searchParams.get("lid");
-    if (!trackId && !localId) {
+    const jellyfinId = url.searchParams.get("jf");
+    if (!trackId && !localId && !jellyfinId) {
       res.writeHead(400);
       res.end("missing id");
       return;
@@ -176,6 +187,10 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     const range = req.headers.range;
     if (localId) {
       serveLocalFile(localId, range, res, req);
+      return;
+    }
+    if (jellyfinId) {
+      await pipeUpstream(await fetchJellyfinStream(jellyfinId, range), `jf:${jellyfinId}`, req, res);
       return;
     }
     const forceRotate = url.searchParams.get("rotate") === "1";
@@ -213,35 +228,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
       upstream = await fetchUpstream(stream.url, range);
     }
 
-    if (!upstream.ok || !upstream.body) {
-      console.warn(`[bytune] proxy upstream HTTP ${upstream.status} for ${trackId}`);
-      res.writeHead(upstream.status === 403 ? 404 : upstream.status);
-      res.end();
-      return;
-    }
-
-    const outHeaders: Record<string, string> = {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-store",
-    };
-    for (const h of PASSTHROUGH_HEADERS) {
-      const v = upstream.headers.get(h);
-      if (v) outHeaders[h] = v;
-    }
-    res.writeHead(upstream.status, outHeaders);
-
-    const reader = upstream.body.getReader();
-    req.on("close", () => {
-      void reader.cancel().catch(() => undefined);
-    });
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value && value.length > 0 && !res.write(value)) {
-        await new Promise<void>((resolve) => res.once("drain", () => resolve()));
-      }
-    }
-    res.end();
+    await pipeUpstream(upstream, String(trackId), req, res);
   } catch (err) {
     console.warn("[bytune] proxy error:", err instanceof Error ? err.message : err);
     try {
@@ -251,4 +238,42 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
       /* response already gone */
     }
   }
+}
+
+/** Relay an upstream audio response (status, range headers, body) to the media element. */
+async function pipeUpstream(
+  upstream: Response,
+  label: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  if (!upstream.ok || !upstream.body) {
+    console.warn(`[bytune] proxy upstream HTTP ${upstream.status} for ${label}`);
+    res.writeHead(upstream.status === 403 ? 404 : upstream.status);
+    res.end();
+    return;
+  }
+
+  const outHeaders: Record<string, string> = {
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store",
+  };
+  for (const h of PASSTHROUGH_HEADERS) {
+    const v = upstream.headers.get(h);
+    if (v) outHeaders[h] = v;
+  }
+  res.writeHead(upstream.status, outHeaders);
+
+  const reader = upstream.body.getReader();
+  req.on("close", () => {
+    void reader.cancel().catch(() => undefined);
+  });
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value && value.length > 0 && !res.write(value)) {
+      await new Promise<void>((resolve) => res.once("drain", () => resolve()));
+    }
+  }
+  res.end();
 }

@@ -63,8 +63,27 @@ const api = {
   libraryFolderStatuses: () => ipcRenderer.invoke("library:folderStatuses"),
   localTrackUrl: (id: string) => ipcRenderer.invoke("library:trackurl", id),
   localArtBytes: (thumb: string) => ipcRenderer.invoke("library:artbytes", thumb),
+  /** Background cover/album fills for the local library land here, batch by batch. */
+  onLibraryEnriched: (cb: (lib: unknown) => void): (() => void) => {
+    const listener = (_e: unknown, lib: unknown): void => cb(lib);
+    ipcRenderer.on("library:enriched", listener as never);
+    return () => ipcRenderer.removeListener("library:enriched", listener as never);
+  },
   getCanvas: (q: { title: string; artist: string; album?: string }) =>
     ipcRenderer.invoke("canvas:get", q),
+
+  // Open metadata (MusicBrainz · Cover Art Archive · iTunes · Wikidata/Wikipedia)
+  metaArtist: (name: string) => ipcRenderer.invoke("meta:artist", name),
+  metaRecording: (title: string, artist: string, durationSec = 0) =>
+    ipcRenderer.invoke("meta:recording", title, artist, durationSec),
+
+  // Jellyfin server (token stays in the main process)
+  jellyfinStatus: () => ipcRenderer.invoke("jellyfin:status"),
+  jellyfinConnect: (input: { server: string; username?: string; password?: string; apiKey?: string }) =>
+    ipcRenderer.invoke("jellyfin:connect", input),
+  jellyfinDisconnect: () => ipcRenderer.invoke("jellyfin:disconnect"),
+  jellyfinLibrary: () => ipcRenderer.invoke("jellyfin:library"),
+  jellyfinRefresh: () => ipcRenderer.invoke("jellyfin:refresh"),
 
   // Window controls (frameless window — chrome drawn by the renderer)
   windowMinimize: () => ipcRenderer.send("window:minimize"),

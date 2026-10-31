@@ -18,7 +18,7 @@
  * art takes over. Exported via upgradeArtwork's module for regression tests.
  */
 export function artworkUrlOk(url: string): boolean {
-  return /^(https?:\/\/|data:image\/|blob:|localart:)/i.test(url);
+  return /^(https?:\/\/|data:image\/|blob:|localart:|jfart:)/i.test(url);
 }
 
 export function upgradeArtwork(url: string | null | undefined, target = 544): string {

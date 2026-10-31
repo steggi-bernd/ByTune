@@ -19,6 +19,7 @@ import {
   Music2,
   Pin,
   PinOff,
+  Server,
   User,
 } from "lucide-react";
 import { useLibrary } from "../stores/library";
@@ -40,7 +41,7 @@ interface LibRow {
   title: string;
   subtitle: string;
   thumb?: string;
-  kind: "playlist" | "artist" | "folder" | "local" | "downloads";
+  kind: "playlist" | "artist" | "folder" | "local" | "jellyfin" | "downloads";
   /** artist-imported playlists open the artist page instead of the list */
   artistId?: string;
   /** playlists: the folder they're filed in; folders: their own id */
@@ -56,7 +57,6 @@ function LibraryPill() {
   const playlists = useLibrary((s) => s.playlists);
   const folders = useLibrary((s) => s.folders);
   const followedArtists = useLibrary((s) => s.followedArtists);
-  const downloads = useLibrary((s) => s.downloads);
   const pinnedSingles = useLibrary((s) => s.pinnedSingles);
   const navigate = useUI((s) => s.navigate);
   const openDialog = useUI((s) => s.openDialog);
@@ -110,7 +110,6 @@ function LibraryPill() {
   // "Recently played" tab.
   // Liked / Downloads / Local are pinned by default; unpinning sends the row
   // to the bottom of the list (re-pin from its right-click menu).
-  const doneDownloads = Object.values(downloads).filter((d) => d.status === "done");
   const singlePinned = (k: "liked" | "downloads" | "local"): boolean =>
     pinnedSingles?.[k] ?? true;
 
@@ -123,15 +122,6 @@ function LibraryPill() {
     pinned: singlePinned("liked"),
     singleKey: "liked",
   };
-  const downloadsRow: LibRow = {
-    id: "__downloads__",
-    title: "Downloads",
-    subtitle: `Playlist · ${doneDownloads.length} ${doneDownloads.length === 1 ? "track" : "tracks"}`,
-    thumb: doneDownloads[0]?.track.thumb,
-    kind: "downloads",
-    pinned: singlePinned("downloads"),
-    singleKey: "downloads",
-  };
   const localRow: LibRow = {
     id: "__local__",
     title: "Local Music",
@@ -140,7 +130,15 @@ function LibraryPill() {
     pinned: singlePinned("local"),
     singleKey: "local",
   };
-  const singles: LibRow[] = [likedRow, downloadsRow, localRow];
+  const jellyfinRow: LibRow = {
+    id: "__jellyfin__",
+    title: "Jellyfin",
+    subtitle: "Your media server",
+    kind: "jellyfin",
+    pinned: true,
+  };
+  // Local player: no Downloads row — there is no catalogue to download from.
+  const singles: LibRow[] = [localRow, jellyfinRow, likedRow];
 
   const rows: LibRow[] = [];
   for (const r of singles.filter((r) => r.pinned)) rows.push(r);
@@ -498,6 +496,9 @@ function LibraryPill() {
       case "local":
         navigate({ name: "local" });
         break;
+      case "jellyfin":
+        navigate({ name: "jellyfin" });
+        break;
     }
   };
 
@@ -723,6 +724,10 @@ function LibraryPill() {
                 ) : r.kind === "local" ? (
                   <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
                     <FolderOpen className="w-5 h-5 text-ink-hi/55" />
+                  </span>
+                ) : r.kind === "jellyfin" ? (
+                  <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
+                    <Server className="w-5 h-5 text-ink-hi/55" />
                   </span>
                 ) : r.thumb ? (
                   <img src={upgradeArtwork(r.thumb)} alt="" className="w-12 h-12 rounded-md object-cover art-hairline shrink-0" />
