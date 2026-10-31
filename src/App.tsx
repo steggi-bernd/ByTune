@@ -24,7 +24,15 @@ import { usePlayer } from "./stores/player";
 import { useLibrary } from "./stores/library";
 import { useSettings } from "./stores/settings";
 import { useUI } from "./stores/ui";
+import { SmartPlaylistEditorHost } from "./components/SmartPlaylistEditor";
+import { watchCatalog } from "./stores/catalog";
 import { JellyfinView } from "./views/JellyfinView";
+import { LibraryAlbumView } from "./views/LibraryAlbumView";
+import { LibraryArtistView } from "./views/LibraryArtistView";
+import { LibraryHomeView } from "./views/LibraryHomeView";
+import { MixView } from "./views/MixView";
+import { SmartPlaylistView } from "./views/SmartPlaylistView";
+import { SubsonicView } from "./views/SubsonicView";
 import { LibrarySearchView } from "./views/LibrarySearchView";
 import { LibraryView } from "./views/LibraryView";
 import { LocalMusicView } from "./views/LocalMusicView";
@@ -204,14 +212,27 @@ function useAppearance(): void {
 }
 
 /**
- * Local player routing: the library is home. The streaming routes (explore,
- * remote playlists, catalogue album/artist pages, downloads) are gone — a
- * stale link to one (an old history entry, a synced playlist row) lands on
- * the library instead of a YouTube page.
+ * Local player routing: home, albums, artists, mixes and smart playlists are
+ * built from the library itself. The streaming routes (explore, remote
+ * playlists, downloads) are gone — a stale link to one lands on home.
  */
 function CurrentView(): ReactNode {
   const view = useUI((s) => s.view);
   switch (view.name) {
+    case "home":
+      return <LibraryHomeView />;
+    case "local":
+      return <LocalMusicView />;
+    case "album":
+      return <LibraryAlbumView param={view.param ?? ""} />;
+    case "artist":
+      return <LibraryArtistView param={view.param ?? ""} />;
+    case "mix":
+      return <MixView param={view.param ?? ""} />;
+    case "smart":
+      return <SmartPlaylistView id={view.param ?? ""} />;
+    case "subsonic":
+      return <SubsonicView />;
     case "search":
       return <LibrarySearchView />;
     case "library":
@@ -226,7 +247,7 @@ function CurrentView(): ReactNode {
     case "settings":
       return <SettingsView />;
     default:
-      return <LocalMusicView />;
+      return <LibraryHomeView />;
   }
 }
 
@@ -265,6 +286,15 @@ export default function App() {
 
   // Covers/albums filled in from the open databases arrive in batches.
   useEffect(() => watchLibraryEnrichment(), []);
+
+  // The catalogue behind home, album/artist pages, mixes and smart playlists.
+  useEffect(() => watchCatalog(), []);
+
+  // Folder watching follows its setting (main watches by default).
+  const watchFolders = useSettings((s) => s.watchFolders);
+  useEffect(() => {
+    void window.bytune?.setFolderWatch(watchFolders);
+  }, [watchFolders]);
 
   // No account needed for a local player: the first launch (or a reinstall
   // that found an old guest profile) goes straight in as a guest instead of
@@ -406,6 +436,7 @@ export default function App() {
       <PlayerBar />
       <NowPlaying />
       <Dialog />
+      <SmartPlaylistEditorHost />
       <ContextMenu />
       <Toasts />
     </div>

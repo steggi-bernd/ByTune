@@ -22,11 +22,14 @@ import {
   Pin,
   PinOff,
   Server,
+  Sparkles,
   User,
 } from "lucide-react";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useSettings } from "../stores/settings";
+import { useSmartPlaylists } from "../stores/smartPlaylists";
+import { useSmartEditor } from "./SmartPlaylistEditor";
 import { useUI } from "../stores/ui";
 import { EqBars } from "./primitives";
 import { upgradeArtwork } from "../lib/artwork";
@@ -44,7 +47,7 @@ interface LibRow {
   title: string;
   subtitle: string;
   thumb?: string;
-  kind: "playlist" | "artist" | "folder" | "local" | "jellyfin" | "downloads";
+  kind: "playlist" | "artist" | "folder" | "local" | "jellyfin" | "subsonic" | "smart" | "downloads";
   /** artist-imported playlists open the artist page instead of the list */
   artistId?: string;
   /** playlists: the folder they're filed in; folders: their own id */
@@ -67,6 +70,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
   const folders = useLibrary((s) => s.folders);
   const followedArtists = useLibrary((s) => s.followedArtists);
   const pinnedSingles = useLibrary((s) => s.pinnedSingles);
+  const smartPlaylists = useSmartPlaylists((s) => s.playlists);
   const navigate = useUI((s) => s.navigate);
   const openDialog = useUI((s) => s.openDialog);
   const openContextMenu = useUI((s) => s.openContextMenu);
@@ -146,13 +150,23 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     kind: "jellyfin",
     pinned: true,
   };
+  const subsonicRow: LibRow = {
+    id: "__subsonic__",
+    title: "Navidrome",
+    subtitle: "Subsonic server",
+    kind: "subsonic",
+    pinned: true,
+  };
   // Local player: no Downloads row — there is no catalogue to download from.
-  const singles: LibRow[] = [localRow, jellyfinRow, likedRow];
+  const singles: LibRow[] = [localRow, jellyfinRow, subsonicRow, likedRow];
 
   const rows: LibRow[] = [];
   for (const r of singles.filter((r) => r.pinned)) rows.push(r);
   for (const a of followedArtists) {
     rows.push({ id: a.id, title: a.name, subtitle: "Artist", thumb: a.thumb, kind: "artist" });
+  }
+  for (const sp of smartPlaylists) {
+    rows.push({ id: sp.id, title: sp.name, subtitle: "Smart playlist", kind: "smart" });
   }
   const unfiled = playlists.filter((p) => !p.folderId);
   for (const p of [...unfiled.filter((x) => x.pinned), ...unfiled.filter((x) => !x.pinned)]) {
@@ -508,6 +522,12 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       case "jellyfin":
         navigate({ name: "jellyfin" });
         break;
+      case "subsonic":
+        navigate({ name: "subsonic" });
+        break;
+      case "smart":
+        navigate({ name: "smart", param: r.id });
+        break;
     }
   };
 
@@ -522,6 +542,21 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           label: pinned ? "Unpin" : "Pin to top",
           icon: pinned ? PinOff : Pin,
           action: () => useLibrary.getState().togglePinSingle(r.singleKey!),
+        },
+      ]);
+      return;
+    }
+    if (r.kind === "smart") {
+      const sp = smartPlaylists.find((p) => p.id === r.id);
+      if (!sp) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openContextMenu(e.clientX, e.clientY, [
+        { label: "Edit rules", icon: Sparkles, action: () => useSmartEditor.getState().open(sp, false) },
+        {
+          label: "Delete smart playlist",
+          danger: true,
+          action: () => useSmartPlaylists.getState().remove(sp.id),
         },
       ]);
       return;
@@ -757,9 +792,13 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                   <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
                     <FolderOpen className="w-5 h-5 text-ink-hi/55" />
                   </span>
-                ) : r.kind === "jellyfin" ? (
+                ) : r.kind === "jellyfin" || r.kind === "subsonic" ? (
                   <span className="w-12 h-12 rounded-md bg-ink-hi/[0.06] art-hairline shrink-0 grid place-items-center">
                     <Server className="w-5 h-5 text-ink-hi/55" />
+                  </span>
+                ) : r.kind === "smart" ? (
+                  <span className="w-12 h-12 rounded-md bg-accent/15 art-hairline shrink-0 grid place-items-center">
+                    <Sparkles className="w-5 h-5 text-accent" />
                   </span>
                 ) : r.thumb ? (
                   <img src={upgradeArtwork(r.thumb)} alt="" className="w-12 h-12 rounded-md object-cover art-hairline shrink-0" />

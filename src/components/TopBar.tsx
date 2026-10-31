@@ -24,7 +24,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { loadAllLibraryTracks } from "../lib/libraryTracks";
+import { useCatalog } from "../stores/catalog";
 import { useSession } from "../lib/session";
 import { isMac } from "../lib/platform";
 import { useUI } from "../stores/ui";
@@ -190,7 +190,7 @@ export function TopBar() {
     // Completions come from the user's own library (artists, albums, titles
     // that start with the typed text) — there is no catalogue to ask.
     const timer = window.setTimeout(() => {
-      void loadAllLibraryTracks()
+      void Promise.resolve(useCatalog.getState().tracks)
         .then((tracks) => {
           if (suggestSeq.current !== seq) return; // a newer keystroke won
           const lower = q.toLowerCase();
@@ -227,7 +227,7 @@ export function TopBar() {
     setSuggests([]);
     setFieldFocused(false);
     inputRef.current?.blur();
-    navigate({ name: "local" });
+    navigate({ name: "home" });
   };
 
   /** Mobile model: an empty focused field drops the recent-searches panel. */
@@ -346,9 +346,9 @@ export function TopBar() {
           onClick={goHome}
           title="Home"
           aria-label="Home"
-          aria-current={view.name === "local" ? "page" : undefined}
+          aria-current={view.name === "home" ? "page" : undefined}
           className={`app-no-drag w-12 h-12 shrink-0 grid place-items-center rounded-full transition-colors ${
-            view.name === "local"
+            view.name === "home"
               ? "bg-elevated text-ink-hi"
               : "bg-panel text-ink-hi/75 hover:text-ink-hi hover:bg-ink-hi/[0.06]"
           }`}
@@ -497,7 +497,7 @@ export function TopBar() {
                   setSuggests([]);
                   setFieldFocused(false);
                   inputRef.current?.blur();
-                  if (view.name === "search") navigate({ name: "local" });
+                  if (view.name === "search") navigate({ name: "home" });
                 }}
                 title="Clear search"
                 aria-label="Clear search"

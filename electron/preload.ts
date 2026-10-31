@@ -50,10 +50,15 @@ const api = {
   playbackEvent: (event: { type: string; track?: unknown; positionSec: number; playedSec: number; deltaMs: number }) =>
     ipcRenderer.send("playback:event", event),
   statsSummary: (period: string) => ipcRenderer.invoke("stats:summary", period),
+  /** all-time plays + last played per track id */
+  statsPlayCounts: () =>
+    ipcRenderer.invoke("stats:playcounts") as Promise<Record<string, { plays: number; lastAt: number }>>,
   getStreamUrl: (id: string, forceRotate = false, quality?: string) =>
     ipcRenderer.invoke("music:stream", id, forceRotate, quality),
   localLibrary: () => ipcRenderer.invoke("library:get"),
   scanLibrary: (filterNonMusic = true) => ipcRenderer.invoke("library:scan", filterNonMusic),
+  /** Folder watching on/off (new, changed and deleted files appear without a rescan). */
+  setFolderWatch: (enabled: boolean) => ipcRenderer.invoke("library:watch", enabled),
   setLibraryFolders: (folders: string[]) => ipcRenderer.invoke("library:setFolders", folders),
   /** Import folders: a parent expands into itself + its music-bearing subfolders. */
   addLibraryFolders: (paths: string[]) => ipcRenderer.invoke("library:addFolders", paths),
@@ -89,6 +94,19 @@ const api = {
   jellyfinDisconnect: () => ipcRenderer.invoke("jellyfin:disconnect"),
   jellyfinLibrary: () => ipcRenderer.invoke("jellyfin:library"),
   jellyfinRefresh: () => ipcRenderer.invoke("jellyfin:refresh"),
+
+  // AutoEQ headphone profiles (index cached for a week in the main process)
+  autoEqSearch: (q: string) =>
+    ipcRenderer.invoke("autoeq:search", q) as Promise<{ name: string; source: string; rig?: string; path: string }[]>,
+  autoEqFetch: (p: string) => ipcRenderer.invoke("autoeq:fetch", p),
+
+  // Navidrome / Subsonic server (only a hashed token is kept, in the main process)
+  subsonicStatus: () => ipcRenderer.invoke("subsonic:status"),
+  subsonicConnect: (input: { server: string; username: string; password: string }) =>
+    ipcRenderer.invoke("subsonic:connect", input),
+  subsonicDisconnect: () => ipcRenderer.invoke("subsonic:disconnect"),
+  subsonicLibrary: () => ipcRenderer.invoke("subsonic:library"),
+  subsonicRefresh: () => ipcRenderer.invoke("subsonic:refresh"),
 
   // Window controls (frameless window — chrome drawn by the renderer)
   windowMinimize: () => ipcRenderer.send("window:minimize"),

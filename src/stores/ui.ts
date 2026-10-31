@@ -16,6 +16,9 @@ export type ViewName =
   | "downloads"
   | "local"
   | "jellyfin"
+  | "subsonic"
+  | "mix"
+  | "smart"
   | "replay"
   | "settings";
 
@@ -169,8 +172,8 @@ function readViewScroll(): number {
 }
 
 export const useUI = create<UIState>((set, get) => ({
-  // A local player: the library is home.
-  view: { name: "local" },
+  // A local player: home is built from the library.
+  view: { name: "home" },
   navPast: [],
   navFuture: [],
   pendingScroll: null,

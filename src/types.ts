@@ -18,6 +18,24 @@ export interface Track {
   artistImage?: string;
   /** set for local-library tracks (local origin flag; playback resolves via the id) */
   localPath?: string;
+
+  /* Library facts — album/artist pages, home mixes, smart playlists, ReplayGain. */
+  /** where the song lives */
+  source?: "local" | "jellyfin" | "subsonic";
+  year?: number;
+  genre?: string;
+  albumArtist?: string;
+  trackNo?: number;
+  discNo?: number;
+  /** when the library first saw the song (ms) */
+  addedAt?: number;
+  /** ReplayGain 2.0: gains in dB, peaks linear */
+  rg?: { trackGain?: number; trackPeak?: number; albumGain?: number; albumPeak?: number };
+  codec?: string;
+  sampleRate?: number;
+  bitsPerSample?: number;
+  /** bits per second */
+  bitrate?: number;
 }
 
 export interface Album {

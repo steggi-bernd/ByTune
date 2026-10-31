@@ -46,6 +46,9 @@ export interface JellyfinTrack {
   /** jfart:// URL for the item's (or its album's) cover */
   art?: string;
   addedAt?: number;
+  albumArtist?: string;
+  /** Jellyfin's own loudness gain (dB to −18 LUFS), used like a ReplayGain track gain */
+  gain?: number;
 }
 
 export interface JellyfinLibrary {
@@ -228,6 +231,8 @@ function toTrack(item: any): JellyfinTrack | null {
     genre: Array.isArray(item.Genres) && typeof item.Genres[0] === "string" ? item.Genres[0] : undefined,
     art,
     addedAt: item.DateCreated ? Date.parse(item.DateCreated) || undefined : undefined,
+    albumArtist: bounded(item.AlbumArtist) || undefined,
+    gain: typeof item.NormalizationGain === "number" && Number.isFinite(item.NormalizationGain) ? item.NormalizationGain : undefined,
   };
 }
 

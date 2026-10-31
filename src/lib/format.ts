@@ -20,3 +20,12 @@ export function fmtBytes(bytes: number): string {
 export function plural(n: number, one: string, many: string): string {
   return n === 1 ? `1 ${one}` : `${n} ${many}`;
 }
+
+/** Spotify's header length line: "1 hr 4 min" / "38 min 12 sec". */
+export function fmtLength(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h} hr ${m} min`;
+  return `${m} min ${s % 60} sec`;
+}

@@ -9,7 +9,9 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Folder, ListPlus, Plus } from "lucide-react";
+import { Folder, ListPlus, Plus, Sparkles } from "lucide-react";
+import { newSmartPlaylist } from "../stores/smartPlaylists";
+import { useSmartEditor } from "./SmartPlaylistEditor";
 import { useLibrary, type LibraryFolder } from "../stores/library";
 import { useUI } from "../stores/ui";
 
@@ -125,6 +127,21 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
               <span className="min-w-0">
                 <span className="block text-[14px] font-semibold text-ink-hi">Playlist</span>
                 <span className="block text-[12px] text-ink-hi/55 truncate">Create a playlist with songs</span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                useSmartEditor.getState().open(newSmartPlaylist(), true);
+              }}
+              className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-left hover:bg-ink-hi/[0.06] transition-colors"
+            >
+              <span className="w-10 h-10 rounded-full bg-accent/15 grid place-items-center shrink-0">
+                <Sparkles className="w-5 h-5 text-accent" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-semibold text-ink-hi">Smart playlist</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">Fills itself from rules</span>
               </span>
             </button>
             <button

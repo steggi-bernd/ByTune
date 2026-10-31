@@ -298,7 +298,12 @@ function AboutArtistCard({
 
   if (!about) return null;
 
+  // The library artist page for the playing song's lead artist.
   const showInLibrary = (): void => {
+    if (track.artistId?.startsWith("lib:artist:")) {
+      navigate({ name: "artist", param: track.artistId });
+      return;
+    }
     useUI.getState().setSearchQuery(about.name);
     navigate({ name: "search" });
   };

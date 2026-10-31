@@ -400,6 +400,23 @@ function monthsForPeriod(period: ReplayPeriod): string[] {
   return [...open.keys()].sort();
 }
 
+/**
+ * Plays and last-played time per track id over the whole kept history — the
+ * "most played" input for artist pages, home mixes and smart playlists.
+ */
+export function playCounts(): Record<string, { plays: number; lastAt: number }> {
+  if (!ready) initStats();
+  const out: Record<string, { plays: number; lastAt: number }> = {};
+  for (const bucket of open.values()) {
+    for (const [id, t] of Object.entries(bucket.tracks)) {
+      const cur = (out[id] ??= { plays: 0, lastAt: 0 });
+      cur.plays += t.plays;
+      cur.lastAt = Math.max(cur.lastAt, t.lastAt);
+    }
+  }
+  return out;
+}
+
 export function summary(period: ReplayPeriod): ReplaySummary {
   if (!ready) initStats();
   const months = monthsForPeriod(period);

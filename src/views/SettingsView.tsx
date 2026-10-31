@@ -23,6 +23,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
   FileAudio,
+  FolderSync,
   Server,
   SlidersVertical,
   Speaker,
@@ -30,6 +31,7 @@ import {
   Trash2,
   User,
   UserRound,
+  Volume2,
   VolumeX,
   Wifi,
 } from "lucide-react";
@@ -41,6 +43,7 @@ import {
 import { useSession } from "../lib/session";
 import { setOnboardingIntent } from "../lib/onboardingIntent";
 import { GuestDeleteModal } from "../components/AccountModals";
+import { ParametricEqEditor } from "../components/ParametricEqEditor";
 import { useUI, type MenuItem } from "../stores/ui";
 import { EQ_BANDS, listOutputDevices } from "../lib/audio";
 import type { OutputDeviceChoice } from "../lib/audio-output";
@@ -297,22 +300,60 @@ const EQ_PRESETS: Record<string, number[]> = {
 
 const bandLabel = (hz: number): string => (hz >= 1000 ? `${hz / 1000}k` : String(hz));
 
+const REPLAYGAIN_LABEL = { off: "Off", track: "Per song", album: "Per album" } as const;
+const TARGET_LABEL = { "-18": "−18 LUFS (ReplayGain)", "-14": "−14 LUFS (like Spotify)", "-11": "−11 LUFS (loud)" } as const;
+
 /** 10-band graphic EQ: switch, presets, one vertical slider per band (±12 dB). */
 function EqualizerRows() {
   const enabled = useSettings((st) => st.eqEnabled);
   const gains = useSettings((st) => st.eqGains);
-  const { setEqEnabled, setEqGains } = useSettings.getState();
+  const mode = useSettings((st) => st.eqMode);
+  const peqName = useSettings((st) => st.peq.name);
+  const { setEqEnabled, setEqGains, setEqMode } = useSettings.getState();
   const preset = Object.keys(EQ_PRESETS).find((k) => EQ_PRESETS[k].every((g, i) => g === gains[i]));
   return (
     <>
       <SettingsRow
         icon={SlidersVertical}
         title="Equalizer"
-        subtitle={enabled ? `10-band, ${preset ?? "Custom"}` : "Shape the sound with a 10-band EQ"}
+        subtitle={
+          !enabled
+            ? "10-band EQ, or a parametric EQ with AutoEQ headphone corrections"
+            : mode === "parametric"
+              ? `Parametric, ${peqName}`
+              : `10-band, ${preset ?? "Custom"}`
+        }
         trailing={<Switch checked={enabled} onChange={setEqEnabled} />}
         onClick={() => setEqEnabled(!enabled)}
       />
       {enabled && (
+        <div className={`${TEXT_INSET} pr-4 pt-1`}>
+          <div className="flex gap-1.5 mb-3">
+            {(
+              [
+                ["graphic", "10-band"],
+                ["parametric", "Parametric · AutoEQ"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setEqMode(key)}
+                className={`text-[12px] rounded-full px-3 py-1 transition-colors ${
+                  mode === key ? "bg-primary text-on-primary" : "bg-ink-hi/[0.08] text-ink-hi hover:bg-ink-hi/[0.14]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {enabled && mode === "parametric" && (
+        <div className={`${TEXT_INSET} pr-4 pb-4`}>
+          <ParametricEqEditor />
+        </div>
+      )}
+      {enabled && mode === "graphic" && (
         <div className={`${TEXT_INSET} pr-4 pb-4`}>
           <div className="flex flex-wrap gap-1.5 mb-3">
             {Object.keys(EQ_PRESETS).map((name) => (
@@ -768,6 +809,14 @@ export function SettingsView() {
           onClick={() => useUI.getState().navigate({ name: "jellyfin" })}
         />
         <Divider />
+        <SettingsRow
+          icon={FolderSync}
+          title="Watch folders"
+          subtitle="New, changed and deleted files show up without rescanning"
+          trailing={<Switch checked={s.watchFolders} onChange={s.setWatchFolders} />}
+          onClick={() => s.setWatchFolders(!s.watchFolders)}
+        />
+        <Divider />
         <FfmpegRow />
       </SettingsGroup>
 
@@ -825,6 +874,37 @@ export function SettingsView() {
           current={s.playbackSpeed}
           onChange={s.setPlaybackSpeed}
         />
+        <Divider />
+        <SettingsRow
+          icon={Gauge}
+          title="Volume leveling"
+          subtitle="ReplayGain — songs play at the same loudness, their dynamics untouched"
+          value={REPLAYGAIN_LABEL[s.replayGainMode]}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) =>
+            toggleDropdownAt(e, qualityMenu(["off", "track", "album"], REPLAYGAIN_LABEL, s.replayGainMode, s.setReplayGainMode))
+          }
+        />
+        {s.replayGainMode !== "off" && (
+          <>
+            <Divider />
+            <SettingsRow
+              icon={Volume2}
+              title="Leveling target"
+              subtitle="Loud songs are turned down to it; quieter ones are never boosted, so nothing clips"
+              value={TARGET_LABEL[String(s.replayGainTarget) as keyof typeof TARGET_LABEL] ?? `${s.replayGainTarget} LUFS`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) =>
+                toggleDropdownAt(
+                  e,
+                  qualityMenu(["-18", "-14", "-11"] as const, TARGET_LABEL, String(s.replayGainTarget) as "-18" | "-14" | "-11", (v) =>
+                    s.setReplayGainTarget(Number(v))
+                  )
+                )
+              }
+            />
+          </>
+        )}
         <Divider />
         <EqualizerRows />
       </SettingsGroup>

@@ -14,6 +14,7 @@ import http from "http";
 import path from "path";
 import type { AddressInfo } from "net";
 import { fetchStream as fetchJellyfinStream } from "./jellyfin";
+import { fetchStream as fetchSubsonicStream } from "./subsonic";
 import { localStreamPath } from "./local-library";
 import { servedPathFor } from "./transcode";
 import { resolveStream } from "./music-service";
@@ -93,6 +94,12 @@ export function proxyUrlForJellyfin(trackId: string): string | null {
   if (!proxyPort) return null;
   const itemId = trackId.replace(/^jf:/, "");
   return `http://127.0.0.1:${proxyPort}/?jf=${encodeURIComponent(itemId)}`;
+}
+
+/* Navidrome/Subsonic songs take the same route as Jellyfin items. */
+export function proxyUrlForSubsonic(trackId: string): string | null {
+  if (!proxyPort) return null;
+  return `http://127.0.0.1:${proxyPort}/?ss=${encodeURIComponent(trackId.replace(/^ss:/, ""))}`;
 }
 
 const LOCAL_MIME: Record<string, string> = {
@@ -182,7 +189,8 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     const trackId = url.searchParams.get("id");
     const localId = url.searchParams.get("lid");
     const jellyfinId = url.searchParams.get("jf");
-    if (!trackId && !localId && !jellyfinId) {
+    const subsonicId = url.searchParams.get("ss");
+    if (!trackId && !localId && !jellyfinId && !subsonicId) {
       res.writeHead(400);
       res.end("missing id");
       return;
@@ -194,6 +202,10 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     }
     if (jellyfinId) {
       await pipeUpstream(await fetchJellyfinStream(jellyfinId, range), `jf:${jellyfinId}`, req, res);
+      return;
+    }
+    if (subsonicId) {
+      await pipeUpstream(await fetchSubsonicStream(subsonicId, range), `ss:${subsonicId}`, req, res);
       return;
     }
     const forceRotate = url.searchParams.get("rotate") === "1";

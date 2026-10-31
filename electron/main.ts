@@ -5,9 +5,12 @@ import { pathToFileURL } from "url";
 import * as fs from "fs";
 import * as path from "path";
 import * as downloads from "./downloads";
+import * as autoeq from "./autoeq";
 import * as canvas from "./canvas";
 import { enrichLocalLibrary } from "./enrich";
+import * as folderWatch from "./folder-watch";
 import * as jellyfin from "./jellyfin";
+import * as subsonic from "./subsonic";
 import { libraryLyrics } from "./library-lyrics";
 import * as meta from "./metadata";
 import * as music from "./music-service";
@@ -16,7 +19,7 @@ import * as locallib from "./local-library";
 import * as persist from "./persist";
 import * as pip from "./pip";
 import * as stats from "./stats";
-import { proxyUrlFor, proxyUrlForJellyfin, proxyUrlForLocalTrack, startStreamProxy } from "./stream-proxy";
+import { proxyUrlFor, proxyUrlForJellyfin, proxyUrlForLocalTrack, proxyUrlForSubsonic, startStreamProxy } from "./stream-proxy";
 import * as auth from "./supabase";
 import * as sync from "./sync";
 import * as transcode from "./transcode";
@@ -34,6 +37,8 @@ protocol.registerSchemesAsPrivileged([
   // Jellyfin covers: fetched (and disk-cached) by the main process, which
   // holds the server token — see jellyfin.ts.
   { scheme: "jfart", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // Navidrome/Subsonic covers, same arrangement — see subsonic.ts.
+  { scheme: "ssart", privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
 // Library internals (BotGuard VM, parser JIT) can throw asynchronously;
@@ -299,15 +304,24 @@ function createWindow(): void {
 /** Why the last track-URL request for an id produced no URL (for the renderer's error toast). */
 const trackUrlErrors = new Map<string, "missing" | transcode.TranscodeFailure>();
 
+/** Hand a fresh local-library snapshot to the renderer (views + catalogue reload). */
+function pushLibrary(lib: locallib.LocalLibrary): void {
+  try {
+    mainWindow?.webContents.send("library:enriched", lib);
+  } catch {
+    /* window gone */
+  }
+}
+
 /** Background cover/album fill; each batch is pushed to the renderer. */
 function startEnrichment(): void {
-  enrichLocalLibrary((lib) => {
-    try {
-      mainWindow?.webContents.send("library:enriched", lib);
-    } catch {
-      /* window gone */
-    }
-  });
+  enrichLocalLibrary(pushLibrary);
+}
+
+/** After folders change: watch the new set and let the views know. */
+function libraryFoldersChanged(lib: locallib.LocalLibrary): void {
+  folderWatch.syncFolderWatchers();
+  pushLibrary(lib);
 }
 
 /** googlevideo rejects media requests that carry a foreign Referer/Origin. */
@@ -348,6 +362,7 @@ const RENDERER_STORES = new Set([
   "artist-bundle-cache",
   "artist-about-cache",
   "home-market-cache",
+  "smart-playlists",
 ]);
 function assertRendererStore(name: unknown): asserts name is string {
   if (typeof name !== "string" || !RENDERER_STORES.has(name)) throw new Error("Store not allowed");
@@ -404,13 +419,18 @@ function registerIpc(): void {
 
   ipc.handle("library:get", () => locallib.readLocalLibrary());
   ipc.handle("library:scan", async (_e, filterNonMusic?: boolean) => {
+    folderWatch.noteFilterNonMusic(filterNonMusic !== false);
     const lib = await locallib.scanLibrary(filterNonMusic !== false);
+    pushLibrary(lib);
     startEnrichment();
     return lib;
   });
+  ipc.handle("library:watch", (_e, enabled: boolean) => folderWatch.setFolderWatchEnabled(enabled !== false));
   ipc.handle("library:setFolders", async (_e, folders: string[]) => {
     const clean = approvedFolderInputs(folders, 8);
-    return locallib.setLibraryFolders(clean);
+    const lib = await locallib.setLibraryFolders(clean);
+    libraryFoldersChanged(lib);
+    return lib;
   });
   ipc.handle("library:addFolders", async (_e, paths: string[]) => {
     // Same gate as setFolders: only directories already approved through the
@@ -419,19 +439,26 @@ function registerIpc(): void {
     const clean = approvedFolderInputs(Array.isArray(paths) ? paths.slice(0, 8) : [], 8);
     const res = await locallib.addLibraryFolders(clean);
     for (const f of res.added) approveDir(f.path);
+    libraryFoldersChanged(res.lib);
     return res;
   });
   ipc.handle("library:renameFolder", (_e, folderPath: string, displayName: string) =>
     locallib.renameLibraryFolder(String(folderPath ?? ""), displayName)
   );
-  ipc.handle("library:removeFolder", (_e, folderPath: string) =>
-    locallib.removeLibraryFolder(String(folderPath ?? ""))
-  );
+  ipc.handle("library:removeFolder", async (_e, folderPath: string) => {
+    const lib = await locallib.removeLibraryFolder(String(folderPath ?? ""));
+    libraryFoldersChanged(lib);
+    return lib;
+  });
   ipc.handle("library:folderStatuses", () => locallib.folderStatuses());
   ipc.handle("library:trackurl", async (_e, id: string) => {
     if (String(id ?? "").startsWith("jf:")) {
       await startStreamProxy();
       return jellyfin.status().connected ? proxyUrlForJellyfin(String(id)) : null;
+    }
+    if (String(id ?? "").startsWith("ss:")) {
+      await startStreamProxy();
+      return subsonic.status().connected ? proxyUrlForSubsonic(String(id)) : null;
     }
     const key = String(id ?? "");
     const p = locallib.localStreamPath(key);
@@ -458,6 +485,7 @@ function registerIpc(): void {
   ipc.handle("ffmpeg:status", (_e, recheck?: boolean) => transcode.ffmpegStatus(recheck === true));
   ipc.handle("library:artbytes", async (_e, thumb: string) => {
     if (String(thumb ?? "").startsWith("jfart://")) return (await jellyfin.artBytes(String(thumb)))?.data ?? null;
+    if (String(thumb ?? "").startsWith("ssart://")) return (await subsonic.artBytes(String(thumb)))?.data ?? null;
     // Raw cover bytes for the palette extractors: Chromium blocks CORS-mode
     // loads (and fetch) to the custom localart:// scheme at the scheme level,
     // so canvas pixel reads can never go through the URL. The renderer turns
@@ -480,6 +508,19 @@ function registerIpc(): void {
   ipc.handle("jellyfin:library", () => jellyfin.readLibrary());
   ipc.handle("jellyfin:refresh", () => jellyfin.refreshLibrary());
 
+  // AutoEQ headphone correction profiles for the parametric EQ.
+  ipc.handle("autoeq:search", (_e, q: string) => autoeq.searchAutoEq(String(q ?? "")));
+  ipc.handle("autoeq:fetch", (_e, p: string) => autoeq.fetchAutoEq(String(p ?? "")));
+
+  // Navidrome / Subsonic server as a third library source.
+  ipc.handle("subsonic:status", () => subsonic.status());
+  ipc.handle("subsonic:connect", (_e, input: { server: string; username: string; password: string }) =>
+    subsonic.connect(input ?? { server: "", username: "", password: "" })
+  );
+  ipc.handle("subsonic:disconnect", () => subsonic.disconnect());
+  ipc.handle("subsonic:library", () => subsonic.readLibrary());
+  ipc.handle("subsonic:refresh", () => subsonic.refreshLibrary());
+
   ipc.handle("canvas:get", (_e, q: { title?: string; artist?: string; album?: string }) =>
     canvas.canvasFor(String(q?.title ?? ""), String(q?.artist ?? ""), q?.album ? String(q.album) : undefined)
   );
@@ -496,6 +537,7 @@ function registerIpc(): void {
       }
     }
   );
+  ipc.handle("stats:playcounts", () => stats.playCounts());
   ipc.handle("stats:summary", (_e, period: string) => {
     const p = (["month", "lastMonth", "year", "all"] as const).find((x) => x === period) ?? "month";
     return stats.summary(p);
@@ -823,6 +865,11 @@ if (!gotLock) {
       if (typeof d === "string") approvedDirs.add(path.resolve(d));
     }
 
+    protocol.handle("ssart", async (req) => {
+      const art = await subsonic.artBytes(req.url);
+      if (!art) return new Response("not found", { status: 404 });
+      return new Response(new Uint8Array(art.data), { headers: { "Content-Type": art.mime } });
+    });
     protocol.handle("jfart", async (req) => {
       const art = await jellyfin.artBytes(req.url);
       if (!art) return new Response("not found", { status: 404 });
@@ -830,6 +877,14 @@ if (!gotLock) {
     });
     // Covers the tags lack are filled from the open databases in the background.
     startEnrichment();
+    // New, changed and deleted files show up without a manual rescan.
+    folderWatch.configureFolderWatch({
+      onRescanned: (lib) => {
+        pushLibrary(lib);
+        startEnrichment();
+      },
+    });
+    folderWatch.syncFolderWatchers();
 
     protocol.handle("localart", (req) => {
       // For localart://<hash>.<ext> the filename lands in `hostname` and

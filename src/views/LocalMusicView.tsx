@@ -22,6 +22,7 @@ import {
   User,
 } from "lucide-react";
 import { TrackList } from "../components/TrackList";
+import { albumKeyOf, albumRoute, artistRoute, leadArtist, localToTrack } from "../lib/libraryTracks";
 import { Artwork, EmptyState, Pills } from "../components/primitives";
 import { isUnderPath } from "../../electron/local-paths";
 import { useSettings } from "../stores/settings";
@@ -41,19 +42,9 @@ interface LibState {
   tracks: LocalTrack[];
 }
 
+/** The shared library conversion (album/artist routes, ReplayGain …) plus the file's mtime for sorting. */
 function toTrack(t: LocalTrack): Track & { mtime: number } {
-  return {
-    id: t.id,
-    title: t.title,
-    artist: t.artist,
-    album: t.album,
-    duration: t.duration,
-    thumb: t.art ?? "",
-    // Mark local origin explicitly: the id prefix already routes playback,
-    // but dependents (canvas lookup, silence analysis) check this flag.
-    localPath: t.path,
-    mtime: t.mtime,
-  };
+  return { ...localToTrack(t), mtime: t.mtime };
 }
 
 export function LocalMusicView() {
@@ -221,10 +212,11 @@ export function LocalMusicView() {
   }, [scoped, q, sort, albumFilter, artistFilter]);
 
   const albums = useMemo(() => {
-    const map = new Map<string, { name: string; artist: string; count: number; art?: string }>();
+    const map = new Map<string, { name: string; artist: string; count: number; art?: string; route?: string }>();
     for (const t of scoped) {
       const key = `${t.album}|${t.artist}`;
-      const cur = map.get(key) ?? { name: t.album, artist: t.artist, count: 0, art: t.art };
+      const albumKey = albumKeyOf(t);
+      const cur = map.get(key) ?? { name: t.album, artist: t.artist, count: 0, art: t.art, route: albumKey ? albumRoute(albumKey) : undefined };
       cur.count += 1;
       if (!cur.art && t.art) cur.art = t.art;
       map.set(key, cur);
@@ -529,6 +521,11 @@ export function LocalMusicView() {
             <button
               key={`${a.name}|${a.artist}`}
               onClick={() => {
+                // The album page; untitled "albums" still filter the song list.
+                if (a.route) {
+                  navigate({ name: "album", param: a.route });
+                  return;
+                }
                 setAlbumFilter(a.name);
                 setTab("songs");
               }}
@@ -551,10 +548,7 @@ export function LocalMusicView() {
           {artists.map((a) => (
             <button
               key={a.name}
-              onClick={() => {
-                setArtistFilter(a.name);
-                setTab("songs");
-              }}
+              onClick={() => navigate({ name: "artist", param: artistRoute(leadArtist(a.name)) })}
               className="flex items-center gap-3 p-3 rounded-xl hover:bg-ink-hi/[0.05] transition-colors text-left"
             >
               {a.art ? (

@@ -1,5 +1,6 @@
 /** Builds right-click / "more" menu items for tracks and playlists. */
 import {
+  Disc3,
   FolderOpen,
   Heart,
   ListMusic,
@@ -10,6 +11,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  User,
 } from "lucide-react";
 import { startDownload } from "./downloads";
 import { useLibrary, type Playlist } from "../stores/library";
@@ -96,7 +98,22 @@ export function trackMenuItems(track: Track): MenuItem[] {
     });
   }
 
-  if (track.artist && track.artist.toLowerCase() !== "unknown artist") {
+  if (track.albumId?.startsWith("lib:album:")) {
+    items.push({
+      separatorBefore: true,
+      label: "Go to album",
+      icon: Disc3,
+      action: () => useUI.getState().navigate({ name: "album", param: track.albumId }),
+    });
+  }
+  if (track.artistId?.startsWith("lib:artist:")) {
+    items.push({
+      separatorBefore: !track.albumId,
+      label: "Go to artist",
+      icon: User,
+      action: () => useUI.getState().navigate({ name: "artist", param: track.artistId }),
+    });
+  } else if (track.artist && track.artist.toLowerCase() !== "unknown artist") {
     items.push({
       separatorBefore: !track.localPath,
       label: `More by ${track.artist}`,

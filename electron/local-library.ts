@@ -40,6 +40,56 @@ export interface LocalTrack {
   art?: string;
   /** codec the tags report ("ALAC", "MPEG-4/AAC" …) — decides FFmpeg conversion */
   codec?: string;
+  year?: number;
+  albumArtist?: string;
+  trackNo?: number;
+  discNo?: number;
+  /** ReplayGain 2.0 values (dB, linear peak), from the tags; Opus R128 tags converted */
+  rg?: ReplayGainTags;
+  sampleRate?: number;
+  bitsPerSample?: number;
+  /** bits per second */
+  bitrate?: number;
+  lossless?: boolean;
+  /** when ByTune first saw the file (file creation time on the first scan) */
+  addedAt?: number;
+  /** scan schema the record was read with — older records are re-read once */
+  v?: number;
+}
+
+export interface ReplayGainTags {
+  trackGain?: number;
+  trackPeak?: number;
+  albumGain?: number;
+  albumPeak?: number;
+}
+
+/** Bump when the scan reads new fields: unchanged files are then re-read once. */
+const SCAN_VERSION = 2;
+
+/** ReplayGain from the tags; Opus files carry R128 gains (Q7.8 dB, −23 LUFS) instead. */
+function readReplayGain(meta: import("music-metadata").IAudioMetadata): ReplayGainTags | undefined {
+  const c = meta.common;
+  const finite = (n: number | undefined): number | undefined => (typeof n === "number" && Number.isFinite(n) ? n : undefined);
+  const rg: ReplayGainTags = {
+    trackGain: finite(c.replaygain_track_gain?.dB),
+    trackPeak: finite(c.replaygain_track_peak?.ratio),
+    albumGain: finite(c.replaygain_album_gain?.dB),
+    albumPeak: finite(c.replaygain_album_peak?.ratio),
+  };
+  if (rg.trackGain === undefined && rg.albumGain === undefined) {
+    for (const tags of Object.values(meta.native ?? {})) {
+      for (const tag of tags) {
+        const id = String(tag.id).toUpperCase();
+        const q78 = Number(tag.value);
+        if (!Number.isFinite(q78)) continue;
+        // R128 gains target −23 LUFS, ReplayGain 2.0 −18 LUFS: +5 dB aligns them.
+        if (id === "R128_TRACK_GAIN") rg.trackGain = q78 / 256 + 5;
+        if (id === "R128_ALBUM_GAIN") rg.albumGain = q78 / 256 + 5;
+      }
+    }
+  }
+  return Object.values(rg).some((v) => v !== undefined) ? rg : undefined;
 }
 
 export interface LocalFolderEntry {
@@ -79,6 +129,11 @@ const AUDIO_EXT = new Set([
   ".wv", ".ape", ".dsf", ".dff",
 ]);
 const MIN_DURATION_SEC = 30;
+
+/** Whether a file name has one of the indexed audio extensions. */
+export function isAudioFileName(name: string): boolean {
+  return AUDIO_EXT.has(path.extname(name).toLowerCase());
+}
 /** Hard ceiling on stored folder entries — protects against pathological picks. */
 const MAX_FOLDERS = 200;
 /** Same depth limit the scan walk uses. */
@@ -538,8 +593,10 @@ export async function scanLibrary(
     } catch {
       continue;
     }
-    // Unchanged since the last scan — carry the previous record forward.
-    if (prev && prev.mtime === Math.floor(stat.mtimeMs)) {
+    // Unchanged since the last scan — carry the previous record forward
+    // (records from an older scan schema are re-read once for the new fields).
+    const unchanged = !!prev && prev.mtime === Math.floor(stat.mtimeMs);
+    if (prev && unchanged && prev.v === SCAN_VERSION) {
       tracks.push(prev);
       continue;
     }
@@ -553,6 +610,8 @@ export async function scanLibrary(
       duration: 0,
       size: stat.size,
       mtime: Math.floor(stat.mtimeMs),
+      addedAt: prev?.addedAt ?? Math.floor(stat.birthtimeMs || stat.mtimeMs),
+      v: SCAN_VERSION,
     };
     try {
       const meta = await parseFile(f.abs, { duration: true, skipCovers: false });
@@ -562,16 +621,30 @@ export async function scanLibrary(
       // string that lands in the persisted store.
       const bounded = (value: string | undefined): string | undefined =>
         typeof value === "string" ? value.slice(0, 200) : undefined;
+      const num = (n: number | null | undefined): number | undefined =>
+        typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined;
+      const art = extractArt(hashPath(f.abs), c.picture?.[0], true);
+      const album = bounded(c.album?.trim());
       track = {
         ...track,
         title: bounded(c.title?.trim()) || track.title,
         artist: bounded(c.artist?.trim()) || bounded(c.albumartist?.trim()) || track.artist,
-        album: bounded(c.album?.trim()) || track.album,
+        // A schema re-read keeps what open metadata filled in for an unchanged file.
+        album: album || (unchanged ? prev?.album : undefined) || track.album,
         genre: bounded(c.genre?.[0]),
         codec: bounded(meta.format.codec),
         duration: parsedDuration(meta.format.duration),
+        year: num(c.year) ?? num(c.originalyear),
+        albumArtist: bounded(c.albumartist?.trim()),
+        trackNo: num(c.track?.no),
+        discNo: num(c.disk?.no),
+        rg: readReplayGain(meta),
+        sampleRate: num(meta.format.sampleRate),
+        bitsPerSample: num(meta.format.bitsPerSample),
+        bitrate: num(meta.format.bitrate),
+        lossless: meta.format.lossless,
         // Re-parsed (mtime changed) → refresh the extracted cover too.
-        art: extractArt(hashPath(f.abs), c.picture?.[0], true),
+        art: art ?? (unchanged ? prev?.art : undefined),
       };
     } catch (err) {
       checkGeneration(generation);

@@ -195,6 +195,23 @@ function gainForTrack(trackId: string | null): number {
 }
 
 /**
+ * ReplayGain for library songs: tag values for local files, Jellyfin's own
+ * loudness gain, Navidrome's OpenSubsonic values. Gains are referenced to
+ * −18 LUFS; the target setting shifts them (−14 LUFS = +4 dB). Like the
+ * stream normalisation it only ever attenuates: loud masters come down,
+ * quieter ones stay as they are, so nothing can clip. Songs without gain
+ * information keep their original level.
+ */
+function replayGainFor(track: Track): number {
+  const { replayGainMode, replayGainTarget } = useSettings.getState();
+  if (replayGainMode === "off" || !track.rg) return 1;
+  const { trackGain, albumGain } = track.rg;
+  const db = replayGainMode === "album" ? albumGain ?? trackGain : trackGain ?? albumGain;
+  if (db === undefined || !Number.isFinite(db)) return 1;
+  return Math.min(1, Math.pow(10, (db + replayGainTarget + 18) / 20));
+}
+
+/**
  * Fetch a stream's loudness metadata from the proxy and cache its gain.
  * Best-effort: on failure the track keeps the fallback gain.
  */
@@ -393,28 +410,59 @@ function applySink(): void {
 export const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
 let eqCtx: AudioContext | null = null;
+/** Both decks feed this node; its gain is the parametric profile's preamp. */
+let eqInput: GainNode | null = null;
 let eqFilters: BiquadFilterNode[] = [];
+/** Last node of the chain (eqInput when no band is active). */
+let eqTail: AudioNode | null = null;
 let eqLimiter: DynamicsCompressorNode | null = null;
 let eqLimited = false;
+/** Filter types of the built chain — a different shape means a rebuild. */
+let eqShape = "";
+
+interface EqBandPlan {
+  type: BiquadFilterType;
+  freq: number;
+  gain: number;
+  q: number;
+}
+
+/** What the graph should run: the 10-band sliders or the parametric/AutoEQ profile (null = EQ off). */
+function eqPlan(): { preampDb: number; bands: EqBandPlan[] } | null {
+  const s = useSettings.getState();
+  if (!s.eqEnabled) return null;
+  if (s.eqMode === "parametric") {
+    return { preampDb: s.peq.preamp, bands: s.peq.bands.map((b) => ({ type: b.type, freq: b.freq, gain: b.gain, q: b.q })) };
+  }
+  return {
+    preampDb: 0,
+    bands: EQ_BANDS.map((freq, i) => ({
+      type: i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking",
+      freq,
+      gain: s.eqGains[i] ?? 0,
+      q: 1.41, // one-octave bands
+    })),
+  };
+}
 
 /**
- * Both decks → 10 biquads → (limiter while any band is boosted) → speakers. Element volume is applied
- * before a MediaElementSource (verified on Electron's Chromium), so the
- * gain/fade/normalisation logic above keeps working through the graph.
- * Built on first enable only: a deck can never be detached from its source
- * node again, so turning the EQ off afterwards just flattens the bands
- * (0 dB biquads are transparent).
+ * Both decks → preamp → EQ bands → (limiter while the curve can boost) →
+ * speakers. Element volume is applied before a MediaElementSource (verified
+ * on Electron's Chromium), so the gain/fade/normalisation logic above keeps
+ * working through the graph. Built on first enable only: a deck can never be
+ * detached from its source node again, so turning the EQ off afterwards
+ * leaves an empty, transparent chain (preamp at 0 dB, no bands).
  */
 function applyEq(): void {
   if (!elements) return;
-  const { eqEnabled, eqGains } = useSettings.getState();
+  const plan = eqPlan();
   if (!eqCtx) {
-    if (!eqEnabled) return;
+    if (!plan) return;
     const ctx = new AudioContext();
     eqCtx = ctx;
-    // Brick-wall-ish limiter instead of a preamp: a preamp pulled the whole
-    // signal down by the largest boost, so every boost made playback quieter.
-    // This only touches the peaks a boost pushes past full scale.
+    // Brick-wall-ish limiter for boosts the preamp doesn't cover (the
+    // 10-band sliders have no preamp: it pulled everything down by the
+    // largest boost). It only touches peaks pushed past full scale.
     eqLimiter = ctx.createDynamicsCompressor();
     eqLimiter.threshold.value = -0.5;
     eqLimiter.knee.value = 0;
@@ -422,31 +470,57 @@ function applyEq(): void {
     eqLimiter.attack.value = 0.002;
     eqLimiter.release.value = 0.15;
     eqLimiter.connect(ctx.destination);
-    eqFilters = EQ_BANDS.map((freq, i) => {
-      const f = ctx.createBiquadFilter();
-      f.type = i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
-      f.frequency.value = freq;
-      f.Q.value = 1.41; // one-octave bands
-      return f;
-    });
-    for (const e of elements) ctx.createMediaElementSource(e).connect(eqFilters[0]);
-    for (let i = 1; i < eqFilters.length; i++) eqFilters[i - 1].connect(eqFilters[i]);
-    eqFilters[eqFilters.length - 1].connect(ctx.destination);
+    eqInput = ctx.createGain();
+    for (const e of elements) ctx.createMediaElementSource(e).connect(eqInput);
     applySink();
   }
-  const gains = eqEnabled ? eqGains : [];
-  const t = eqCtx.currentTime;
-  eqFilters.forEach((f, i) => f.gain.setTargetAtTime(gains[i] ?? 0, t, 0.02));
-  // The limiter sits in the path only while something is boosted, so a flat
-  // or cut-only EQ (and EQ off) stays bit-transparent.
-  const limit = gains.some((g) => g > 0);
-  if (limit !== eqLimited) {
-    const last = eqFilters[eqFilters.length - 1];
-    last.disconnect();
-    last.connect(limit ? eqLimiter! : eqCtx.destination);
+  const ctx = eqCtx;
+  const input = eqInput!;
+  const bands = plan?.bands ?? [];
+  const nyquist = ctx.sampleRate / 2;
+
+  // Rebuild the chain only when its shape changes; parameters glide below.
+  const shape = bands.map((b) => b.type).join(",");
+  if (shape !== eqShape || !eqTail) {
+    input.disconnect();
+    for (const f of eqFilters) f.disconnect();
+    eqFilters = bands.map((b) => {
+      const f = ctx.createBiquadFilter();
+      f.type = b.type;
+      return f;
+    });
+    let node: AudioNode = input;
+    for (const f of eqFilters) {
+      node.connect(f);
+      node = f;
+    }
+    node.connect(ctx.destination);
+    eqTail = node;
+    eqLimited = false;
+    eqShape = shape;
+  }
+
+  const t = ctx.currentTime;
+  const preampDb = plan?.preampDb ?? 0;
+  input.gain.setTargetAtTime(Math.pow(10, preampDb / 20), t, 0.02);
+  eqFilters.forEach((f, i) => {
+    const b = bands[i];
+    f.frequency.setTargetAtTime(Math.min(Math.max(b.freq, 10), nyquist - 100), t, 0.02);
+    f.Q.setTargetAtTime(b.q, t, 0.02);
+    f.gain.setTargetAtTime(b.gain, t, 0.02);
+  });
+
+  // The limiter sits in the path only while the curve can push past full
+  // scale, so a flat, cut-only or preamp-compensated EQ (and EQ off) stays
+  // untouched by it.
+  const boosts = bands.filter((b) => b.type !== "lowpass" && b.type !== "highpass").map((b) => b.gain);
+  const limit = preampDb + Math.max(0, ...boosts) > 0.05;
+  if (limit !== eqLimited && eqTail) {
+    eqTail.disconnect();
+    eqTail.connect(limit ? eqLimiter! : ctx.destination);
     eqLimited = limit;
   }
-  if (eqCtx.state === "suspended") void eqCtx.resume();
+  if (ctx.state === "suspended") void ctx.resume();
 }
 
 let labelsUnlocked = false;
@@ -593,7 +667,7 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
     }
     // The fade's standby element carries the incoming track's own loudness
     // gain; the load-time prefetch usually already did this — cheap retry.
-    if (library) rememberGain(nextTrack.id, 1);
+    if (library) rememberGain(nextTrack.id, replayGainFor(nextTrack));
     else void fetchLoudness(url, nextTrack.id);
     // The world may have moved on while we resolved.
     const cur = usePlayer.getState().queue[usePlayer.getState().index];
@@ -1118,7 +1192,17 @@ export function initAudioEngine(): void {
   useSettings.subscribe(() => applySink());
   applyEq();
   useSettings.subscribe((st, prev) => {
-    if (st.eqEnabled !== prev.eqEnabled || st.eqGains !== prev.eqGains) applyEq();
+    if (st.eqEnabled !== prev.eqEnabled || st.eqGains !== prev.eqGains || st.eqMode !== prev.eqMode || st.peq !== prev.peq) {
+      applyEq();
+    }
+    // ReplayGain settings re-level the songs on both decks right away.
+    if (st.replayGainMode !== prev.replayGainMode || st.replayGainTarget !== prev.replayGainTarget) {
+      const state = usePlayer.getState();
+      for (const t of [state.queue[state.index], state.queue[state.index + 1]]) {
+        if (t && isLibraryTrack(t)) rememberGain(t.id, replayGainFor(t));
+      }
+      refreshVolumes();
+    }
   });
 
   setupMediaSession();
@@ -1258,8 +1342,9 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
         if (track.id.startsWith("jf:")) throw new Error("Jellyfin server is not connected");
         throw new LibrarySourceError((await requireBridge().localTrackError(track.id).catch(() => null)) ?? "missing");
       }
-      // Local files play at their original level — no normalisation, no trim.
-      rememberGain(track.id, 1);
+      // Library songs are levelled by ReplayGain (when tagged and enabled);
+      // otherwise they play at their original level — no trim.
+      rememberGain(track.id, replayGainFor(track));
       // Apply immediately: without this the element keeps the PREVIOUS
       // track's gain (streams land their own via fetchLoudness, locals
       // would otherwise never get a volume write).

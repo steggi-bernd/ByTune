@@ -113,7 +113,19 @@ function TrackRow({ track, index, isCurrent, isPlaying, onPlay, menuFor, showAlb
           <span className="truncate">{track.title}</span>
         </div>
         <div className="text-[14px] truncate text-ink-dim mt-0.5">
-          {track.artist}
+          {track.artistId?.startsWith("lib:artist:") ? (
+            <button
+              className="hover:text-ink hover:underline text-left transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate({ name: "artist", param: track.artistId });
+              }}
+            >
+              {track.artist}
+            </button>
+          ) : (
+            track.artist
+          )}
         </div>
       </div>
 

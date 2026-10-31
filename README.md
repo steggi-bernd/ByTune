@@ -45,6 +45,27 @@ then played with full seeking. FFmpeg is found in the app's data folder, next to
 **Caching.** Online lyrics are fetched once and kept on disk (`lyrics-cache`); artist photos are stored locally
 at 600 px (~30–100 KB each) next to the artist text (~1 KB each), so the panels also work offline.
 
+**Library, Spotify-style.** Home greets you with quick-access tiles, *Made for you* mixes built from your own
+music (On Repeat, Rediscover, one per big genre and decade, reshuffled daily), recently added albums, your top
+artists and recently played songs. Albums and artists get their own pages: cover or photo banner, play/shuffle,
+popular songs ranked by your plays, albums, "appears on" and the Wikipedia bio. Search shows matching artists
+and albums before the songs.
+
+**Smart playlists** (as in Symfonium and Aideo) fill themselves from rules — genre, artist, album, title, year,
+added, plays, last played, length, format, sample rate, bit depth, source, liked — with *all/any* matching, an
+order and an optional cap. Create one from the **+** menu; presets cover Hi-Res, recently added, never played …
+
+**Sources.** Local folders (watched: new, changed and deleted files show up without a rescan), Jellyfin, and
+**Navidrome / any Subsonic server** (token auth — the password is never stored; OpenSubsonic ReplayGain,
+sample rates and synced lyrics are used when the server offers them).
+
+**Sound.** *Volume leveling* applies ReplayGain from the tags (per song or per album; Opus R128 tags converted,
+Jellyfin's and Navidrome's gains used), aiming at −18, −14 or −11 LUFS. It only ever turns loud songs down, so
+nothing clips and dynamics stay untouched. The equalizer runs either as the 10-band EQ or as a **parametric EQ**:
+search your headphones and load their [AutoEQ](https://github.com/jaakkopasanen/AutoEq) correction (~9,000
+models), import an Equalizer APO `ParametricEQ.txt`, or edit bands by hand — with the summed frequency response
+drawn live.
+
 **Layout.** The library panel folds down to an icon rail (header button or `Ctrl+B`).
 
 The installer uses its own identity (`ByTune Local`, `com.bytune.local`), so it never replaces an installed

@@ -1,4 +1,5 @@
 /** User settings (persisted). Dark theme only — no theme switching. */
+import { FLAT_PEQ, type ParametricEq } from "../lib/peq";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { storage } from "../lib/persist";
@@ -38,10 +39,19 @@ interface SettingsState {
   /** 10-band graphic EQ; gains in dB (−12..+12), one per EQ_BANDS entry */
   eqEnabled: boolean;
   eqGains: number[];
+  /** which EQ runs while enabled: the 10-band sliders or the parametric/AutoEQ profile */
+  eqMode: "graphic" | "parametric";
+  peq: ParametricEq;
+  /** ReplayGain leveling for library songs (tags, Jellyfin/Navidrome gains) */
+  replayGainMode: "off" | "track" | "album";
+  /** loudness the leveling aims for, LUFS (ReplayGain itself is referenced to −18) */
+  replayGainTarget: number;
 
   /* Appearance */
   /** Left library panel folded down to an icon rail */
   sidebarCollapsed: boolean;
+  /** Rescan imported folders automatically when files change */
+  watchFolders: boolean;
   reduceAnimation: boolean;
   reduceDynamicBlur: boolean;
   liquidGlass: boolean;
@@ -71,7 +81,12 @@ interface SettingsState {
   setAudioSinkId(sinkId: string): void;
   setEqEnabled(v: boolean): void;
   setEqGains(gains: number[]): void;
+  setEqMode(mode: "graphic" | "parametric"): void;
+  setPeq(peq: ParametricEq): void;
+  setReplayGainMode(mode: "off" | "track" | "album"): void;
+  setReplayGainTarget(lufs: number): void;
   setSidebarCollapsed(v: boolean): void;
+  setWatchFolders(v: boolean): void;
   setReduceAnimation(v: boolean): void;
   setReduceDynamicBlur(v: boolean): void;
   setLiquidGlass(v: boolean): void;
@@ -101,9 +116,14 @@ export const useSettings = create<SettingsState>()(
       playbackSpeed: 1,
       audioSinkId: "",
       eqEnabled: false,
+      eqMode: "graphic",
+      peq: FLAT_PEQ,
+      replayGainMode: "track",
+      replayGainTarget: -14,
       eqGains: Array(10).fill(0),
 
       sidebarCollapsed: false,
+      watchFolders: true,
       reduceAnimation: false,
       reduceDynamicBlur: false,
       liquidGlass: true,
@@ -131,7 +151,12 @@ export const useSettings = create<SettingsState>()(
       setAudioSinkId: (audioSinkId) => set({ audioSinkId }),
       setEqEnabled: (eqEnabled) => set({ eqEnabled }),
       setEqGains: (eqGains) => set({ eqGains: eqGains.map((g) => Math.min(12, Math.max(-12, g))) }),
+      setEqMode: (eqMode) => set({ eqMode }),
+      setPeq: (peq) => set({ peq }),
+      setReplayGainMode: (replayGainMode) => set({ replayGainMode }),
+      setReplayGainTarget: (replayGainTarget) => set({ replayGainTarget }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setWatchFolders: (watchFolders) => set({ watchFolders }),
       setReduceAnimation: (reduceAnimation) => set({ reduceAnimation }),
       setReduceDynamicBlur: (reduceDynamicBlur) => set({ reduceDynamicBlur }),
       setLiquidGlass: (liquidGlass) => set({ liquidGlass }),

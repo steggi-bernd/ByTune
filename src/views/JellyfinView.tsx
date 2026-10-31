@@ -10,6 +10,7 @@ import { KeyRound, LogOut, RefreshCw, Search, Server } from "lucide-react";
 import { TrackList } from "../components/TrackList";
 import { EmptyState } from "../components/primitives";
 import { jellyfinToTrack, matchesQuery } from "../lib/libraryTracks";
+import { announceRemoteLibraryChange } from "../stores/catalog";
 import { useUI } from "../stores/ui";
 import type { JellyfinLibrary, JellyfinStatus } from "../../electron/jellyfin";
 
@@ -145,6 +146,7 @@ export function JellyfinView() {
       const fresh = (await window.bytune.jellyfinRefresh()) as JellyfinLibrary;
       setLib(fresh);
       setStatus((await window.bytune.jellyfinStatus()) as JellyfinStatus);
+      announceRemoteLibraryChange();
     } catch (err) {
       toast(errorText(err), "error");
     } finally {
@@ -194,6 +196,7 @@ export function JellyfinView() {
         const s = (await window.bytune?.jellyfinDisconnect()) as JellyfinStatus | undefined;
         setLib(null);
         if (s) setStatus(s);
+        announceRemoteLibraryChange();
       },
     });
 

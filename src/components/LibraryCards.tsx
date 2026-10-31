@@ -1,0 +1,249 @@
+/**
+ * Shelf tiles for the library: albums, artists and mixes, in the same shape
+ * as the catalogue cards (Cards.tsx) — square cover over title/subtitle, the
+ * translucent tile fading in on hover, a play button over the cover.
+ */
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { resolveArtistAbout } from "../lib/artistAbout";
+import type { LibAlbum } from "../lib/catalogIndex";
+import { usePlayer } from "../stores/player";
+import { tintHoverHandlers, useUI } from "../stores/ui";
+import type { Track } from "../types";
+import { Artwork, PlayOverlay } from "./primitives";
+
+const CARD =
+  "group w-[184px] shrink-0 text-left cursor-pointer active:scale-[0.98] rounded-xl p-2 transition-colors duration-200 hover:bg-ink-hi/[0.08]";
+const CARD_TITLE = "text-[15px] font-semibold text-ink-hi truncate leading-snug";
+const CARD_SUB = "text-[13px] text-ink-dim truncate mt-0.5";
+
+function activateOnKey(open: () => void) {
+  return (e: KeyboardEvent): void => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      open();
+    }
+  };
+}
+
+function Tile({
+  thumb,
+  round,
+  title,
+  subtitle,
+  onOpen,
+  onPlay,
+  art,
+}: {
+  thumb: string;
+  round?: boolean;
+  title: string;
+  subtitle: string;
+  onOpen: () => void;
+  onPlay?: () => void;
+  /** custom artwork (mix collage) instead of a single cover */
+  art?: ReactNode;
+}) {
+  const shape = round ? "rounded-full" : "rounded-xl";
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={activateOnKey(onOpen)}
+      {...tintHoverHandlers(thumb)}
+      className={`${CARD} select-none`}
+    >
+      <div className={`relative overflow-hidden ${shape}`}>
+        {art ?? (
+          <Artwork
+            src={thumb}
+            rounded={shape}
+            className="w-full aspect-square transition-transform duration-300 ease-out origin-top group-hover:scale-[1.05]"
+            iconClassName="w-7 h-7"
+          />
+        )}
+        {onPlay && <PlayOverlay onClick={onPlay} />}
+      </div>
+      <div className="mt-2.5">
+        <div className={CARD_TITLE} title={title}>
+          {title}
+        </div>
+        <div className={CARD_SUB}>{subtitle}</div>
+      </div>
+    </div>
+  );
+}
+
+export function AlbumTile({ album, subtitle }: { album: LibAlbum; subtitle?: string }) {
+  const navigate = useUI((s) => s.navigate);
+  const playQueue = usePlayer((s) => s.playQueue);
+  return (
+    <Tile
+      thumb={album.thumb}
+      title={album.title}
+      subtitle={subtitle ?? `${album.year ? `${album.year} · ` : ""}${album.artist}`}
+      onOpen={() => navigate({ name: "album", param: album.route })}
+      onPlay={() => playQueue(album.tracks, 0)}
+    />
+  );
+}
+
+/** The artist's photo from the open databases, with a cover as stand-in. */
+export function useArtistPhoto(name: string, fallback = ""): string {
+  const [photo, setPhoto] = useState<string>(fallback);
+  useEffect(() => {
+    let alive = true;
+    setPhoto(fallback);
+    void resolveArtistAbout(name).then((a) => {
+      if (alive && a?.thumb) setPhoto(a.thumb);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [name, fallback]);
+  return photo;
+}
+
+export function ArtistTile({ name, route, subtitle, fallbackThumb }: { name: string; route: string; subtitle: string; fallbackThumb: string }) {
+  const navigate = useUI((s) => s.navigate);
+  const photo = useArtistPhoto(name, fallbackThumb);
+  return <Tile round thumb={photo} title={name} subtitle={subtitle} onOpen={() => navigate({ name: "artist", param: route })} />;
+}
+
+/** 2×2 cover collage — mixes and smart playlists. */
+export function CoverCollage({ tracks, className = "" }: { tracks: Track[]; className?: string }) {
+  const covers: string[] = [];
+  for (const t of tracks) {
+    if (t.thumb && !covers.includes(t.thumb)) covers.push(t.thumb);
+    if (covers.length === 4) break;
+  }
+  if (covers.length < 4) {
+    return <Artwork src={covers[0]} rounded="rounded-xl" className={`w-full aspect-square ${className}`} iconClassName="w-7 h-7" />;
+  }
+  return (
+    <div className={`grid grid-cols-2 w-full aspect-square overflow-hidden ${className}`}>
+      {covers.map((c) => (
+        <Artwork key={c} src={c} className="w-full aspect-square" rounded="rounded-none" iconClassName="w-4 h-4" />
+      ))}
+    </div>
+  );
+}
+
+export function MixTile({ title, subtitle, tracks, route }: { title: string; subtitle: string; tracks: Track[]; route: string }) {
+  const navigate = useUI((s) => s.navigate);
+  const playQueue = usePlayer((s) => s.playQueue);
+  return (
+    <Tile
+      thumb={tracks[0]?.thumb ?? ""}
+      title={title}
+      subtitle={subtitle}
+      onOpen={() => navigate({ name: "mix", param: route })}
+      onPlay={() => playQueue(tracks, 0)}
+      art={<CoverCollage tracks={tracks} className="rounded-xl transition-transform duration-300 ease-out origin-top group-hover:scale-[1.05]" />}
+    />
+  );
+}
+
+/** Spotify's round green play button for page headers. */
+export function BigPlayButton({ onClick, label = "Play" }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="w-14 h-14 rounded-full bg-primary text-on-primary grid place-items-center shadow-float hover:scale-105 active:scale-95 transition-transform"
+    >
+      <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current ml-0.5" aria-hidden>
+        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
+      </svg>
+    </button>
+  );
+}
+
+/** Compact quick-access tile (the home page's top grid, Spotify-style). */
+export function QuickTile({ title, thumb, art, onOpen, onPlay }: { title: string; thumb?: string; art?: ReactNode; onOpen: () => void; onPlay: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={activateOnKey(onOpen)}
+      {...tintHoverHandlers(thumb ?? null)}
+      className="group flex items-center gap-3 h-16 rounded-md bg-ink-hi/[0.07] hover:bg-ink-hi/[0.14] transition-colors overflow-hidden pr-3 cursor-pointer select-none"
+    >
+      <div className="w-16 h-16 shrink-0 overflow-hidden">{art ?? <Artwork src={thumb} rounded="rounded-none" className="w-16 h-16" iconClassName="w-5 h-5" />}</div>
+      <span className="flex-1 min-w-0 text-[14px] font-bold text-ink-hi truncate">{title}</span>
+      <button
+        title={`Play ${title}`}
+        aria-label={`Play ${title}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPlay();
+        }}
+        className="w-9 h-9 shrink-0 rounded-full bg-primary text-on-primary grid place-items-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shadow-float transition-opacity hover:scale-105"
+      >
+        <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current ml-0.5" aria-hidden>
+          <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/** Header for mixes and smart playlists: collage, label, title, length, play/shuffle. */
+export function CollectionHeader({
+  label,
+  title,
+  subtitle,
+  tracks,
+  actions,
+}: {
+  label: string;
+  title: string;
+  subtitle?: string;
+  tracks: Track[];
+  actions?: ReactNode;
+}) {
+  const playQueue = usePlayer((s) => s.playQueue);
+  const length = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+  const h = Math.floor(length / 3600);
+  const m = Math.floor((length % 3600) / 60);
+  return (
+    <>
+      <header className="flex items-end gap-6 pt-4 animate-slide-up">
+        <div className="w-[232px] shrink-0 shadow-elev rounded-lg overflow-hidden">
+          <CoverCollage tracks={tracks} />
+        </div>
+        <div className="min-w-0 pb-1">
+          <div className="text-[13px] font-semibold text-ink-hi/80">{label}</div>
+          <h1 className="font-display font-extrabold tracking-[-0.04em] text-ink-hi leading-[1.02] mt-1 line-clamp-2" style={{ fontSize: title.length > 24 ? 44 : 64 }}>
+            {title}
+          </h1>
+          <div className="text-[14px] text-ink-hi/75 mt-4">
+            {subtitle ? `${subtitle} · ` : ""}
+            {tracks.length} {tracks.length === 1 ? "song" : "songs"}
+            {length > 0 && `, ${h > 0 ? `${h} hr ${m} min` : `${m} min`}`}
+          </div>
+        </div>
+      </header>
+      <div className="flex items-center gap-5">
+        <BigPlayButton onClick={() => tracks.length && playQueue(tracks, 0)} label={`Play ${title}`} />
+        <button
+          onClick={() => tracks.length && playQueue([...tracks].sort(() => Math.random() - 0.5), 0)}
+          title="Shuffle play"
+          aria-label="Shuffle play"
+          className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
+        >
+          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22" />
+            <path d="m18 2 4 4-4 4" />
+            <path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2" />
+            <path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8" />
+            <path d="m18 14 4 4-4 4" />
+          </svg>
+        </button>
+        {actions}
+      </div>
+    </>
+  );
+}

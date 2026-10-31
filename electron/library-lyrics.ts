@@ -2,7 +2,7 @@
  * Lyrics for the local player, in this order:
  *
  *  1. what the music already carries — a sidecar .lrc next to the file, the
- *     file's own lyrics tag, or the lyrics a Jellyfin server has for the item
+ *     file's own lyrics tag, or the lyrics a Jellyfin/Navidrome server has
  *  2. an earlier online answer from the disk cache
  *  3. the open lyric providers (lyrics.ts); a hit is then cached on disk
  *
@@ -16,6 +16,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fetchLyrics as fetchJellyfinLyrics } from "./jellyfin";
+import { fetchLyrics as fetchSubsonicLyrics } from "./subsonic";
 import { localTrackById } from "./local-library";
 import { fetchLyrics as fetchProviderLyrics, lyricsFromText, type FetchedLyrics } from "./lyrics";
 
@@ -117,6 +118,10 @@ async function ownLyrics(id: string): Promise<FetchedLyrics | null> {
   if (id.startsWith("jf:")) {
     const text = await fetchJellyfinLyrics(id.slice(3));
     return text ? lyricsFromText("Jellyfin", text) : null;
+  }
+  if (id.startsWith("ss:")) {
+    const text = await fetchSubsonicLyrics(id.slice(3));
+    return text ? lyricsFromText("Navidrome", text) : null;
   }
   return null;
 }
