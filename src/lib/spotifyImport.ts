@@ -49,6 +49,38 @@ export interface ImportRow {
   track?: Track;
   /** why a "check" row isn't certain */
   reason?: "title" | "length" | "artist";
+  /** the user settled it: confirmed or rejected a check, or picked the song by hand */
+  decided?: "same" | "different" | "picked";
+}
+
+/** What the user said about one Spotify song — kept by entryKey, so it survives a fresh export. */
+export interface ImportDecisions {
+  verdicts: Record<string, "same" | "different">;
+  /** entryKey → the library song id the user picked by hand */
+  picks: Record<string, string>;
+}
+
+/** A Spotify song's identity across exports: its URI, else title + artists. */
+export function entryKey(e: SpotifyEntry): string {
+  return e.uri || `${foldTag(e.title)}|${e.artists.map((a) => foldTag(a)).join(",")}`;
+}
+
+/**
+ * The matches with the user's word applied: a hand-picked song is a match,
+ * "same song" turns a check into a match, "different" makes it missing.
+ * Undecided checks stay checks.
+ */
+export function applyDecisions(rows: ImportRow[], d: ImportDecisions, byId: (id: string) => Track | undefined): ImportRow[] {
+  return rows.map((row) => {
+    const key = entryKey(row.entry);
+    const picked = d.picks[key] ? byId(d.picks[key]) : undefined;
+    if (picked) return { ...row, kind: "match", track: picked, decided: "picked" };
+    if (row.kind !== "check") return row;
+    const verdict = d.verdicts[key];
+    if (verdict === "same") return { ...row, kind: "match", decided: "same" };
+    if (verdict === "different") return { ...row, kind: "missing", decided: "different" };
+    return row;
+  });
 }
 
 /** More than this many songs is not a Liked Songs export. */

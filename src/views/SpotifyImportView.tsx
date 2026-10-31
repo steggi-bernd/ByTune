@@ -5,19 +5,32 @@
  *
  * The matching (lib/spotifyImport.ts) runs live on the catalogue: buy a song,
  * add it to a folder or to Jellyfin, and it moves from "Missing" to "In your
- * library" on its own. Uncertain matches wait for the user's word — "Same
- * song" sends them to Liked Songs, "Different" onto the shopping list.
+ * library" on its own. Uncertain matches wait for the user's word: "Same
+ * song" makes them a match, "Different" puts them on the shopping list, and
+ * "Choose…" (or "I have it…" on a missing song) picks the library song by
+ * hand. Decided songs leave the check list; "Your decisions" undoes them.
  */
-import { useMemo, useRef, useState } from "react";
-import { Check, Copy, ExternalLink, FileDown, FileUp, Heart, RotateCcw, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileDown, FileUp, Heart, RotateCcw, Search, Undo2, X } from "lucide-react";
 import { TrackList } from "../components/TrackList";
-import { Btn } from "../components/primitives";
+import { Artwork, Btn, IconBtn } from "../components/primitives";
 import { fmtTime } from "../lib/format";
-import { matchEntries, shoppingListCsv, shoppingListText, spotifyLink, type ImportRow } from "../lib/spotifyImport";
-import { useCatalog } from "../stores/catalog";
+import { matchesQuery } from "../lib/libraryTracks";
+import {
+  applyDecisions,
+  entryKey,
+  matchEntries,
+  shoppingListCsv,
+  shoppingListText,
+  spotifyLink,
+  type ImportRow,
+  type SpotifyEntry,
+} from "../lib/spotifyImport";
+import { songKey, useCatalog } from "../stores/catalog";
 import { useLibrary } from "../stores/library";
 import { useSpotifyImport } from "../stores/spotifyImport";
 import { useUI } from "../stores/ui";
+import type { Track } from "../types";
 
 type Tab = "have" | "check" | "missing";
 
@@ -27,8 +40,17 @@ const REASON: Record<NonNullable<ImportRow["reason"]>, string> = {
   artist: "The artist is spelled differently",
 };
 
+const DECIDED: Record<NonNullable<ImportRow["decided"]>, string> = {
+  same: "Same song",
+  different: "Marked different",
+  picked: "Chosen by you",
+};
+
 const likedOn = (ms: number | undefined): string =>
   ms ? new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+
+const describe = (e: SpotifyEntry): string =>
+  `${e.artists.join(", ")}${e.album ? ` · ${e.album}` : ""}${e.durationMs ? ` · ${fmtTime(e.durationMs / 1000)}` : ""}`;
 
 function Stat({ label, value, tone, active, onClick }: { label: string; value: number; tone: string; active: boolean; onClick: () => void }) {
   return (
@@ -78,30 +100,123 @@ function HowToExport({ onPick, error }: { onPick: () => void; error: string | nu
   );
 }
 
-export function SpotifyImportView() {
-  const { fileName, entries, dated, error, verdicts, load, setVerdict, setVerdicts, reset } = useSpotifyImport();
+/** Pick the library song a Spotify song is, by searching the library. */
+function TrackPicker({ entry, onPick, onClose }: { entry: SpotifyEntry; onPick: (t: Track) => void; onClose: () => void }) {
   const tracks = useCatalog((s) => s.tracks);
+  const [query, setQuery] = useState(() => `${entry.title.replace(/\s+-\s+.*$/, "").replace(/\s*[([][^)\]]*[)\]]/g, "")} ${entry.artists[0] ?? ""}`.trim());
+  const results = useMemo(() => {
+    const q = query.trim();
+    return q ? tracks.filter((t) => matchesQuery(t, q)).slice(0, 60) : [];
+  }, [tracks, query]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 animate-fade-in"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div role="dialog" aria-label="Choose the song" className="w-[min(640px,92vw)] max-h-[80vh] flex flex-col rounded-2xl glass-strong-solid shadow-float p-5">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Which song in your library is</div>
+            <div className="text-[17px] font-bold text-ink-hi truncate mt-1">{entry.title}</div>
+            <div className="text-[13px] text-ink-dim truncate">{describe(entry)}</div>
+          </div>
+          <IconBtn icon={X} title="Close" onClick={onClose} className="rounded-full" />
+        </div>
+        <div className="relative mt-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-hi/50 pointer-events-none" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search your library"
+            className="w-full h-10 pl-9 pr-4 rounded-full bg-ink-hi/[0.07] text-[14px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
+          />
+        </div>
+        <div className="mt-3 overflow-y-auto min-h-0 flex-1 space-y-0.5">
+          {results.length === 0 ? (
+            <p className="text-[13px] text-ink-dim px-2 py-6 text-center">No songs match — try fewer words.</p>
+          ) : (
+            results.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => onPick(t)}
+                className="w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-ink-hi/[0.07] transition-colors"
+              >
+                <Artwork src={t.thumb} className="w-10 h-10 rounded-md shrink-0" iconClassName="w-4 h-4" alt="" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-semibold text-ink-hi truncate">{t.title}</div>
+                  <div className="text-[12.5px] text-ink-dim truncate">
+                    {t.artist}
+                    {t.album ? ` · ${t.album}` : ""}
+                  </div>
+                </div>
+                <span className="text-[12px] text-ink-faint tabular-nums">{t.duration ? fmtTime(t.duration) : ""}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const chip = (on: boolean, onTone: string): string =>
+  `h-8 px-3 rounded-full text-[12.5px] font-semibold transition-colors ${
+    on ? onTone : "bg-ink-hi/[0.08] text-ink-hi hover:bg-ink-hi/[0.14]"
+  }`;
+
+export function SpotifyImportView() {
+  const { fileName, entries, dated, error, verdicts, picks, likedIds, load, setVerdict, setVerdicts, pick, noteLiked, reset } =
+    useSpotifyImport();
+  const tracks = useCatalog((s) => s.tracks);
+  const byId = useCatalog((s) => s.byId);
+  const versions = useCatalog((s) => s.versions);
   const navigate = useUI((s) => s.navigate);
   const toast = useUI((s) => s.toast);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [tab, setTab] = useState<Tab>("have");
+  const [picking, setPicking] = useState<SpotifyEntry | null>(null);
+  const [showDecided, setShowDecided] = useState(false);
 
-  const rows = useMemo(() => matchEntries(entries, tracks), [entries, tracks]);
-  const indexed = useMemo(() => rows.map((row, i) => ({ row, i })), [rows]);
-  const have = indexed.filter((x) => x.row.kind === "match");
-  const check = indexed.filter((x) => x.row.kind === "check");
-  const undecided = check.filter((x) => verdicts[x.i] === undefined).length;
-  // "Different" puts a song on the shopping list; "Same song" sends it to Liked Songs.
-  const missing = indexed.filter((x) => x.row.kind === "missing" || (x.row.kind === "check" && verdicts[x.i] === false));
-  const toLike = indexed
-    .filter((x) => x.row.kind === "match" || (x.row.kind === "check" && verdicts[x.i] === true))
-    .map((x) => x.row.track!);
-  const missingEntries = missing.map((x) => x.row.entry);
+  const matched = useMemo(() => matchEntries(entries, tracks), [entries, tracks]);
+  const rows = useMemo(() => {
+    // A hand-picked id may be a copy the catalogue merged into another song: play the merged song.
+    const findSong = (id: string): Track | undefined => {
+      const group = versions.get(id);
+      const primary = group?.[0]?.id ?? id;
+      return tracks.find((t) => t.id === primary) ?? byId.get(id);
+    };
+    return applyDecisions(matched, { verdicts, picks }, findSong);
+  }, [matched, verdicts, picks, tracks, byId, versions]);
 
-  const pick = (): void => fileInput.current?.click();
+  const have = rows.filter((r) => r.kind === "match");
+  const check = rows.filter((r) => r.kind === "check");
+  const missing = rows.filter((r) => r.kind === "missing");
+  const decided = rows.filter((r) => r.decided);
+  // One per song: two Spotify entries can lead to the same song here (a remaster and the original, a pick).
+  const songs = new Set<string>();
+  const toLike = have.map((r) => r.track!).filter((t) => !songs.has(songKey(t.id)) && !!songs.add(songKey(t.id)));
+  const missingEntries = missing.map((r) => r.entry);
+
+  const pickFile = (): void => fileInput.current?.click();
+  const undo = (row: ImportRow): void => {
+    const key = entryKey(row.entry);
+    setVerdict(key, null);
+    pick(key, null);
+  };
 
   const addToLiked = (): void => {
-    const added = useLibrary.getState().importLikes(toLike);
+    const added = useLibrary.getState().importLikes(toLike, likedIds);
+    noteLiked(toLike.map((t) => t.id));
     toast(
       added > 0
         ? `Added ${added} ${added === 1 ? "song" : "songs"} to Liked Songs, in Spotify's order`
@@ -144,16 +259,28 @@ export function SpotifyImportView() {
           }
         }}
       />
+      {picking && (
+        <TrackPicker
+          entry={picking}
+          onClose={() => setPicking(null)}
+          onPick={(t) => {
+            pick(entryKey(picking), t.id);
+            setPicking(null);
+            toast(`“${picking.title}” is “${t.title}” in your library`, "success");
+          }}
+        />
+      )}
       <header className="pt-2">
         <h1 className="font-display text-[34px] font-extrabold tracking-[-0.03em] text-ink-hi">Import from Spotify</h1>
         <p className="text-[14px] text-ink-dim mt-2 max-w-[760px]">
           Bring your Spotify Liked Songs over: see which songs you already have, add them to your Liked Songs in
-          Spotify's order, and keep a list of the ones you still want to buy.
+          Spotify's order, and keep a list of the ones you still want to buy. The import stays here until you start
+          over, so you can come back after buying songs and add again.
         </p>
       </header>
 
       {!entries.length ? (
-        <HowToExport onPick={pick} error={error} />
+        <HowToExport onPick={pickFile} error={error} />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-dim">
@@ -163,10 +290,10 @@ export function SpotifyImportView() {
               {dated ? "in the order you liked them" : "in the file's order (no like dates)"}
             </span>
             <div className="ml-auto flex gap-2">
-              <Btn variant="glass" size="sm" icon={FileUp} onClick={pick}>
+              <Btn variant="glass" size="sm" icon={FileUp} onClick={pickFile}>
                 Choose another file
               </Btn>
-              <Btn variant="glass" size="sm" icon={RotateCcw} onClick={reset}>
+              <Btn variant="glass" size="sm" icon={RotateCcw} onClick={reset} title="Forget the file — your decisions stay for the next export">
                 Start over
               </Btn>
             </div>
@@ -175,13 +302,7 @@ export function SpotifyImportView() {
 
           <div className="flex flex-wrap gap-3">
             <Stat label="In your library" value={have.length} tone="text-emerald-400" active={tab === "have"} onClick={() => setTab("have")} />
-            <Stat
-              label={undecided ? `To check · ${undecided} open` : "Checked"}
-              value={check.length}
-              tone="text-amber-300"
-              active={tab === "check"}
-              onClick={() => setTab("check")}
-            />
+            <Stat label="To check" value={check.length} tone="text-amber-300" active={tab === "check"} onClick={() => setTab("check")} />
             <Stat label="Missing — to buy" value={missing.length} tone="text-ink-hi" active={tab === "missing"} onClick={() => setTab("missing")} />
           </div>
 
@@ -190,8 +311,8 @@ export function SpotifyImportView() {
               Add {toLike.length} to Liked Songs
             </Btn>
             <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">
-              In Spotify's order, newest first. Songs you liked in ByTune keep their place on top
-              {undecided ? `; the ${undecided} still to check stay out until you decide` : ""}.
+              In Spotify's order, newest first — adding again later puts newly found songs in their place. Songs you liked
+              only in ByTune stay on top{check.length ? `; the ${check.length} still to check stay out until you decide` : ""}.
             </p>
             <Btn variant="glass" size="sm" onClick={() => navigate({ name: "library", param: "liked" })}>
               Open Liked Songs
@@ -200,7 +321,7 @@ export function SpotifyImportView() {
 
           {tab === "have" && (
             <TrackList
-              tracks={have.map((x) => x.row.track!)}
+              tracks={toLike}
               showAlbum
               emptyTitle="None of these songs are in your library yet"
               emptyLabel="Add music folders or connect your server — songs you add show up here by themselves."
@@ -210,40 +331,31 @@ export function SpotifyImportView() {
           {tab === "check" && (
             <section className="space-y-3">
               {check.length === 0 ? (
-                <p className="text-[14px] text-ink-dim">Every song matched clearly — nothing to check.</p>
+                <p className="text-[14px] text-ink-dim">Nothing left to check.</p>
               ) : (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[13px] text-ink-dim mr-auto">
                       These look like songs you have, but something differs. Same song → Liked Songs; different → the
-                      shopping list.
+                      shopping list; or choose the right song yourself.
                     </p>
-                    <Btn variant="glass" size="sm" icon={Check} onClick={() => setVerdicts(check.map((x) => x.i), true)}>
+                    <Btn variant="glass" size="sm" icon={Check} onClick={() => setVerdicts(check.map((r) => entryKey(r.entry)), "same")}>
                       All the same
                     </Btn>
-                    <Btn variant="glass" size="sm" icon={X} onClick={() => setVerdicts(check.map((x) => x.i), false)}>
+                    <Btn variant="glass" size="sm" icon={X} onClick={() => setVerdicts(check.map((r) => entryKey(r.entry)), "different")}>
                       All different
                     </Btn>
                   </div>
-                  {check.map(({ row, i }) => {
-                    const verdict = verdicts[i];
+                  {check.map((row) => {
+                    const key = entryKey(row.entry);
                     const t = row.track!;
                     return (
-                      <div
-                        key={i}
-                        className={`flex flex-wrap items-center gap-4 rounded-xl p-3 transition-colors ${
-                          verdict === undefined ? "bg-ink-hi/[0.05]" : "bg-ink-hi/[0.025]"
-                        }`}
-                      >
+                      <div key={key} className="flex flex-wrap items-center gap-4 rounded-xl p-3 bg-ink-hi/[0.05]">
                         <div className="flex-1 min-w-[280px] grid grid-cols-2 gap-4">
                           <div className="min-w-0">
                             <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Spotify</div>
                             <div className="text-[14px] font-semibold text-ink-hi truncate">{row.entry.title}</div>
-                            <div className="text-[12.5px] text-ink-dim truncate">
-                              {row.entry.artists.join(", ")}
-                              {row.entry.album ? ` · ${row.entry.album}` : ""}
-                              {row.entry.durationMs ? ` · ${fmtTime(row.entry.durationMs / 1000)}` : ""}
-                            </div>
+                            <div className="text-[12.5px] text-ink-dim truncate">{describe(row.entry)}</div>
                           </div>
                           <div className="min-w-0">
                             <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Your library</div>
@@ -257,29 +369,54 @@ export function SpotifyImportView() {
                         </div>
                         <div className="w-44 text-[12px] text-amber-300/90">{row.reason ? REASON[row.reason] : ""}</div>
                         <div className="flex gap-1.5">
-                          <button
-                            onClick={() => setVerdict(i, true)}
-                            aria-pressed={verdict === true}
-                            className={`h-8 px-3 rounded-full text-[12.5px] font-semibold transition-colors ${
-                              verdict === true ? "bg-emerald-400 text-black" : "bg-ink-hi/[0.08] text-ink-hi hover:bg-ink-hi/[0.14]"
-                            }`}
-                          >
+                          <button onClick={() => setVerdict(key, "same")} className={chip(false, "")}>
                             Same song
                           </button>
-                          <button
-                            onClick={() => setVerdict(i, false)}
-                            aria-pressed={verdict === false}
-                            className={`h-8 px-3 rounded-full text-[12.5px] font-semibold transition-colors ${
-                              verdict === false ? "bg-ink-hi text-black" : "bg-ink-hi/[0.08] text-ink-hi hover:bg-ink-hi/[0.14]"
-                            }`}
-                          >
+                          <button onClick={() => setVerdict(key, "different")} className={chip(false, "")}>
                             Different
+                          </button>
+                          <button onClick={() => setPicking(row.entry)} className={chip(false, "")}>
+                            Choose…
                           </button>
                         </div>
                       </div>
                     );
                   })}
                 </>
+              )}
+
+              {decided.length > 0 && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowDecided((v) => !v)}
+                    className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-dim hover:text-ink-hi transition-colors"
+                  >
+                    {showDecided ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    Your decisions ({decided.length})
+                  </button>
+                  {showDecided && (
+                    <div className="mt-2 space-y-0.5">
+                      {decided.map((row) => (
+                        <div key={entryKey(row.entry)} className="flex items-center gap-3 h-[52px] px-3 rounded-lg hover:bg-ink-hi/[0.05]">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[14px] font-semibold text-ink-hi truncate">{row.entry.title}</div>
+                            <div className="text-[12.5px] text-ink-dim truncate">
+                              {row.decided === "different" || !row.track
+                                ? describe(row.entry)
+                                : `→ ${row.track.title} · ${row.track.artist}${row.track.album ? ` · ${row.track.album}` : ""}`}
+                            </div>
+                          </div>
+                          <span className={`text-[12px] font-semibold ${row.decided === "different" ? "text-ink-dim" : "text-emerald-400"}`}>
+                            {DECIDED[row.decided!]}
+                          </span>
+                          <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>
+                            Undo
+                          </Btn>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </section>
           )}
@@ -293,7 +430,7 @@ export function SpotifyImportView() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[13px] text-ink-dim mr-auto">
                       Songs not in your library{dated ? ", newest like first" : ""}. The list saves as a spreadsheet that
-                      opens in Excel.
+                      opens in Excel. Have one under another name? Use “I have it…”.
                     </p>
                     <Btn variant="white" size="sm" icon={FileDown} onClick={() => void saveList()}>
                       Save as list…
@@ -308,20 +445,35 @@ export function SpotifyImportView() {
                       <div className="flex-1 min-w-0">Title</div>
                       <div className="w-56 hidden lg:block">Album</div>
                       <div className="w-28 hidden md:block">Liked</div>
-                      <div className="w-8" />
+                      <div className="w-[150px]" />
                     </div>
-                    {missing.map(({ row, i }, n) => {
+                    {missing.map((row, n) => {
                       const link = spotifyLink(row.entry.uri);
                       return (
-                        <div key={i} className="flex items-center gap-3 h-[52px] px-3 rounded-lg hover:bg-ink-hi/[0.05]">
+                        <div key={entryKey(row.entry)} className="group flex items-center gap-3 h-[52px] px-3 rounded-lg hover:bg-ink-hi/[0.05]">
                           <div className="w-8 shrink-0 text-[13px] text-ink-faint tabular-nums">{n + 1}</div>
                           <div className="flex-1 min-w-0">
                             <div className="text-[14.5px] font-semibold text-ink-hi truncate">{row.entry.title}</div>
-                            <div className="text-[13px] text-ink-dim truncate">{row.entry.artists.join(", ")}</div>
+                            <div className="text-[13px] text-ink-dim truncate">
+                              {row.entry.artists.join(", ")}
+                              {row.decided === "different" && <span className="text-ink-faint"> · marked different</span>}
+                            </div>
                           </div>
                           <div className="w-56 hidden lg:block text-[12.5px] text-ink-faint truncate">{row.entry.album}</div>
                           <div className="w-28 hidden md:block text-[12.5px] text-ink-faint tabular-nums">{likedOn(row.entry.addedAt)}</div>
-                          <div className="w-8 flex justify-end">
+                          <div className="w-[150px] flex items-center justify-end gap-1">
+                            {row.decided === "different" ? (
+                              <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>
+                                Undo
+                              </Btn>
+                            ) : (
+                              <button
+                                onClick={() => setPicking(row.entry)}
+                                className="h-7 px-2.5 rounded-full text-[12px] font-semibold text-ink-hi bg-ink-hi/[0.08] hover:bg-ink-hi/[0.14] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                              >
+                                I have it…
+                              </button>
+                            )}
                             {link && (
                               <button
                                 onClick={() => window.open(link, "_blank")}

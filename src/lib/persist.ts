@@ -1,5 +1,5 @@
 /** Zustand storage adapter: JSON files via the desktop bridge, localStorage fallback. */
-import type { StateStorage } from "zustand/middleware";
+import type { PersistStorage, StateStorage, StorageValue } from "zustand/middleware";
 
 export const storage: StateStorage = {
   getItem: async (name) => {
@@ -67,8 +67,10 @@ export const storage: StateStorage = {
  */
 const COALESCED_WRITE_MS = 2_000;
 
-export const coalescedStorage: StateStorage = (() => {
-  const pending = new Map<string, string>();
+/** The write scheduler behind both coalescing storages. A value is held as a
+    thunk, so its text is only produced when it is actually written. */
+const coalescer = (() => {
+  const pending = new Map<string, () => string>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   let lastWriteAt = 0;
 
@@ -78,11 +80,11 @@ export const coalescedStorage: StateStorage = (() => {
       clearTimeout(t);
       timers.delete(name);
     }
-    const value = pending.get(name);
-    if (value === undefined) return;
+    const make = pending.get(name);
+    if (make === undefined) return;
     pending.delete(name);
     lastWriteAt = Date.now();
-    void storage.setItem(name, value);
+    void storage.setItem(name, make());
   };
 
   if (typeof window !== "undefined") {
@@ -94,9 +96,8 @@ export const coalescedStorage: StateStorage = (() => {
   }
 
   return {
-    getItem: (name) => storage.getItem(name),
-    setItem: (name, value) => {
-      pending.set(name, value);
+    set(name: string, make: () => string): void {
+      pending.set(name, make);
       if (Date.now() - lastWriteAt >= COALESCED_WRITE_MS) {
         flush(name);
       } else if (!timers.has(name)) {
@@ -105,9 +106,8 @@ export const coalescedStorage: StateStorage = (() => {
           setTimeout(() => flush(name), COALESCED_WRITE_MS)
         );
       }
-      return Promise.resolve();
     },
-    removeItem: (name) => {
+    remove(name: string): void {
       // A removal must not be resurrected by a pending write.
       pending.delete(name);
       const t = timers.get(name);
@@ -115,7 +115,42 @@ export const coalescedStorage: StateStorage = (() => {
         clearTimeout(t);
         timers.delete(name);
       }
-      return storage.removeItem(name);
     },
   };
 })();
+
+export const coalescedStorage: StateStorage = {
+  getItem: (name) => storage.getItem(name),
+  setItem: (name, value) => {
+    coalescer.set(name, () => value);
+    return Promise.resolve();
+  },
+  removeItem: (name) => {
+    coalescer.remove(name);
+    return storage.removeItem(name);
+  },
+};
+
+/**
+ * The coalescing storage for zustand's persist that also serializes lazily.
+ * zustand's createJSONStorage stringifies the WHOLE store on every change —
+ * the player's position ticks ~4×/s, and a long queue makes that a large
+ * string each time — before the coalescer ever sees it. This keeps the latest
+ * state object instead (zustand state is immutable, so holding it is safe)
+ * and stringifies once per actual write: at most every 2 s, and on pagehide.
+ */
+export function lazyJSONStorage<S>(): PersistStorage<S> {
+  return {
+    getItem: async (name) => {
+      const raw = await storage.getItem(name);
+      return raw == null ? null : (JSON.parse(raw) as StorageValue<S>);
+    },
+    setItem: (name, value) => {
+      coalescer.set(name, () => JSON.stringify(value));
+    },
+    removeItem: (name) => {
+      coalescer.remove(name);
+      return storage.removeItem(name);
+    },
+  };
+}

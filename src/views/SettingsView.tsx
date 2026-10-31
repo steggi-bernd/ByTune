@@ -10,6 +10,7 @@ import {
   Disc3,
   Download,
   Droplets,
+  ExternalLink,
   FileDown,
   FileUp,
   FolderOpen,
@@ -17,10 +18,12 @@ import {
   HardDrive,
   Image,
   Infinity as InfinityIcon,
+  KeyRound,
   Languages,
   ListMusic,
   Maximize2,
   Music4,
+  Radio,
   RefreshCw,
   SlidersHorizontal,
   FileAudio,
@@ -48,6 +51,7 @@ import { ParametricEqEditor } from "../components/ParametricEqEditor";
 import { useUI, type MenuItem } from "../stores/ui";
 import { EQ_BANDS, listOutputDevices } from "../lib/audio";
 import type { OutputDeviceChoice } from "../lib/audio-output";
+import type { DiscordStatus } from "../../electron/discord";
 
 /* ============================================================ settings chrome
    Settings are inset cards of rows: an uppercase group header, a
@@ -153,6 +157,96 @@ function FfmpegRow() {
       value={status?.path ? `v${status.version}` : status ? "Missing" : undefined}
       onClick={() => check(true)}
     />
+  );
+}
+
+const DISCORD_PORTAL = "https://discord.com/developers/applications";
+
+/**
+ * Discord status (electron/discord.ts): the switch, the Application ID it
+ * needs — an application the user creates, whose name Discord shows — and
+ * how the connection is doing, polled while the switch is on.
+ */
+function DiscordGroup() {
+  const enabled = useSettings((s) => s.discordPresence);
+  const clientId = useSettings((s) => s.discordClientId);
+  const setEnabled = useSettings((s) => s.setDiscordPresence);
+  const setClientId = useSettings((s) => s.setDiscordClientId);
+  const [status, setStatus] = useState<DiscordStatus | null>(null);
+  useEffect(() => {
+    const bridge = window.bytune;
+    if (!enabled || !bridge?.discordStatus) {
+      setStatus(null);
+      return;
+    }
+    let alive = true;
+    const poll = (): void => {
+      void bridge.discordStatus().then((s) => alive && setStatus(s)).catch(() => undefined);
+    };
+    poll();
+    const timer = window.setInterval(poll, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [enabled, clientId]);
+
+  const validId = /^\d{15,22}$/.test(clientId);
+  const subtitle = !enabled
+    ? "Show the song playing now as your Discord status"
+    : !validId
+      ? "Add your Application ID below to connect"
+      : status?.state === "connected"
+        ? `Connected${status.user ? ` as ${status.user}` : ""} · ${status.message ?? "shows while music plays"}`
+        : status?.state === "unavailable"
+          ? `${status.message ?? "Discord isn't running"} — connects once Discord is open`
+          : status?.state === "error"
+            ? `${status.message ?? "Discord refused the connection"} — check the ID`
+            : "Connecting to Discord…";
+
+  return (
+    <SettingsGroup
+      header="Discord"
+      footer="Discord shows your application's name in “Listening to …”, so call it ByTune, for example. Only the Discord app on this computer gets the song title and artist; covers stay here."
+    >
+      <SettingsRow
+        icon={Radio}
+        title="Discord status"
+        subtitle={subtitle}
+        trailing={<Switch checked={enabled} onChange={setEnabled} />}
+        onClick={() => setEnabled(!enabled)}
+      />
+      {enabled && (
+        <>
+          <Divider />
+          <SettingsRow
+            icon={KeyRound}
+            title="Application ID"
+            subtitle="From your application's General Information page"
+            trailing={
+              <input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="e.g. 1234567890123456789"
+                inputMode="numeric"
+                spellCheck={false}
+                aria-label="Discord Application ID"
+                className={`w-56 h-9 px-3 rounded-lg bg-ink-hi/[0.05] border text-[13px] text-ink-hi tabular-nums placeholder:text-ink-faint outline-none focus:border-ink-hi/25 ${
+                  clientId && !validId ? "border-red-400/60" : "border-ink-hi/10"
+                }`}
+              />
+            }
+          />
+          <Divider />
+          <SettingsRow
+            icon={ExternalLink}
+            title="Create an application"
+            subtitle="Discord Developer Portal → New Application → name it → copy its Application ID (free)"
+            onClick={() => window.open(DISCORD_PORTAL, "_blank")}
+          />
+        </>
+      )}
+    </SettingsGroup>
   );
 }
 
@@ -1025,7 +1119,7 @@ export function SettingsView() {
         />
       </SettingsGroup>
 
-
+      <DiscordGroup />
 
       <SettingsGroup header="Your data">
         <SettingsRow

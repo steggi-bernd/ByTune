@@ -1,8 +1,8 @@
-import { Fragment } from "react";
+import { Fragment, memo, useCallback } from "react";
 import { AlertCircle, Check, Download, Heart, Loader2, MoreHorizontal, Pause, Play } from "lucide-react";
 import { useAvailabilityCheck } from "../stores/availability";
 import { sameSong } from "../stores/catalog";
-import { useLibrary } from "../stores/library";
+import { likedIdSet, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI, type MenuItem } from "../stores/ui";
 import { trackMenuItems } from "../lib/trackActions";
@@ -49,8 +49,13 @@ interface TrackRowProps {
   showAlbum: boolean;
 }
 
-function TrackRow({ track, index, isCurrent, isPlaying, available, onPlay, menuFor, showAlbum }: TrackRowProps) {
-  const liked = useLibrary((s) => s.liked.some((t) => t.id === track.id));
+/**
+ * One song row. Memoized: a list re-renders on every track change or
+ * play/pause, but only the rows whose props actually change (the old and the
+ * new current row) do work — the rest are skipped.
+ */
+const TrackRow = memo(function TrackRow({ track, index, isCurrent, isPlaying, available, onPlay, menuFor, showAlbum }: TrackRowProps) {
+  const liked = useLibrary((s) => likedIdSet(s.liked).has(track.id));
   const toggleLike = useLibrary((s) => s.toggleLike);
   const openContextMenu = useUI((s) => s.openContextMenu);
   const navigate = useUI((s) => s.navigate);
@@ -79,6 +84,8 @@ function TrackRow({ track, index, isCurrent, isPlaying, available, onPlay, menuF
       }}
       title={available ? undefined : "Not available right now — its drive or server can't be reached"}
       aria-disabled={!available || undefined}
+      // Long lists: rows off screen are neither laid out nor painted.
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
       className={`group flex items-center gap-3.5 h-[60px] px-3 rounded-lg select-none ${available ? "cursor-pointer" : "cursor-default"} ${
         isCurrent ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"
       } ${drag.dragging || !available ? "opacity-40" : ""}`}
@@ -179,7 +186,7 @@ function TrackRow({ track, index, isCurrent, isPlaying, available, onPlay, menuF
       </div>
     </div>
   );
-}
+});
 
 interface TrackListProps {
   tracks: Track[];
@@ -205,9 +212,9 @@ export function TrackList({
   const playQueue = usePlayer((s) => s.playQueue);
   const available = useAvailabilityCheck();
   // Songs that can't play right now stay out of the queue (the clicked one can).
-  const play =
-    onPlay ??
-    ((i: number) => {
+  // Stable across renders, so the memoized rows don't all re-render with it.
+  const playFromList = useCallback(
+    (i: number) => {
       const queue: Track[] = [];
       let start = 0;
       tracks.forEach((t, j) => {
@@ -215,7 +222,10 @@ export function TrackList({
         if (j === i || available(t)) queue.push(t);
       });
       playQueue(queue, start);
-    });
+    },
+    [tracks, available, playQueue]
+  );
+  const play = onPlay ?? playFromList;
 
   if (!tracks.length) {
     return <EmptyState icon={Play} title={emptyTitle} body={emptyLabel ?? "Tracks will appear here."} />;
@@ -234,23 +244,27 @@ export function TrackList({
         </div>
       )}
       <div>
-        {tracks.map((track, i) => (
-          <Fragment key={`${track.id}-${i}`}>
-            <TrackRow
-              track={track}
-              index={i}
-              isCurrent={sameSong(track.id, currentId)}
-              isPlaying={playing}
-              available={available(track)}
-              onPlay={play}
-              menuFor={menuFor}
-              showAlbum={showAlbum}
-            />
-            {/* Hairline divider, inset to the title column — mobile's
-                ROW_DIVIDER_INSET clears the 52dp artwork the same way. */}
-            {i < tracks.length - 1 && <div className="h-px bg-ink-hi/[0.05] ml-[120px] mr-3" />}
-          </Fragment>
-        ))}
+        {tracks.map((track, i) => {
+          const isCurrent = sameSong(track.id, currentId);
+          return (
+            <Fragment key={`${track.id}-${i}`}>
+              <TrackRow
+                track={track}
+                index={i}
+                isCurrent={isCurrent}
+                // Only the current row cares whether playback runs — the others keep equal props.
+                isPlaying={isCurrent && playing}
+                available={available(track)}
+                onPlay={play}
+                menuFor={menuFor}
+                showAlbum={showAlbum}
+              />
+              {/* Hairline divider, inset to the title column — mobile's
+                  ROW_DIVIDER_INSET clears the 52dp artwork the same way. */}
+              {i < tracks.length - 1 && <div className="h-px bg-ink-hi/[0.05] ml-[120px] mr-3" />}
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );

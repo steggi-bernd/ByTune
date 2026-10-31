@@ -70,6 +70,10 @@ interface SettingsState {
   /* Miscellaneous */
   dontRepeatSuggestions: boolean;
   hideVolumeBar: boolean;
+  /** the song playing now as the Discord status (needs the user's own Discord application) */
+  discordPresence: boolean;
+  /** that application's ID, from the Discord Developer Portal */
+  discordClientId: string;
 
   setDownloadDir(dir: string | null): void;
   setDownloadQuality(q: DownloadQuality): void;
@@ -102,6 +106,8 @@ interface SettingsState {
   setFilterNonMusicAudio(v: boolean): void;
   setDontRepeatSuggestions(v: boolean): void;
   setHideVolumeBar(v: boolean): void;
+  setDiscordPresence(v: boolean): void;
+  setDiscordClientId(id: string): void;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -142,6 +148,8 @@ export const useSettings = create<SettingsState>()(
 
       dontRepeatSuggestions: false,
       hideVolumeBar: false,
+      discordPresence: false,
+      discordClientId: "",
 
       setDownloadDir: (downloadDir) => set({ downloadDir }),
       setDownloadQuality: (downloadQuality) => set({ downloadQuality }),
@@ -174,6 +182,9 @@ export const useSettings = create<SettingsState>()(
       setFilterNonMusicAudio: (filterNonMusicAudio) => set({ filterNonMusicAudio }),
       setDontRepeatSuggestions: (dontRepeatSuggestions) => set({ dontRepeatSuggestions }),
       setHideVolumeBar: (hideVolumeBar) => set({ hideVolumeBar }),
+      setDiscordPresence: (discordPresence) => set({ discordPresence }),
+      // Only the digits survive a paste ("ID: 1234…", spaces, a trailing newline).
+      setDiscordClientId: (id) => set({ discordClientId: id.replace(/\D/g, "").slice(0, 22) }),
     }),
     {
       name: "settings",

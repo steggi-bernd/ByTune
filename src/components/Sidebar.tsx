@@ -24,6 +24,7 @@ import {
   Music2,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Pin,
   PinOff,
   Play,
@@ -32,6 +33,7 @@ import {
   User,
 } from "lucide-react";
 import { newestFirst, useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
+import { useAlbumEditorRequest } from "./AlbumEditor";
 import { artistRoute, splitCredits } from "../lib/libraryTracks";
 import { RELEASE_LABEL } from "../lib/releases";
 import { useAvailabilityCheck } from "../stores/availability";
@@ -107,6 +109,11 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     if (albumSort === "artist") return list.sort((a, b) => a.artist.localeCompare(b.artist) || newestFirst(a, b));
     return list.sort((a, b) => b.addedAt - a.addedAt || a.title.localeCompare(b.title));
   }, [albums, albumSort]);
+  // Per album, not per render: the panel re-renders on every track change and play/pause.
+  const albumAvailable = useMemo(
+    () => new Map(sortedAlbums.map((a) => [a.route, a.tracks.some((t) => available(t))])),
+    [sortedAlbums, available]
+  );
   const sortButtonRef = useRef<HTMLButtonElement | null>(null);
   const openSortMenu = (): void => {
     const rect = sortButtonRef.current?.getBoundingClientRect();
@@ -236,7 +243,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
         thumb: a.thumb,
         kind: "album",
         release: a,
-        available: a.tracks.some((t) => available(t)),
+        available: albumAvailable.get(a.route) ?? true,
       });
     }
   }
@@ -596,6 +603,14 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
             useUI.getState().toast(`Added “${album.title}” to the queue`);
           },
         },
+        {
+          label: "Edit album…",
+          icon: Pencil,
+          action: () => {
+            useAlbumEditorRequest.setState({ key: album.key });
+            navigate({ name: "album", param: album.route });
+          },
+        },
         // One entry per credited artist — "A, B" are two artists, two pages.
         ...splitCredits(album.artist).map((name, i, all) => ({
           label: all.length === 1 ? "Go to artist" : `Go to ${name}`,
@@ -883,7 +898,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                 aria-label={collapsed ? r.title : undefined}
                 // Hundreds of album rows: only the ones on screen are laid out and painted.
                 style={r.kind === "album" ? { contentVisibility: "auto", containIntrinsicSize: "auto 64px" } : undefined}
-                className={`group w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-ink-hi/[0.05] active:bg-ink-hi/[0.09] transition-all duration-150 ${
+                className={`group w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-ink-hi/[0.05] active:bg-ink-hi/[0.09] transition-[background-color,transform,opacity] duration-150 ${
                   collapsed ? "justify-center" : r.kind === "playlist" && r.folderId ? "pl-6" : ""
                 } ${dropHover === r.id ? "ring-2 ring-inset ring-accent/60 bg-ink-hi/[0.08] scale-[1.02]" : ""} ${
                   pulse === r.id ? "animate-drop-pulse" : ""

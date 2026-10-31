@@ -7,6 +7,7 @@ import * as path from "path";
 import * as downloads from "./downloads";
 import * as autoeq from "./autoeq";
 import * as canvas from "./canvas";
+import * as discord from "./discord";
 import { enrichLocalLibrary } from "./enrich";
 import * as folderWatch from "./folder-watch";
 import * as jellyfin from "./jellyfin";
@@ -363,6 +364,8 @@ const RENDERER_STORES = new Set([
   "artist-about-cache",
   "home-market-cache",
   "smart-playlists",
+  "spotify-import",
+  "album-edits",
 ]);
 function assertRendererStore(name: unknown): asserts name is string {
   if (typeof name !== "string" || !RENDERER_STORES.has(name)) throw new Error("Store not allowed");
@@ -543,6 +546,13 @@ function registerIpc(): void {
       }
     }
   );
+  // Discord status (optional): the renderer says what plays; the pipe to Discord lives here.
+  ipc.handle("discord:configure", (_e, enabled: unknown, clientId: unknown) =>
+    discord.configureDiscord(enabled === true, typeof clientId === "string" ? clientId.slice(0, 64) : "")
+  );
+  ipc.handle("discord:status", () => discord.discordStatus());
+  ipc.on("discord:activity", (_e, activity: unknown) => discord.setDiscordActivity(activity));
+
   ipc.handle("stats:playcounts", () => stats.playCounts());
   ipc.handle("stats:summary", (_e, period: string) => {
     const p = (["month", "lastMonth", "year", "all"] as const).find((x) => x === period) ?? "month";
@@ -931,6 +941,7 @@ if (!gotLock) {
       quitting = true;
       stats.flushSync();
       pip.savePipRect();
+      discord.stopDiscord();
       // Kick off a final push, then persist sync-meta synchronously: quit
       // cannot await the push, but the meta must record any un-synced local
       // edits (changedAt > syncedAt) so the next boot pushes them instead of

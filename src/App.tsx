@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ContextMenu } from "./components/ContextMenu";
 import { Dialog } from "./components/primitives";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -12,6 +12,7 @@ import { Toasts } from "./components/Toasts";
 import { TopBar } from "./components/TopBar";
 import { engineBoot } from "./lib/audio";
 import { setAmbientFromArtwork } from "./lib/ambient";
+import { watchDiscordPresence } from "./lib/discordPresence";
 import { listenForDownloadProgress } from "./lib/downloads";
 import { watchLibraryEnrichment } from "./lib/libraryEnrichment";
 import { watchMenuCommands } from "./lib/menuCommands";
@@ -48,24 +49,42 @@ import { SettingsView } from "./views/SettingsView";
  * own full-bleed artwork treatment). At rest it wears the playing track's
  * colour; hovering any song / album / artist / playlist card borrows that
  * artwork's colour instead (cards feed `tintThumb` via tintHoverHandlers).
- * The colour itself is the ArtworkPalette background, crossfaded by the
- * registered `--home-tint` custom property.
+ * The colour itself is the ArtworkPalette background. Two stacked washes
+ * crossfade by opacity — composited on the GPU, so a colour change never
+ * restyles or repaints the page under it (see `.home-tint` in index.css).
  */
 function TintWash() {
   const viewName = useUI((s) => s.view.name);
   const tintThumb = useUI((s) => s.tintThumb);
   const playingThumb = usePlayer((s) => s.queue[s.index]?.thumb ?? null);
   const palette = useArtworkPalette(tintThumb ?? playingThumb);
-  const washRef = useRef<HTMLDivElement | null>(null);
+  const color = `rgb(${palette.elevated})`;
+  const [wash, setWash] = useState<{ colors: [string, string]; front: 0 | 1 }>({ colors: [color, color], front: 0 });
 
-  // The colour lives on <main> (not the wash div) so the search filter bar's
-  // stuck backdrop reads the same morphing value — see `main` in index.css.
+  // A new colour goes onto the hidden layer, which then fades in over the old one.
   useEffect(() => {
-    washRef.current?.closest("main")?.style.setProperty("--home-tint", `rgb(${palette.elevated})`);
-  }, [palette]);
+    setWash((w) => {
+      if (w.colors[w.front] === color) return w;
+      const back: 0 | 1 = w.front === 0 ? 1 : 0;
+      const colors: [string, string] = [...w.colors];
+      colors[back] = color;
+      return { colors, front: back };
+    });
+  }, [color]);
 
   if (viewName === "artist" || viewName === "settings") return null;
-  return <div aria-hidden ref={washRef} className="home-tint pointer-events-none absolute inset-x-0 top-0 h-[332px]" />;
+  return (
+    <>
+      {([0, 1] as const).map((i) => (
+        <div
+          key={i}
+          aria-hidden
+          className="home-tint pointer-events-none absolute inset-x-0 top-0 h-[332px]"
+          style={{ "--home-tint": wash.colors[i], opacity: wash.front === i ? 1 : 0 } as CSSProperties}
+        />
+      ))}
+    </>
+  );
 }
 
 function useKeyboardShortcuts(): void {
@@ -296,6 +315,9 @@ export default function App() {
 
   // Which folders and servers can play right now (lists grey out the rest).
   useEffect(() => watchAvailability(), []);
+
+  // The song playing now as the Discord status, when that is turned on.
+  useEffect(() => watchDiscordPresence(), []);
 
   // Folder watching follows its setting (main watches by default).
   const watchFolders = useSettings((s) => s.watchFolders);

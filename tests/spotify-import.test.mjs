@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  applyDecisions,
+  entryKey,
   matchEntries,
   parseCsv,
   parseSpotifyExport,
@@ -101,6 +103,38 @@ test("a song nowhere in the library is missing", () => {
   const [row] = matchEntries([entry({ title: "Unknown Gem", artists: ["Nobody"] })], [lib({ title: "Song" })]);
   assert.equal(row.kind, "missing");
   assert.equal(row.track, undefined);
+});
+
+/* ------------------------------------------------------------ the user's word */
+
+test("decisions settle uncertain rows and follow the song into a fresh export", () => {
+  const library = [lib({ title: "Song C", album: "Album Z", duration: 240 }), lib({ title: "Elsewhere", id: "local:else" })];
+  const entries = [
+    entry({ title: "Song C - Radio Edit", uri: "spotify:track:cccccccccccccccccccccc" }),
+    entry({ title: "Song C - Live", uri: "spotify:track:dddddddddddddddddddddd" }),
+    entry({ title: "Renamed In My Files", artists: ["Nobody"], uri: "spotify:track:eeeeeeeeeeeeeeeeeeeeee" }),
+  ];
+  const rows = matchEntries(entries, library);
+  assert.deepEqual(rows.map((r) => r.kind), ["check", "check", "missing"]);
+  const decisions = {
+    verdicts: { [entryKey(entries[0])]: "same", [entryKey(entries[1])]: "different" },
+    picks: { [entryKey(entries[2])]: "local:else" },
+  };
+  const byId = (id) => library.find((t) => t.id === id);
+  const settled = applyDecisions(rows, decisions, byId);
+  assert.deepEqual(settled.map((r) => [r.kind, r.decided]), [
+    ["match", "same"],
+    ["missing", "different"],
+    ["match", "picked"],
+  ]);
+  assert.equal(settled[2].track.id, "local:else");
+  // A fresh export of the same songs (new row order) keeps the decisions — they follow the Spotify URI.
+  const fresh = matchEntries([entries[2], entries[0]], library);
+  assert.deepEqual(applyDecisions(fresh, decisions, byId).map((r) => r.decided), ["picked", "same"]);
+});
+
+test("a song without a URI is known by its title and artists", () => {
+  assert.equal(entryKey({ title: "Déjà Vu", artists: ["Alpha", "Beta"], album: "" }), "deja vu|alpha,beta");
 });
 
 /* ------------------------------------------------------------ the shopping list */

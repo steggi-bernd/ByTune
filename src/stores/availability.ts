@@ -117,11 +117,23 @@ export function watchAvailability(): () => void {
   const check = (): void => {
     void useAvailability.getState().refresh().finally(schedule);
   };
-  const events = ["focus", "online", "offline", ...CATALOG_EVENTS];
+  // Library changes come in bursts (cover fills, folder watching): one check after they settle.
+  let libraryTimer: number | null = null;
+  const onLibraryChange = (): void => {
+    if (libraryTimer !== null) window.clearTimeout(libraryTimer);
+    libraryTimer = window.setTimeout(() => {
+      libraryTimer = null;
+      check();
+    }, 2000);
+  };
+  const events = ["focus", "online", "offline"];
   check();
   for (const e of events) window.addEventListener(e, check);
+  for (const e of CATALOG_EVENTS) window.addEventListener(e, onLibraryChange);
   return () => {
     for (const e of events) window.removeEventListener(e, check);
+    for (const e of CATALOG_EVENTS) window.removeEventListener(e, onLibraryChange);
     if (timer !== null) window.clearTimeout(timer);
+    if (libraryTimer !== null) window.clearTimeout(libraryTimer);
   };
 }

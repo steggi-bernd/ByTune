@@ -7,11 +7,12 @@
  * engine's business at play time (local first) — invisible to the queue.
  */
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import { withoutOtherCopies } from "../lib/duplicates";
-// Coalescing storage: the engine bumps `position` ~4Hz and persist writes on
-// every change — raw writes would hit disk/IPC several times a second.
-import { coalescedStorage } from "../lib/persist";
+// Coalescing, lazily serialized storage: the engine bumps `position` ~4Hz and
+// persist saves on every change — that would stringify the whole queue and
+// hit disk/IPC several times a second.
+import { lazyJSONStorage } from "../lib/persist";
 import type { Track } from "../types";
 import { songKey } from "./catalog";
 
@@ -281,7 +282,7 @@ export const usePlayer = create<PlayerState>()(
         }
         return s as PlayerState;
       },
-      storage: createJSONStorage(() => coalescedStorage),
+      storage: lazyJSONStorage<PlayerState>(),
       partialize: (s) =>
         ({
           queue: s.queue,

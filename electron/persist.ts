@@ -175,6 +175,9 @@ export async function resetAppData(): Promise<void> {
         "approved-dirs",
         "local-library",
         "data-owner",
+        "smart-playlists",
+        "spotify-import",
+        "album-edits",
       ]);
       // Enumerate after draining so every ownership archive is accounted for.
       for (const f of fs.readdirSync(dir)) {

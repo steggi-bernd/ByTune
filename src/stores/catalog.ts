@@ -14,15 +14,20 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import type { JellyfinStatus } from "../../electron/jellyfin";
 import type { SubsonicStatus } from "../../electron/subsonic";
+import { applyAlbumMerges } from "../lib/albumEdits";
 import { mergeDuplicates } from "../lib/duplicates";
 import { loadAllLibraryTracks } from "../lib/libraryTracks";
+import { useAlbumEdits } from "./albumEdits";
 import { useSettings } from "./settings";
 import type { Track } from "../types";
 
 export type PlayCounts = Record<string, { plays: number; lastAt: number }>;
 
 interface CatalogState {
+  /** one entry per song (duplicates merged), album merges applied */
   tracks: Track[];
+  /** the same songs before album merges — what a merge change re-applies to */
+  base: Track[];
   /** every version id of a merged song → its versions, in playback order */
   versions: Map<string, Track[]>;
   /** every copy by its own id — fresher than queue entries saved by an older version */
@@ -61,6 +66,7 @@ let again = false;
 
 export const useCatalog = create<CatalogState>((set, get) => ({
   tracks: [],
+  base: [],
   versions: new Map(),
   byId: new Map(),
   playCounts: {},
@@ -81,7 +87,8 @@ export const useCatalog = create<CatalogState>((set, get) => ({
         ]);
         const { tracks, versions } = mergeDuplicates(all);
         set((s) => ({
-          tracks,
+          tracks: applyAlbumMerges(tracks, useAlbumEdits.getState().mergedInto),
+          base: tracks,
           versions,
           byId: new Map(all.map((t) => [t.id, t])),
           playCounts: mergeCounts(playCounts ?? {}, versions),
@@ -101,6 +108,13 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     }
   },
 }));
+
+// An album merge (or its undo) regroups the songs at once — no reload from disk.
+useAlbumEdits.subscribe((s, prev) => {
+  if (s.mergedInto === prev.mergedInto) return;
+  const c = useCatalog.getState();
+  if (c.loaded) useCatalog.setState({ tracks: applyAlbumMerges(c.base, s.mergedInto), version: c.version + 1 });
+});
 
 /**
  * A song's versions in playback order — just the track itself when it exists
@@ -157,15 +171,24 @@ async function upgradeStaleSources(): Promise<void> {
   }
 }
 
-/** Mount once (App): first load, then a debounced reload on every library change. */
+/**
+ * A rebuild (merge, albums, every list on screen) at most this often: the
+ * background cover fills announce a change per batch, and rebuilding on each
+ * one kept the app busy while they ran.
+ */
+const MIN_RELOAD_GAP_MS = 4000;
+
+/** Mount once (App): first load, then a reload on library changes — soon after a lone change, throttled in bursts. */
 export function watchCatalog(): () => void {
   let timer: number | null = null;
+  let lastLoad = 0;
   const reload = (): void => {
-    if (timer !== null) window.clearTimeout(timer);
+    if (timer !== null) return; // one is already on its way and will pick this change up
     timer = window.setTimeout(() => {
       timer = null;
+      lastLoad = Date.now();
       void useCatalog.getState().load();
-    }, 400);
+    }, Math.max(400, lastLoad + MIN_RELOAD_GAP_MS - Date.now()));
   };
   void useCatalog.getState().load();
   for (const e of CATALOG_EVENTS) window.addEventListener(e, reload);

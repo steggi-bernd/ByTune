@@ -5,8 +5,9 @@
  * Songs from every source that share album artist + title form one album;
  * a song found in several places is listed once (lib/duplicates.ts).
  */
-import { useMemo } from "react";
-import { Disc3, Shuffle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Disc3, Pencil, Shuffle } from "lucide-react";
+import { AlbumEditor, useAlbumEditorRequest } from "../components/AlbumEditor";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { AlbumTile, BigPlayButton, playCollection } from "../components/LibraryCards";
 import { TrackList } from "../components/TrackList";
@@ -15,6 +16,8 @@ import { artistAlbums, useLibraryIndex } from "../lib/catalogIndex";
 import { fmtLength } from "../lib/format";
 import { parseRoute } from "../lib/libraryTracks";
 import { RELEASE_LABEL } from "../lib/releases";
+import { resolveAlbumKey } from "../lib/albumEdits";
+import { useAlbumEdits } from "../stores/albumEdits";
 import { useCatalog, versionsOf } from "../stores/catalog";
 
 const SOURCE_LABEL = { local: "On this device", jellyfin: "Jellyfin", subsonic: "Navidrome" } as const;
@@ -22,8 +25,18 @@ const SOURCE_LABEL = { local: "On this device", jellyfin: "Jellyfin", subsonic: 
 export function LibraryAlbumView({ param }: { param: string }) {
   const { albums, loaded } = useLibraryIndex();
   const catalogVersion = useCatalog((s) => s.version);
-  const key = parseRoute(param, "album");
+  const mergedInto = useAlbumEdits((s) => s.mergedInto);
+  // A link to an album that was merged into another (from the queue, history, an old page) opens that one.
+  const key = resolveAlbumKey(parseRoute(param, "album") ?? "", mergedInto);
   const album = useMemo(() => albums.find((a) => a.key === key) ?? null, [albums, key]);
+  const [editing, setEditing] = useState(false);
+  const requested = useAlbumEditorRequest((s) => s.key);
+  useEffect(() => {
+    if (requested && requested === key) {
+      setEditing(true);
+      useAlbumEditorRequest.setState({ key: null });
+    }
+  }, [requested, key]);
   const more = useMemo(
     () => (album ? artistAlbums(albums, album.artist).own.filter((a) => a.key !== album.key) : []),
     [albums, album]
@@ -76,7 +89,16 @@ export function LibraryAlbumView({ param }: { param: string }) {
         >
           <Shuffle className="w-6 h-6" />
         </button>
+        <button
+          onClick={() => setEditing(true)}
+          title="Edit album — artists, merge split albums"
+          aria-label="Edit album"
+          className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
+        >
+          <Pencil className="w-5 h-5" />
+        </button>
       </div>
+      {editing && <AlbumEditor album={album} onClose={() => setEditing(false)} />}
 
       <TrackList tracks={album.tracks} emptyLabel="No songs." />
 

@@ -198,7 +198,12 @@ async function bundleEngine() {
     artwork: `export function upgradeArtwork(t) { return t || ""; }`,
     persist: `
       export const storage = globalThis.__storage;
-      export const coalescedStorage = globalThis.__storage;`,
+      export const coalescedStorage = globalThis.__storage;
+      export const lazyJSONStorage = () => ({
+        getItem: (n) => globalThis.__storage.getItem(n).then((raw) => (raw == null ? null : JSON.parse(raw))),
+        setItem: (n, v) => globalThis.__storage.setItem(n, JSON.stringify(v)),
+        removeItem: (n) => globalThis.__storage.removeItem(n),
+      });`,
   };
   const out = await build({
     // A virtual entry so the test shares the engine's *own* store instances

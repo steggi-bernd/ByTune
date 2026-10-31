@@ -34,9 +34,9 @@ async function loadCoalescedStorage() {
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     require: (name) => require(name),
   });
-  const { coalescedStorage, storage } = module.exports;
+  const { coalescedStorage, lazyJSONStorage, storage } = module.exports;
   return {
-    coalescedStorage, plainStorage: storage, writes,
+    coalescedStorage, lazyJSONStorage, plainStorage: storage, writes,
     firePagehide: () => { for (const fn of windowStub.pagehide ?? []) fn(); },
     cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
   };
@@ -77,5 +77,22 @@ test("coalesced storage: pending writes flush on pagehide and removals are immed
     );
     await h.coalescedStorage.removeItem("library");
     assert.ok(h.writes.at(-1).data == null, "removal must write null immediately, not be coalesced");
+  } finally { h.cleanup(); }
+});
+
+test("lazy JSON storage: only states that get written are stringified, the newest one wins", async () => {
+  const h = await loadCoalescedStorage();
+  try {
+    let stringified = 0;
+    const value = (rev) => ({ state: { toJSON: () => (stringified++, { rev }) }, version: 1 });
+    const lazy = h.lazyJSONStorage();
+    lazy.setItem("player", value(0));
+    assert.equal(h.writes.length, 1, "first write lands immediately (idle before it)");
+    for (let i = 1; i <= 20; i++) lazy.setItem("player", value(i));
+    assert.equal(stringified, 1, "states superseded inside the window must never be stringified");
+    h.firePagehide();
+    assert.equal(stringified, 2, "the flush stringifies the pending state once");
+    assert.equal(JSON.stringify(h.writes.at(-1).data), JSON.stringify({ state: { rev: 20 }, version: 1 }));
+    assert.equal(await lazy.getItem("missing"), null);
   } finally { h.cleanup(); }
 });

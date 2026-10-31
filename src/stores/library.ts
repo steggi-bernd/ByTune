@@ -1,10 +1,9 @@
 /** Library state: liked tracks, playlists, history and download registry. */
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { coalescedStorage } from "../lib/persist";
+import { persist } from "zustand/middleware";
+import { lazyJSONStorage } from "../lib/persist";
 import { recordDeletionChanges } from "../lib/deletion-sync";
 import type { DeletionChange, DeletionSync } from "../lib/deletion-sync";
-import { withoutOtherCopies } from "../lib/duplicates";
 import type { Track } from "../types";
 import { songKey } from "./catalog";
 
@@ -68,8 +67,11 @@ interface LibraryState {
 
   isLiked(id: string): boolean;
   toggleLike(track: Track): void;
-  /** likes brought over from another service, in its order — returns how many songs are newly liked */
-  importLikes(tracks: Track[]): number;
+  /**
+   * likes brought over from another service, in its order — `previous` are the
+   * song ids the last import brought; returns how many songs are newly liked
+   */
+  importLikes(tracks: Track[], previous?: string[]): number;
   togglePinSingle(key: PinnedSingleKey): void;
   createPlaylist(name: string): Playlist;
   renamePlaylist(id: string, name: string): void;
@@ -89,6 +91,19 @@ interface LibraryState {
   setDownload(id: string, item: DownloadItem): void;
   patchDownload(id: string, patch: Partial<DownloadItem>): void;
   removeDownload(id: string): void;
+}
+
+/** A song is liked once: of repeated entries the first stays. */
+function uniqueById(list: Track[]): Track[] {
+  const seen = new Set<string>();
+  return list.filter((t) => !seen.has(t.id) && !!seen.add(t.id));
+}
+
+/** The liked ids as a Set, rebuilt only when the liked list changes — rows ask "liked?" in O(1). */
+let likedSetMemo: { list: Track[]; ids: Set<string> } | null = null;
+export function likedIdSet(list: Track[]): Set<string> {
+  if (likedSetMemo?.list !== list) likedSetMemo = { list, ids: new Set(list.map((t) => t.id)) };
+  return likedSetMemo.ids;
 }
 
 function uid(): string {
@@ -142,23 +157,30 @@ export const useLibrary = create<LibraryState>()(
         }
       },
 
-      importLikes(tracks) {
+      importLikes(tracks, previous = []) {
         // The import's order, newest first, one copy per song. Songs liked
-        // here that the import doesn't hold stay on top — they're the newer
-        // likes. A song liked here as its other copy (the Jellyfin one, say)
-        // is the same like: the imported copy takes its place.
+        // here that no import brought stay on top — they're the newer likes;
+        // songs an earlier import brought that this one no longer holds go
+        // to the bottom. A song liked here as its other copy (the Jellyfin
+        // one, say) is the same like: the imported copy takes its place.
+        // Two entries of an import can lead to one song here (a remaster and
+        // the original, a song picked by hand): the first one counts.
         const { liked } = get();
-        const imported = withoutOtherCopies(tracks, songKey).list;
+        const importedSongs = new Set<string>();
+        const imported = tracks.filter((t) => !importedSongs.has(songKey(t.id)) && !!importedSongs.add(songKey(t.id)));
         const importedKeys = new Set(imported.map((t) => songKey(t.id)));
         const importedIds = new Set(imported.map((t) => t.id));
+        const previousKeys = new Set(previous.map(songKey));
         const likedKeys = new Set(liked.map((t) => songKey(t.id)));
         const likedIds = new Set(liked.map((t) => t.id));
-        const keep = liked.filter((t) => !importedKeys.has(songKey(t.id)));
+        const others = liked.filter((t) => !importedKeys.has(songKey(t.id)));
+        const ownLikes = others.filter((t) => !previousKeys.has(songKey(t.id)));
+        const earlierImports = others.filter((t) => previousKeys.has(songKey(t.id)));
         const replaced = liked.filter((t) => importedKeys.has(songKey(t.id)) && !importedIds.has(t.id));
         const added = imported.filter((t) => !likedIds.has(t.id));
         for (const t of imported) hydrationLikes?.set(t.id, { track: t, liked: true });
         for (const t of replaced) hydrationLikes?.set(t.id, { track: t, liked: false });
-        withChanges(set, get, { liked: [...keep, ...imported] }, [
+        withChanges(set, get, { liked: uniqueById([...ownLikes, ...imported, ...earlierImports]) }, [
           ...added.map((t): DeletionChange => ({ kind: "add", group: "liked", id: t.id })),
           ...replaced.map((t): DeletionChange => ({ kind: "delete", group: "liked", id: t.id })),
         ]);
@@ -298,12 +320,13 @@ export const useLibrary = create<LibraryState>()(
     }),
     {
       name: "library",
-      // Coalesced like the player store: download progress patches the
-      // downloads registry several times a second, and an uncoalesced persist
-      // would serialize the whole library (liked + playlists + history + the
-      // full Track objects) to disk at that rate. Pending writes still flush
-      // on pagehide/beforeunload, so close-time durability is unchanged.
-      storage: createJSONStorage(() => coalescedStorage),
+      // Coalesced and lazily serialized like the player store: download
+      // progress patches the downloads registry several times a second, and
+      // the whole library (liked + playlists + history + the full Track
+      // objects) is only stringified when a write actually lands — at most
+      // every 2 s. Pending writes still flush on pagehide/beforeunload, so
+      // close-time durability is unchanged.
+      storage: lazyJSONStorage<LibraryState>(),
       version: 1,
       onRehydrateStorage: () => {
         const likes = hydrationLikes ?? new Map<string, { track: Track; liked: boolean }>();
@@ -314,7 +337,14 @@ export const useLibrary = create<LibraryState>()(
           if (hydrationLikes !== likes) return;
           hydrationLikes = null;
           hydrationHistory = null;
-          if (!state || (likes.size === 0 && history.length === 0)) return;
+          if (!state) return;
+          if (likes.size === 0 && history.length === 0) {
+            // 1.0.4's import could like one song twice; the same id twice is the
+            // same like, so membership (and its sync metadata) stays as it is.
+            const liked = uniqueById(state.liked ?? []);
+            if (liked.length !== (state.liked ?? []).length) useLibrary.setState({ liked });
+            return;
+          }
           // Hydration replaced the intermediate metadata too. Replay explicit
           // user intents against the restored clock, preserving their order.
           // These are real buffered actions, not newly inferred additions.
@@ -330,7 +360,7 @@ export const useLibrary = create<LibraryState>()(
             replay = { ...replay, ...next, deletionSync: recordDeletionChanges(replay, next,
               [track === null ? { kind: "clear", group: "history" } : { kind: "add", group: "history", id: track.id }]) };
           }
-          useLibrary.setState({ liked: replay.liked, history: replay.history, deletionSync: replay.deletionSync });
+          useLibrary.setState({ liked: uniqueById(replay.liked), history: replay.history, deletionSync: replay.deletionSync });
         };
       },
       migrate: (persisted: unknown, version: number) => {
@@ -339,9 +369,9 @@ export const useLibrary = create<LibraryState>()(
           return {
             ...state,
             pinnedSingles: { liked: true, downloads: true, local: true },
-          };
+          } as unknown as LibraryState;
         }
-        return state;
+        return state as unknown as LibraryState;
       },
     }
   )

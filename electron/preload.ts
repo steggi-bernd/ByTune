@@ -1,6 +1,7 @@
 /** Preload — exposes a minimal, typed API to the renderer via contextBridge. */
 import { contextBridge, ipcRenderer } from "electron";
 import type { DownloadProgress, Track } from "../src/types";
+import type { DiscordStatus } from "./discord";
 
 // The PiP window loads this same preload but its scope requests are rejected
 // by design (main-window-only handler) — an eager invoke there would leave an
@@ -90,6 +91,14 @@ const api = {
   },
   getCanvas: (q: { title: string; artist: string; album?: string }) =>
     ipcRenderer.invoke("canvas:get", q),
+
+  // Discord status (optional): the song playing now on the user's Discord profile
+  discordConfigure: (enabled: boolean, clientId: string) =>
+    ipcRenderer.invoke("discord:configure", enabled, clientId) as Promise<DiscordStatus>,
+  discordStatus: () => ipcRenderer.invoke("discord:status") as Promise<DiscordStatus>,
+  /** null clears it (paused, nothing playing); the main process spaces updates out */
+  discordActivity: (activity: { title: string; artist: string; startedAt: number; endsAt: number } | null) =>
+    ipcRenderer.send("discord:activity", activity),
 
   // Open metadata (MusicBrainz · Cover Art Archive · iTunes · Wikidata/Wikipedia)
   metaArtist: (name: string) => ipcRenderer.invoke("meta:artist", name),

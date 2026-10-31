@@ -15,7 +15,12 @@ async function harness(name, initial = null) {
     entryPoints: [fileURLToPath(new URL(`../src/stores/${name}.ts`, import.meta.url))],
     bundle: true, platform: "node", format: "cjs", write: false, external: ["react"],
     plugins: [{ name: "isolated-storage", setup(build) {
-      build.onLoad({ filter: /[\\/]lib[\\/]persist\.ts$/ }, () => ({ contents: "export const storage = globalThis.testStorage; export const coalescedStorage = globalThis.testStorage;", loader: "ts" }));
+      build.onLoad({ filter: /[\\/]lib[\\/]persist\.ts$/ }, () => ({ contents: "export const storage = globalThis.testStorage; export const coalescedStorage = globalThis.testStorage;" +
+        // lazyJSONStorage, minus the coalescing: every write lands at once, as the assertions expect.
+        // No async function here: inside the vm its promise is the sandbox's own, which fails
+        // zustand's `instanceof Promise` (the host's) and would skip hydration.
+        " export const lazyJSONStorage = () => ({ getItem: (n) => globalThis.testStorage.getItem(n).then((raw) => raw == null ? null : JSON.parse(raw))," +
+        " setItem: (n, v) => globalThis.testStorage.setItem(n, JSON.stringify(v)), removeItem: (n) => globalThis.testStorage.removeItem(n) });", loader: "ts" }));
     } }],
   })).outputFiles[0].text);
   let disk = initial, gate = null;
@@ -162,6 +167,25 @@ test("ordinary hydration preserves versions without inventing fresh additions", 
   const snapshot = h.snapshot(), restarted = await harness("library", snapshot);
   assert.deepEqual(plain(restarted.store.getState().deletionSync), snapshot.state.deletionSync);
   assert.equal(restarted.writes.length, 0);
+});
+
+test("an import that leads to one song twice likes it once", async () => {
+  const h = await harness("library"), s = h.store.getState;
+  s().toggleLike(track("mine"));
+  assert.equal(s().importLikes([track("a"), track("b"), track("a")]), 2);
+  assert.deepEqual(plain(s().liked.map((t) => t.id)), ["mine", "a", "b"]);
+  assert.equal(s().importLikes([track("b"), track("a"), track("b")], ["a", "b"]), 0, "nothing new the second time");
+  assert.deepEqual(plain(s().liked.map((t) => t.id)), ["mine", "b", "a"]);
+});
+
+test("a song an older version liked twice is liked once after loading, its sync metadata untouched", async () => {
+  const h = await harness("library"), s = h.store.getState;
+  s().toggleLike(track("x")); s().toggleLike(track("y"));
+  const snapshot = h.snapshot();
+  snapshot.state.liked = [...snapshot.state.liked, snapshot.state.liked[0]];
+  const restarted = await harness("library", snapshot);
+  assert.deepEqual(plain(restarted.store.getState().liked.map((t) => t.id)), ["y", "x"]);
+  assert.deepEqual(plain(restarted.store.getState().deletionSync), snapshot.state.deletionSync);
 });
 
 test("search remove/clear is case-insensitive, versioned and later search wins", async () => {

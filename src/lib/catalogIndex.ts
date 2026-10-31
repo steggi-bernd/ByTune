@@ -3,9 +3,10 @@
  * once per catalogue version and shared by every page that needs them.
  */
 import { useMemo } from "react";
+import { useAlbumEdits } from "../stores/albumEdits";
 import { useCatalog, type PlayCounts } from "../stores/catalog";
 import type { Track } from "../types";
-import { albumKeyOf, albumRoute, artistRoute, creditedArtists, leadArtist, splitCredits } from "./libraryTracks";
+import { albumKeyOf, albumRoute, artistRoute, creditedArtists, leadArtist, parseRoute, splitCredits } from "./libraryTracks";
 import { classifyRelease, releaseYear, type ReleaseKind } from "./releases";
 
 export interface LibAlbum {
@@ -36,10 +37,16 @@ export interface LibArtist {
 const discTrack = (a: Track, b: Track): number =>
   (a.discNo ?? 1) - (b.discNo ?? 1) || (a.trackNo ?? 9999) - (b.trackNo ?? 9999) || a.title.localeCompare(b.title);
 
-export function buildAlbums(tracks: Track[]): LibAlbum[] {
+/**
+ * The albums of a song list. A song belongs to the album its page link names
+ * — the album edits (lib/albumEdits.ts) already point songs of a merged album
+ * at the one it's shown in — and `artistEdits` replace an album's tagged
+ * artist line.
+ */
+export function buildAlbums(tracks: Track[], artistEdits: Record<string, string> = {}): LibAlbum[] {
   const groups = new Map<string, Track[]>();
   for (const t of tracks) {
-    const key = albumKeyOf(t);
+    const key = (t.albumId ? parseRoute(t.albumId, "album") : null) ?? albumKeyOf(t);
     if (!key) continue;
     const g = groups.get(key);
     if (g) g.push(t);
@@ -47,15 +54,18 @@ export function buildAlbums(tracks: Track[]): LibAlbum[] {
   }
   const albums: LibAlbum[] = [];
   for (const [key, list] of groups) {
-    list.sort(discTrack);
+    // Parts merged into this album follow its own songs ("Disc 2" after
+    // "Disc 1"), each part in disc/track order.
+    const part = (t: Track): string => (albumKeyOf(t) === key ? "" : albumKeyOf(t) ?? "");
+    list.sort((a, b) => part(a).localeCompare(part(b), undefined, { numeric: true }) || discTrack(a, b));
     const first = list[0];
-    // The album artist when tagged, else the most common lead artist.
+    // The user's artist line, else the album artist when tagged, else the most common lead artist.
     const counts = new Map<string, number>();
     for (const t of list) {
       const a = t.albumArtist || leadArtist(t.artist);
       counts.set(a, (counts.get(a) ?? 0) + 1);
     }
-    const artist = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? first.artist;
+    const artist = artistEdits[key] ?? [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? first.artist;
     const title = first.album ?? "";
     albums.push({
       key,
@@ -147,18 +157,22 @@ export function byPlays(tracks: Track[], counts: PlayCounts): Track[] {
 
 /* ------------------------------------------------------------- hooks */
 
-let albumsMemo: { tracks: Track[]; albums: LibAlbum[]; artists: LibArtist[] } | null = null;
+let albumsMemo: { tracks: Track[]; edits: Record<string, string>; albums: LibAlbum[]; artists: LibArtist[] } | null = null;
 
-/** Albums and artists for the current song list (built once per catalogue load, shared by all pages). */
+/**
+ * Albums and artists for the current song list — built once per catalogue
+ * load (or album edit) and shared by all pages.
+ */
 export function useLibraryIndex(): { albums: LibAlbum[]; artists: LibArtist[]; tracks: Track[]; loaded: boolean } {
   const tracks = useCatalog((s) => s.tracks);
   const loaded = useCatalog((s) => s.loaded);
+  const artistEdits = useAlbumEdits((s) => s.artists);
   return useMemo(() => {
     // Play-count refreshes keep the same track list, so they never rebuild the index.
-    if (!albumsMemo || albumsMemo.tracks !== tracks) {
-      const albums = buildAlbums(tracks);
-      albumsMemo = { tracks, albums, artists: buildArtists(tracks, albums) };
+    if (!albumsMemo || albumsMemo.tracks !== tracks || albumsMemo.edits !== artistEdits) {
+      const albums = buildAlbums(tracks, artistEdits);
+      albumsMemo = { tracks, edits: artistEdits, albums, artists: buildArtists(tracks, albums) };
     }
     return { albums: albumsMemo.albums, artists: albumsMemo.artists, tracks, loaded };
-  }, [tracks, loaded]);
+  }, [tracks, loaded, artistEdits]);
 }

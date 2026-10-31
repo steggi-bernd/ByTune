@@ -141,19 +141,38 @@ export interface UIState {
 let toastSeq = 1;
 
 /**
+ * The wash follows the pointer only once it rests: sweeping across a list
+ * used to start a cover read + colour extraction + crossfade for every row
+ * the pointer merely crossed. Entering waits a beat; leaving waits a little
+ * longer, so moving from one card to the next never flashes back in between.
+ */
+const TINT_ENTER_MS = 140;
+const TINT_LEAVE_MS = 200;
+let tintTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleTint(thumb: string | null, delay: number): void {
+  if (tintTimer !== null) clearTimeout(tintTimer);
+  tintTimer = setTimeout(() => {
+    tintTimer = null;
+    useUI.getState().setTintThumb(thumb);
+  }, delay);
+}
+
+function cancelTint(): void {
+  if (tintTimer !== null) clearTimeout(tintTimer);
+  tintTimer = null;
+}
+
+/**
  * Spread onto any card or row that represents playable art (song, album,
- * artist, playlist): while the pointer is over it, the middle panel's wash
+ * artist, playlist): while the pointer rests on it, the middle panel's wash
  * borrows that artwork's colour (see TintWash in App.tsx). Leaving the card
  * hands the wash back to the playing track.
  */
 export function tintHoverHandlers(thumb: string | null | undefined) {
   return {
-    onMouseEnter: (): void => {
-      useUI.getState().setTintThumb(thumb ?? null);
-    },
-    onMouseLeave: (): void => {
-      useUI.getState().setTintThumb(null);
-    },
+    onMouseEnter: (): void => scheduleTint(thumb ?? null, TINT_ENTER_MS),
+    onMouseLeave: (): void => scheduleTint(null, TINT_LEAVE_MS),
   };
 }
 
@@ -201,7 +220,8 @@ export const useUI = create<UIState>((set, get) => ({
     // Any navigation reveals the clicked content: the lyrics overlay must
     // not keep covering views the user explicitly navigated to. The wash
     // hover also dies with the pointer's card — React doesn't fire
-    // mouseleave on unmount, so clear it here.
+    // mouseleave on unmount, so clear it here (and drop a pending one).
+    cancelTint();
     set({
       view,
       navPast: [...navPast.slice(-40), { view: current, scroll: readViewScroll() }],
@@ -281,6 +301,8 @@ export const useUI = create<UIState>((set, get) => ({
   },
 
   setTintThumb(tintThumb) {
+    // A direct set (a list that just changed under the pointer) wins over a pending hover.
+    if (tintThumb === null) cancelTint();
     if (get().tintThumb === tintThumb) return;
     set({ tintThumb });
   },
