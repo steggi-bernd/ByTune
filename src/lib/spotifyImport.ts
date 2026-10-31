@@ -83,6 +83,27 @@ export function applyDecisions(rows: ImportRow[], d: ImportDecisions, byId: (id:
   });
 }
 
+/**
+ * What "Add to Liked Songs" lays out, in the export's order (newest like
+ * first): every match, plus each song still to check that is liked already —
+ * an earlier import or an earlier decision liked it, and while it waits for
+ * the user's word it keeps its Spotify place instead of passing for a like
+ * made here, which would put it on top. A song still to check that isn't
+ * liked stays out until the user decides; a song a match also leads to
+ * takes the match's place.
+ */
+export function importOrder(rows: ImportRow[], likedSongs: ReadonlySet<string>, keyOf: (id: string) => string): Track[] {
+  const matched = new Set(rows.filter((r) => r.kind === "match" && r.track).map((r) => keyOf(r.track!.id)));
+  return rows
+    .filter((r) => {
+      if (!r.track) return false;
+      if (r.kind === "match") return true;
+      const key = keyOf(r.track.id);
+      return r.kind === "check" && likedSongs.has(key) && !matched.has(key);
+    })
+    .map((r) => r.track!);
+}
+
 /** More than this many songs is not a Liked Songs export. */
 const MAX_ENTRIES = 100_000;
 

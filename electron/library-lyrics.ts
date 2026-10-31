@@ -18,7 +18,7 @@ import * as path from "path";
 import { fetchLyrics as fetchJellyfinLyrics } from "./jellyfin";
 import { fetchLyrics as fetchSubsonicLyrics } from "./subsonic";
 import { localTrackById } from "./local-library";
-import { fetchLyrics as fetchProviderLyrics, lyricsFromText, type FetchedLyrics } from "./lyrics";
+import { fetchLyrics as fetchProviderLyrics, isPlaceholderFetched, lyricsFromText, type FetchedLyrics } from "./lyrics";
 
 export interface LyricsRequest {
   id: string;
@@ -85,9 +85,16 @@ function cacheFile(id: string): string {
 }
 
 async function readCached(id: string): Promise<FetchedLyrics | null> {
+  const file = cacheFile(id);
   try {
-    const raw = JSON.parse(await fs.promises.readFile(cacheFile(id), "utf-8")) as { lyrics?: FetchedLyrics };
-    return raw.lyrics ?? null;
+    const raw = JSON.parse(await fs.promises.readFile(file, "utf-8")) as { lyrics?: FetchedLyrics };
+    const lyrics = raw.lyrics ?? null;
+    // Earlier versions kept an instrumental's "纯音乐，请欣赏" as its lyrics.
+    if (lyrics && isPlaceholderFetched(lyrics)) {
+      await fs.promises.rm(file, { force: true });
+      return null;
+    }
+    return lyrics;
   } catch {
     return null;
   }

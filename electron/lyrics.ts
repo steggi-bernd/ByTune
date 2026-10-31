@@ -171,6 +171,36 @@ function toResult(source: string, lines: SyncedLyricLine[]): ProviderResult | nu
   return { source, wordSynced: lines.some((l) => (l.words?.length ?? 0) > 0), lines: withInstrumentalGaps(lines) };
 }
 
+/* ------------------------------ placeholders ---------------------------- */
+
+/**
+ * "No lyrics", dressed up as lyrics. The Chinese catalogues (KuGou, and the
+ * NetEase / QQ Music lines Portato and friends pass on) answer an instrumental
+ * with one line — 纯音乐，请欣赏, "pure music, please enjoy" — taggers copy it
+ * into files, and English sources write "[Instrumental]". On screen it is a
+ * stray line of Chinese over a song without words, so it counts as none.
+ */
+const PLACEHOLDER_LINE =
+  /^(?:此歌曲[为為])?(?:没有填词的|沒有填詞的)?[纯純]音[乐樂](?:[请請]您?欣[赏賞])?$|^(?:[该該]歌曲)?[暂暫][无無]歌[词詞]$|^instrumental$/;
+/** "作曲 : 某人" — the credit lines some catalogues put around it. */
+const CREDIT_LINE = /^[^:：]{1,16}[:：]/;
+
+export function isPlaceholderLyrics(lines: readonly string[]): boolean {
+  const said = lines.map((l) => l.trim()).filter(Boolean);
+  if (!said.length || said.length > 4) return false;
+  let placeholder = false;
+  for (const line of said) {
+    if (PLACEHOLDER_LINE.test(line.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ""))) placeholder = true;
+    else if (!CREDIT_LINE.test(line)) return false;
+  }
+  return placeholder;
+}
+
+/** Fetched lyrics that only say there are none (see isPlaceholderLyrics). */
+export function isPlaceholderFetched(lyrics: FetchedLyrics): boolean {
+  return isPlaceholderLyrics(lyrics.synced ? lyrics.synced.map((l) => l.text) : (lyrics.plain ?? "").split(/\r?\n/));
+}
+
 /* ------------------------------ LRC parsing ----------------------------- */
 
 /**
@@ -184,6 +214,7 @@ export function lyricsFromText(source: string, text: string): FetchedLyrics | nu
   const rich = parseEnhancedLrc(clean);
   const lines = rich.length ? rich : parseLrc(clean);
   if (lines.some((l) => l.text.trim())) {
+    if (isPlaceholderLyrics(lines.map((l) => l.text))) return null;
     return { source, wordSynced: rich.length > 0, synced: withInstrumentalGaps(lines), plain: null };
   }
   // No timestamps: plain text, minus any LRC header tags ([ar:…], [ti:…]).
@@ -192,7 +223,7 @@ export function lyricsFromText(source: string, text: string): FetchedLyrics | nu
     .filter((l) => !/^\[[a-z]+:.*]$/i.test(l.trim()))
     .join("\n")
     .trim();
-  return plain ? { source, wordSynced: false, synced: null, plain } : null;
+  return plain && !isPlaceholderLyrics(plain.split("\n")) ? { source, wordSynced: false, synced: null, plain } : null;
 }
 
 /** Plain LRC → line-synced lines (seconds). Word stamps `<…>` are ignored. */
@@ -2100,12 +2131,19 @@ export async function fetchLyrics(
     fetchMusixmatch(q),
     fetchGenius(q),
   ].map((p) => p.catch((): ProviderResult | null => null));
-  const { results, arrived } = await settledWithin(jobs);
+  const { results: answers, arrived } = await settledWithin(jobs);
+  // An instrumental's "纯音乐，请欣赏" is a provider saying there are no lyrics.
+  const placeholder = answers.map(
+    (r) => !!r && isPlaceholderLyrics(r.plainText ? r.plainText.split(/\r?\n/) : r.lines.map((l) => l.text))
+  );
+  const results = answers.map((r, i) => (placeholder[i] ? null : r));
   // Temporary diagnostics: which providers answered, and what won.
   results.forEach((r, i) => {
     const name = PROVIDER_NAMES[i];
     if (!arrived[i]) {
       console.log(`[bytune][lyrics] ${name}: still running at the deadline`);
+    } else if (placeholder[i]) {
+      console.log(`[bytune][lyrics] ${name}: no lyrics (instrumental placeholder)`);
     } else if (r) {
       const last = r.lines.length ? r.lines[r.lines.length - 1].time : null;
       console.log(`[bytune][lyrics] ${name}: ${r.lines.length} lines last=${last?.toFixed(1)} plain=${!!r.plainText} word=${r.wordSynced}`);

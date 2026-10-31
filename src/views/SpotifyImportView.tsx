@@ -19,6 +19,7 @@ import { matchesQuery } from "../lib/libraryTracks";
 import {
   applyDecisions,
   entryKey,
+  importOrder,
   matchEntries,
   shoppingListCsv,
   shoppingListText,
@@ -180,6 +181,7 @@ export function SpotifyImportView() {
   const tracks = useCatalog((s) => s.tracks);
   const byId = useCatalog((s) => s.byId);
   const versions = useCatalog((s) => s.versions);
+  const liked = useLibrary((s) => s.liked);
   const navigate = useUI((s) => s.navigate);
   const toast = useUI((s) => s.toast);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -205,6 +207,9 @@ export function SpotifyImportView() {
   // One per song: two Spotify entries can lead to the same song here (a remaster and the original, a pick).
   const songs = new Set<string>();
   const toLike = have.map((r) => r.track!).filter((t) => !songs.has(songKey(t.id)) && !!songs.add(songKey(t.id)));
+  // What the button lays out: the matches, and liked songs still to check in their Spotify place.
+  const likedSongs = useMemo(() => new Set(liked.map((t) => songKey(t.id))), [liked, versions]);
+  const order = importOrder(rows, likedSongs, songKey);
   const missingEntries = missing.map((r) => r.entry);
 
   const pickFile = (): void => fileInput.current?.click();
@@ -215,8 +220,8 @@ export function SpotifyImportView() {
   };
 
   const addToLiked = (): void => {
-    const added = useLibrary.getState().importLikes(toLike, likedIds);
-    noteLiked(toLike.map((t) => t.id));
+    const added = useLibrary.getState().importLikes(order, likedIds);
+    noteLiked(order.map((t) => t.id));
     toast(
       added > 0
         ? `Added ${added} ${added === 1 ? "song" : "songs"} to Liked Songs, in Spotify's order`
@@ -312,7 +317,7 @@ export function SpotifyImportView() {
             </Btn>
             <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">
               In Spotify's order, newest first — adding again later puts newly found songs in their place. Songs you liked
-              only in ByTune stay on top{check.length ? `; the ${check.length} still to check stay out until you decide` : ""}.
+              only in ByTune stay on top{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
             </p>
             <Btn variant="glass" size="sm" onClick={() => navigate({ name: "library", param: "liked" })}>
               Open Liked Songs

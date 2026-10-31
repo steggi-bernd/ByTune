@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   applyDecisions,
   entryKey,
+  importOrder,
   matchEntries,
   parseCsv,
   parseSpotifyExport,
@@ -131,6 +132,22 @@ test("decisions settle uncertain rows and follow the song into a fresh export", 
   // A fresh export of the same songs (new row order) keeps the decisions — they follow the Spotify URI.
   const fresh = matchEntries([entries[2], entries[0]], library);
   assert.deepEqual(applyDecisions(fresh, decisions, byId).map((r) => r.decided), ["picked", "same"]);
+});
+
+test("Add lays out the matches, plus liked songs still to check in their Spotify place", () => {
+  const library = [lib({ title: "New" }), lib({ title: "Liked Before", duration: 300 }), lib({ title: "Unsure", duration: 300 }), lib({ title: "Old" })];
+  const entries = [
+    entry({ title: "New" }),
+    entry({ title: "Liked Before", album: "Single" }), // two minutes off, another album: to check
+    entry({ title: "Unsure", album: "Single" }),
+    entry({ title: "Old" }),
+    entry({ title: "Old - Live" }), // to check, but "Old" itself is a match further up
+  ];
+  const rows = matchEntries(entries, library);
+  assert.deepEqual(rows.map((r) => r.kind), ["match", "check", "check", "match", "check"]);
+  const liked = new Set(["local:Liked Before", "local:Old"]);
+  assert.deepEqual(importOrder(rows, liked, (id) => id).map((t) => t.title), ["New", "Liked Before", "Old"]);
+  assert.deepEqual(importOrder(rows, new Set(), (id) => id).map((t) => t.title), ["New", "Old"], "nothing unliked is added unchecked");
 });
 
 test("a song without a URI is known by its title and artists", () => {

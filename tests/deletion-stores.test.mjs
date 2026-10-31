@@ -32,7 +32,7 @@ async function harness(name, initial = null) {
   };
   const module = { exports: {} };
   vm.runInNewContext(codes.get(name), { module, exports: module.exports, require, console, Promise, testStorage: storage });
-  const store = module.exports[name === "library" ? "useLibrary" : "useRecents"];
+  const store = module.exports[{ library: "useLibrary", recents: "useRecents", spotifyImport: "useSpotifyImport" }[name]];
   if (!store.persist.hasHydrated()) await new Promise((resolve) => {
     const off = store.persist.onFinishHydration(() => { off(); resolve(); });
   });
@@ -176,6 +176,47 @@ test("an import that leads to one song twice likes it once", async () => {
   assert.deepEqual(plain(s().liked.map((t) => t.id)), ["mine", "a", "b"]);
   assert.equal(s().importLikes([track("b"), track("a"), track("b")], ["a", "b"]), 0, "nothing new the second time");
   assert.deepEqual(plain(s().liked.map((t) => t.id)), ["mine", "b", "a"]);
+});
+
+test("songs checked after the first add land in their Spotify place, not above the songs liked before", async () => {
+  const h = await harness("library"), s = h.store.getState;
+  const ids = () => plain(s().liked.map((t) => t.id));
+  s().toggleLike(track("mine"));
+  // Spotify, newest first: a, b, c, d — b and d wait for a check on the first add.
+  s().importLikes([track("a"), track("c")]);
+  assert.deepEqual(ids(), ["mine", "a", "c"]);
+  assert.equal(s().importLikes([track("a"), track("b"), track("c"), track("d")], ["a", "c"]), 2);
+  assert.deepEqual(ids(), ["mine", "a", "b", "c", "d"]);
+});
+
+test("a liked song back in To check keeps its Spotify place, even when no earlier add is on record", async () => {
+  const h = await harness("library"), s = h.store.getState;
+  const ids = () => plain(s().liked.map((t) => t.id));
+  // 1.0.4 imported a, b, c (b after a "Same song") but kept neither the decision nor a record
+  // of the add: b is waiting for a check again, and the import laid it out in its place anyway.
+  s().importLikes([track("a"), track("b"), track("c")]);
+  s().toggleLike(track("mine"));
+  assert.equal(s().importLikes([track("a"), track("b"), track("c")], []), 0);
+  assert.deepEqual(ids(), ["mine", "a", "b", "c"]);
+});
+
+test("a song an import brought goes below it once the export no longer has it, add after add", async () => {
+  const h = await harness("library"), s = h.store.getState;
+  const ids = () => plain(s().liked.map((t) => t.id));
+  s().importLikes([track("a"), track("b"), track("c")]);
+  s().toggleLike(track("mine"));
+  s().importLikes([track("a"), track("c")], ["a", "b", "c"]);
+  assert.deepEqual(ids(), ["mine", "a", "c", "b"]);
+  s().importLikes([track("a"), track("c")], ["a", "b", "c"]);
+  assert.deepEqual(ids(), ["mine", "a", "c", "b"]);
+});
+
+test("the import remembers every song an add laid out, not just the last add's", async () => {
+  const h = await harness("spotifyImport"), s = h.store.getState;
+  s().noteLiked(["a", "b", "c"]);
+  s().noteLiked(["a", "c", "d"]);
+  assert.deepEqual(plain(s().likedIds), ["a", "b", "c", "d"]);
+  assert.deepEqual(h.snapshot().state.likedIds, ["a", "b", "c", "d"], "and keeps it on disk");
 });
 
 test("a song an older version liked twice is liked once after loading, its sync metadata untouched", async () => {

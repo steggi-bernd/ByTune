@@ -1,7 +1,6 @@
 /**
  * The Spotify import: the parsed export, what the user decided about
- * uncertain matches, and which songs the last "Add to Liked Songs" brought
- * over. Persisted, so the import survives a restart — buy songs over a few
+ * uncertain matches, and which songs "Add to Liked Songs" brought over. Persisted, so the import survives a restart — buy songs over a few
  * days, come back, add again. The matches themselves are worked out live
  * from the catalogue (lib/spotifyImport.ts), so songs added to the library
  * meanwhile move from "Missing" to "In your library" by themselves.
@@ -28,7 +27,7 @@ interface SpotifyImportState {
   verdicts: Record<string, "same" | "different">;
   /** entryKey → the library song id the user picked by hand */
   picks: Record<string, string>;
-  /** library song ids the last "Add to Liked Songs" brought over */
+  /** library song ids every "Add to Liked Songs" so far laid out */
   likedIds: string[];
   load(file: File): Promise<void>;
   setVerdict(key: string, verdict: "same" | "different" | null): void;
@@ -90,7 +89,10 @@ export const useSpotifyImport = create<SpotifyImportState>()(
       },
 
       noteLiked(ids) {
-        set({ likedIds: ids });
+        // All of them, not just the last add's: a song an import brought that
+        // later drops out of the export goes below the import, never on top as
+        // a like made here — however many adds later that happens.
+        set((s) => ({ likedIds: [...new Set([...s.likedIds, ...ids])] }));
       },
 
       reset() {
