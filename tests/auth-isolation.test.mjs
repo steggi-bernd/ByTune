@@ -57,7 +57,8 @@ async function loadSupabase({ profile = { mode: "account", userId: "A", username
     shell: { openExternal: browserFails
       ? async () => { throw new Error("External URLs disabled in test"); }
       : async () => {} },
-    safeStorage: { isEncryptionAvailable: () => true, encryptString: (v) => Buffer.from(v), decryptString: (b) => b },
+    // A keyring on Linux (getSelectedStorageBackend is asked there only), so sealing works everywhere.
+    safeStorage: { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => "gnome_libsecret", encryptString: (v) => Buffer.from(v), decryptString: (b) => b },
   };
   const { outputFiles } = await build({
     entryPoints: [fileURLToPath(new URL("../electron/supabase.ts", import.meta.url))],

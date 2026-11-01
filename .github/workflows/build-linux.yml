@@ -43,11 +43,16 @@ jobs:
         run: npm ci
 
       - name: Tests on Linux (informational)
+        id: tests
         # The suite is written and run on Windows before every release; here
         # it shows what behaves differently on Linux without holding the
         # packages back.
         continue-on-error: true
         run: npm test
+
+      - name: Flag failed Linux tests
+        if: ${{ steps.tests.outcome == 'failure' }}
+        run: echo "::warning title=Tests on Linux::Some tests failed on Linux; the packages were built anyway (see the step above)."
 
       - name: Build renderer + electron main
         run: npm run build
