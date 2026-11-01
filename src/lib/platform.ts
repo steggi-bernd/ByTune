@@ -10,10 +10,12 @@ export const platform: string =
 
 export const isMac = platform === "darwin";
 export const isWindows = platform === "win32";
+export const isLinux = platform === "linux";
 
 // One class on <html> drives the platform CSS (font stack; caption-button
 // visibility is handled in React). Runs at module import, before first paint.
 if (typeof document !== "undefined") {
   document.documentElement.classList.toggle("platform-mac", isMac);
   document.documentElement.classList.toggle("platform-windows", platform === "win32");
+  document.documentElement.classList.toggle("platform-linux", isLinux);
 }

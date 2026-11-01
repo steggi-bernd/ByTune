@@ -1,0 +1,79 @@
+# Linux packages: an AppImage (runs on most distributions) and a .deb
+# (Debian, Ubuntu, Mint, Pop!_OS …). electron-builder can't make them on
+# Windows, so they are built here on GitHub's hosted Ubuntu runners (free
+# for public repos).
+#
+# Runs automatically on v* tags (attaches both to that release, waiting a
+# few minutes for it to be created) and manually via workflow_dispatch
+# (optional tag input attaches to an existing release; leave it empty to
+# just produce build artifacts).
+
+name: Build Linux packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach the packages to (e.g. v1.0.9). Empty = artifacts only.'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag || github.ref_name) || github.ref_name }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Tests on Linux (informational)
+        # The suite is written and run on Windows before every release; here
+        # it shows what behaves differently on Linux without holding the
+        # packages back.
+        continue-on-error: true
+        run: npm test
+
+      - name: Build renderer + electron main
+        run: npm run build
+
+      - name: Package AppImage + deb
+        run: npx electron-builder --linux AppImage deb --x64 --publish never
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: ${{ github.event_name == 'push' || inputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          # The release (often still a draft) is made after the tag is pushed.
+          for i in $(seq 1 30); do
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break
+            echo "Waiting for release $TAG ($i/30)"
+            sleep 20
+          done
+          gh release upload "$TAG" release/*.AppImage release/*.deb --clobber --repo "$GITHUB_REPOSITORY"

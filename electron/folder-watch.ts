@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as locallib from "./local-library";
 import type { LocalLibrary } from "./local-library";
+import { foldPathCase } from "./local-paths";
 
 const DEBOUNCE_MS = 4000;
 
@@ -74,7 +75,7 @@ export function syncFolderWatchers(): void {
   for (const folder of wanted) {
     if (watchers.has(folder)) continue;
     // A nested folder is already covered by its imported parent's watcher.
-    if ([...wanted].some((other) => other !== folder && folder.toLowerCase().startsWith(other.toLowerCase() + path.sep))) continue;
+    if ([...wanted].some((other) => other !== folder && foldPathCase(folder).startsWith(foldPathCase(other) + path.sep))) continue;
     try {
       const w = fs.watch(folder, { recursive: true, persistent: false }, (_event, filename) => {
         const name = filename ? String(filename) : "";

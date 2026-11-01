@@ -5,6 +5,7 @@
   "version": "1.0.8",
   "author": "ByTune",
   "description": "ByTune Local — local music player with Jellyfin and open metadata",
+  "desktopName": "bytune-local.desktop",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -s first \"npm:dev:renderer\" \"npm:dev:app\"",
@@ -19,6 +20,7 @@
     "smoke": "node scripts/smoke.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb --x64",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:arm64": "npm run build && electron-builder --mac --arm64",
     "dist:x64": "npm run build && electron-builder --mac --x64",
@@ -90,6 +92,41 @@
           "path": "/Applications"
         }
       ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "executableName": "bytune-local",
+      "artifactName": "ByTune-Local-${arch}.${ext}",
+      "category": "AudioVideo;Audio;Player",
+      "synopsis": "Music player for your own files, Jellyfin and Navidrome",
+      "description": "ByTune Local plays the music on your computer and on your Jellyfin or Navidrome server, with lyrics, covers and artist info from open sources.",
+      "maintainer": "steggi-bernd <322764890+steggi-bernd@users.noreply.github.com>",
+      "desktop": {
+        "GenericName": "Music Player",
+        "Keywords": "music;player;audio;flac;lyrics;jellyfin;navidrome;"
+      }
+    },
+    "deb": {
+      "packageName": "bytune-local",
+      "recommends": [
+        "ffmpeg"
+      ],
+      "afterInstall": "build/linux/after-install.tpl",
+      "afterRemove": "build/linux/after-remove.tpl"
     },
     "protocols": [
       {

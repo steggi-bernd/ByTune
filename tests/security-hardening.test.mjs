@@ -127,7 +127,7 @@ test("local-library scan bounds hostile tag strings and oversize artwork", async
         b.onLoad({ filter: /.*/, namespace: "stub" }, (a) => ({
           contents: a.path === "electron" ? "module.exports = globalThis.__es;"
             : a.path === "./persist" ? "module.exports = { readData: () => null, writeData: async (n, v) => { globalThis.__store.set(n, v); }, writeDataSync: () => {} };"
-            : a.path === "./local-paths" ? "export const isUnderPath = (p, root) => p.startsWith(root);"
+            : a.path === "./local-paths" ? "export const isUnderPath = (p, root) => p.startsWith(root); export const foldPathCase = (p) => p.toLowerCase();"
             : "module.exports = globalThis.__parse;",
           loader: "js",
         }));

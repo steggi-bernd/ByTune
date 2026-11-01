@@ -13,6 +13,7 @@ import { enrichLocalLibrary } from "./enrich";
 import * as folderWatch from "./folder-watch";
 import * as archive from "./archive-import";
 import * as cast from "./cast";
+import { samePath } from "./local-paths";
 import * as jellyfin from "./jellyfin";
 import * as subsonic from "./subsonic";
 import { libraryLyrics } from "./library-lyrics";
@@ -800,7 +801,7 @@ function registerIpc(): void {
   ipc.handle("library:importArchive", async (_e, zipPath: unknown, folder: unknown) => {
     if (typeof zipPath !== "string" || typeof folder !== "string") throw new Error("Choose a .zip file");
     const folders = (locallib.readLocalLibrary().folders as (string | { path: string })[]).map((f) => (typeof f === "string" ? f : f.path));
-    const target = folders.find((f) => f.toLowerCase() === folder.toLowerCase());
+    const target = folders.find((f) => samePath(f, folder));
     if (!target || !isApprovedPath(target)) throw new Error("Choose one of your library folders");
     return archive.importArchive(zipPath, target);
   });
@@ -821,7 +822,7 @@ function registerIpc(): void {
       await fs.promises.mkdir(offline, { recursive: true });
       approveDir(offline);
       const folders = (locallib.readLocalLibrary().folders as (string | { path: string })[]).map((f) => (typeof f === "string" ? f : f.path));
-      if (!folders.some((f) => f.toLowerCase() === offline.toLowerCase())) {
+      if (!folders.some((f) => samePath(f, offline))) {
         const res = await locallib.addLibraryFolders([offline]);
         libraryFoldersChanged(res.lib);
       }

@@ -22,7 +22,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
-import { isUnderPath } from "./local-paths";
+import { foldPathCase, isUnderPath } from "./local-paths";
 import { isoDate } from "./release-date";
 
 export interface LocalTrack {
@@ -173,13 +173,14 @@ const NON_MUSIC_PATHS = [
 const NON_MUSIC_NAMES = ["voice", "recording", "record_", "call_", "memo", "note", "audio_", "clip"];
 
 function hashPath(p: string): string {
-  return crypto.createHash("sha1").update(p.toLowerCase()).digest("hex").slice(0, 16);
+  // Lower-cased off Linux, as it always was: every track id depends on it.
+  return crypto.createHash("sha1").update(foldPathCase(p)).digest("hex").slice(0, 16);
 }
 
 /**
- * Canonical folder identity: absolute, separator-clean, compared lowercase
- * (same convention as the track-id hash — Windows paths are case-insensitive
- * and erring toward "same folder" can never create duplicate indexes).
+ * Canonical folder identity: absolute, separator-clean, compared with the
+ * track-id hash's case rule (lowercase where the system ignores case —
+ * erring toward "same folder" there can never create duplicate indexes).
  */
 function normalizeFolderPath(p: string): string | null {
   if (typeof p !== "string" || !p.trim()) return null;
@@ -194,7 +195,7 @@ function normalizeFolderPath(p: string): string | null {
 }
 
 function folderKey(p: string): string {
-  return p.toLowerCase();
+  return foldPathCase(p);
 }
 
 function isNonMusic(relPath: string, fileName: string): boolean {
@@ -569,7 +570,7 @@ export async function scanLibrary(
         } else if (e.isFile() && AUDIO_EXT.has(path.extname(e.name).toLowerCase())) {
           // One physical file reachable through two imported roots (a parent
           // and its child both added) is indexed once.
-          const key = abs.toLowerCase();
+          const key = foldPathCase(abs);
           if (seen.has(key)) continue;
           seen.add(key);
           files.push({ abs, rel: path.relative(folder.path, abs) });

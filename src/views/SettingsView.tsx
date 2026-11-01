@@ -50,6 +50,7 @@ import {
   type Corners,
 } from "../stores/settings";
 import { useSession } from "../lib/session";
+import { isLinux, isMac } from "../lib/platform";
 import { setOnboardingIntent } from "../lib/onboardingIntent";
 import { GuestDeleteModal } from "../components/AccountModals";
 import { ParametricEqEditor } from "../components/ParametricEqEditor";
@@ -140,6 +141,9 @@ function Badge({ children }: { children: ReactNode }) {
   );
 }
 
+/** How this system installs FFmpeg, for the hint when it's missing. */
+const FFMPEG_INSTALL = isLinux ? "sudo apt install ffmpeg" : isMac ? "brew install ffmpeg" : "winget install ffmpeg";
+
 /**
  * FFmpeg status: AIFF, ALAC, WMA, WavPack, APE and DSD play through an FFmpeg
  * conversion (electron/transcode.ts). Clicking re-checks, so installing
@@ -160,7 +164,7 @@ function FfmpegRow() {
           ? "Checking…"
           : status.path
             ? "AIFF, ALAC, WMA, WavPack, APE and DSD play through it (converted once, lossless)"
-            : "Not found — needed for AIFF, ALAC, WMA, WavPack, APE and DSD. Install it (e.g. “winget install ffmpeg”), then click to check again."
+            : `Not found — needed for AIFF, ALAC, WMA, WavPack, APE and DSD. Install it (e.g. “${FFMPEG_INSTALL}”), then click to check again.`
       }
       value={status?.path ? `v${status.version}` : status ? "Missing" : undefined}
       onClick={() => check(true)}

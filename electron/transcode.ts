@@ -15,6 +15,7 @@ import { spawn, spawnSync } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { foldPathCase } from "./local-paths";
 
 /** Extensions Chromium's media stack cannot open at all. */
 const ALWAYS_TRANSCODE = new Set([".aiff", ".aif", ".aifc", ".wma", ".wv", ".ape", ".dsf", ".dff"]);
@@ -103,7 +104,7 @@ function cacheDir(): string {
 }
 
 function cachePathFor(filePath: string, stat: fs.Stats): string {
-  const key = `${filePath.toLowerCase()}|${Math.floor(stat.mtimeMs)}|${stat.size}`;
+  const key = `${foldPathCase(filePath)}|${Math.floor(stat.mtimeMs)}|${stat.size}`;
   return path.join(cacheDir(), `${crypto.createHash("sha1").update(key).digest("hex").slice(0, 24)}.flac`);
 }
 

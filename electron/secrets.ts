@@ -8,9 +8,20 @@
  */
 import { safeStorage } from "electron";
 
+/**
+ * Whether the OS really seals. On Linux without a keyring (GNOME Keyring,
+ * KWallet) Chromium falls back to "basic_text", a fixed key everyone knows —
+ * such a value is kept as what it is, `plain:`, and sealed properly on its
+ * first save once a keyring is there.
+ */
+function canSeal(): boolean {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  return process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text";
+}
+
 export function sealSecret(value: string): string {
   if (!value) return "";
-  if (!safeStorage.isEncryptionAvailable()) return `plain:${value}`;
+  if (!canSeal()) return `plain:${value}`;
   return `enc:${safeStorage.encryptString(value).toString("base64")}`;
 }
 

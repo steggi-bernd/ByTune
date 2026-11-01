@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-1f6f5c" alt="Platform: Windows 10/11">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%C2%B7%20Linux-1f6f5c" alt="Platform: Windows 10/11 · Linux">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-a8324a" alt="License: GPL-3.0"></a>
 </p>
 
@@ -113,7 +113,25 @@ The Discord desktop app has to be running; ByTune connects as soon as it starts 
 - Your data lives in `%APPDATA%\ByTune Local`; **Settings → Your data** exports and imports backups.
 - For AIFF, ALAC, WMA, WavPack, APE and DSD, install FFmpeg (`winget install ffmpeg`); Settings shows whether it was found.
 
-The macOS build targets from upstream are still in the project, but this edition is built and tested on Windows only.
+**Linux (64-bit).** The Releases page has two packages. The **.deb** is for Debian, Ubuntu, Linux Mint, Pop!_OS and their relatives; it puts ByTune in the app menu and installs FFmpeg along with it:
+
+```bash
+sudo apt install ./ByTune-Local-amd64.deb
+```
+
+The **AppImage** runs on any other distribution — one file, nothing to install:
+
+```bash
+chmod +x ByTune-Local-x86_64.AppImage
+./ByTune-Local-x86_64.AppImage
+```
+
+- AppImages need FUSE 2: `libfuse2t64` on Ubuntu 24.04 and later (`libfuse2` before), `fuse-libs` on Fedora, `fuse2` on Arch. If one stops at start with a message about the "SUID sandbox helper", your system restricts the sandbox Chromium uses (Ubuntu does since 23.10) — take the .deb there, which sets up the AppArmor profile Ubuntu asks for.
+- Your data lives in `~/.config/ByTune Local`. Without the .deb, install FFmpeg with your package manager (`sudo apt install ffmpeg`, `sudo pacman -S ffmpeg`, …).
+- Server sign-ins are sealed by your desktop's keyring (GNOME Keyring, KWallet). Without one, ByTune keeps them unencrypted in its data folder.
+- Media keys and the desktop's media controls work through MPRIS. Under Wayland the mini player can't stay on top of other windows; Wayland doesn't let apps do that.
+
+The Linux packages are built by GitHub Actions for every release; this edition is developed and tested on Windows. The macOS build targets from upstream are still in the project, but untested.
 
 ## Build from source
 
@@ -130,6 +148,7 @@ npm run dev        # Vite + Electron with hot reload
 npm test           # unit tests (Node's test runner)
 npm run typecheck  # tsc --noEmit
 npm run dist:win   # installer: release/ByTune-Local-Setup.exe
+npm run dist:linux # on Linux: release/ByTune-Local-x86_64.AppImage and -amd64.deb
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the project's conventions.
@@ -152,7 +171,7 @@ Shortcuts never fire while you're typing in a text field.
 ## Privacy
 
 - **No account, no sign-in, no ads, no analytics.** Your library, likes, playlists and listening history stay on this computer.
-- **Passwords aren't stored:** Jellyfin keeps a session token (or your API key), Navidrome a salt/token pair — sealed by Windows through Electron's safeStorage.
+- **Passwords aren't stored:** Jellyfin keeps a session token (or your API key), Navidrome a salt/token pair — sealed by Windows (on Linux, your desktop's keyring) through Electron's safeStorage.
 - **What goes online:** your own servers; the open-database lookups above, paced to MusicBrainz's one request per second and cached; lyrics providers for songs without lyrics of their own; the AutoEQ index when you search for headphones; and, only if you switch it on, the animated canvas behind the player (a community index and TIDAL's public search).
 - **Discord status** talks to the Discord app on your computer, not to the internet.
 
