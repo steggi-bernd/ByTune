@@ -2,7 +2,7 @@
   "name": "bytune-desktop",
   "productName": "ByTune Local",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "author": "ByTune",
   "description": "ByTune Local — local music player with Jellyfin and open metadata",
   "desktopName": "bytune-local.desktop",
