@@ -3,9 +3,10 @@
  * as the catalogue cards (Cards.tsx) — square cover over title/subtitle, the
  * translucent tile fading in on hover, a play button over the cover.
  */
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { resolveArtistAbout } from "../lib/artistAbout";
-import type { LibAlbum } from "../lib/catalogIndex";
+import { resolveArtistImages } from "../lib/songInfo";
+import type { LibAlbum, LibGenre } from "../lib/catalogIndex";
 import { trackAvailable } from "../stores/availability";
 import { sameSong } from "../stores/catalog";
 import { usePlayer } from "../stores/player";
@@ -64,6 +65,7 @@ function Tile({
   onPlay,
   playing,
   art,
+  rootRef,
 }: {
   thumb: string;
   round?: boolean;
@@ -75,10 +77,12 @@ function Tile({
   playing?: boolean;
   /** custom artwork (mix collage) instead of a single cover */
   art?: ReactNode;
+  rootRef?: RefObject<HTMLDivElement>;
 }) {
   const shape = round ? "rounded-full" : "rounded-xl";
   return (
     <div
+      ref={rootRef}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -122,14 +126,46 @@ export function AlbumTile({ album, subtitle }: { album: LibAlbum; subtitle?: str
   );
 }
 
-/** The artist's photo from the open databases, with a cover as stand-in. */
+/**
+ * True once the element has been on screen. Lookups that go out to the open
+ * databases (artist photos) wait for it, so a list of a thousand artists
+ * asks only for the ones scrolled past.
+ */
+export function useSeen<T extends Element>(): [RefObject<T>, boolean] {
+  const ref = useRef<T>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (seen || !el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setSeen(true);
+        io.disconnect();
+      }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+  return [ref, seen];
+}
+
+/**
+ * The artist's photo: the open databases' (Wikimedia Commons), else
+ * Genius's, else a cover as stand-in. An empty name asks nothing.
+ */
 export function useArtistPhoto(name: string, fallback = ""): string {
   const [photo, setPhoto] = useState<string>(fallback);
   useEffect(() => {
     let alive = true;
     setPhoto(fallback);
-    void resolveArtistAbout(name).then((a) => {
-      if (alive && a?.thumb) setPhoto(a.thumb);
+    void resolveArtistAbout(name).then(async (a) => {
+      if (!alive) return;
+      if (a?.thumb) {
+        setPhoto(a.thumb);
+        return;
+      }
+      const g = await resolveArtistImages(name);
+      if (alive && g?.photo) setPhoto(g.photo);
     });
     return () => {
       alive = false;
@@ -140,8 +176,26 @@ export function useArtistPhoto(name: string, fallback = ""): string {
 
 export function ArtistTile({ name, route, subtitle, fallbackThumb }: { name: string; route: string; subtitle: string; fallbackThumb: string }) {
   const navigate = useUI((s) => s.navigate);
-  const photo = useArtistPhoto(name, fallbackThumb);
-  return <Tile round thumb={photo} title={name} subtitle={subtitle} onOpen={() => navigate({ name: "artist", param: route })} />;
+  const [ref, seen] = useSeen<HTMLDivElement>();
+  const photo = useArtistPhoto(seen ? name : "", fallbackThumb);
+  return <Tile rootRef={ref} round thumb={photo} title={name} subtitle={subtitle} onOpen={() => navigate({ name: "artist", param: route })} />;
+}
+
+/** A genre of the library: a collage of its covers, opening the genre's page (all its songs). */
+export function GenreTile({ genre }: { genre: LibGenre }) {
+  const navigate = useUI((s) => s.navigate);
+  const { active, playing } = useCollectionPlayback(genre.tracks);
+  return (
+    <Tile
+      thumb={genre.tracks.find((t) => t.thumb)?.thumb ?? ""}
+      title={genre.name}
+      subtitle={`${genre.tracks.length} ${genre.tracks.length === 1 ? "song" : "songs"} · ${genre.artistCount} ${genre.artistCount === 1 ? "artist" : "artists"}`}
+      onOpen={() => navigate({ name: "genre", param: genre.route })}
+      onPlay={playOrToggle(active, () => playCollection(genre.tracks, true))}
+      playing={playing}
+      art={<CoverCollage tracks={genre.tracks} className="rounded-xl transition-transform duration-300 ease-out origin-top group-hover:scale-[1.05]" />}
+    />
+  );
 }
 
 /** 2×2 cover collage — mixes and smart playlists. */

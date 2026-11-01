@@ -20,7 +20,7 @@ export function MixView({ param }: { param: string }) {
   return (
     <div className="space-y-6">
       <CollectionHeader label="Mix" title={mix.title} subtitle={mix.subtitle} tracks={mix.tracks} />
-      <TrackList tracks={mix.tracks} showAlbum emptyLabel="No songs." />
+      <TrackList tracks={mix.tracks} showAlbum sourceName={mix.title} emptyLabel="No songs." />
     </div>
   );
 }

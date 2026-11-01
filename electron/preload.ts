@@ -7,6 +7,8 @@ import type { SubsonicTrack } from "./subsonic";
 import type { ArchiveImport } from "./archive-import";
 import type { M3uEntry } from "./m3u";
 import type { CastStatus } from "./cast";
+import type { ArtistImages, SongInfo } from "./song-info";
+import type { Listen } from "./listens";
 
 // The PiP window loads this same preload but its scope requests are rejected
 // by design (main-window-only handler) — an eager invoke there would leave an
@@ -109,6 +111,13 @@ const api = {
   metaArtist: (name: string) => ipcRenderer.invoke("meta:artist", name),
   metaRecording: (title: string, artist: string, durationSec = 0) =>
     ipcRenderer.invoke("meta:recording", title, artist, durationSec),
+  /** The listening history, kept on this computer (electron/listens.ts): newest first, a page at a time; or all of it as CSV */
+  listensPage: (before?: number, limit = 100) =>
+    ipcRenderer.invoke("listens:page", before, limit) as Promise<{ listens: Listen[]; more: boolean; total: number }>,
+  listensExport: () => ipcRenderer.invoke("listens:export") as Promise<{ path: string; count: number } | null>,
+  /** About a song — its story and credits — and an artist's photo and banner (Genius, electron/song-info.ts) */
+  metaSong: (title: string, artist: string) => ipcRenderer.invoke("meta:song", title, artist) as Promise<SongInfo | null>,
+  metaArtistImages: (name: string) => ipcRenderer.invoke("meta:artistImages", name) as Promise<ArtistImages | null>,
 
   // Jellyfin server (token stays in the main process)
   jellyfinStatus: () => ipcRenderer.invoke("jellyfin:status"),

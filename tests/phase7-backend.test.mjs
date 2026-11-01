@@ -84,6 +84,7 @@ function fixture() {
           if (name === "./local-library") return { resetLocalLibrary: async () => {}, readLocalLibrary: () => ({ folders: [] }) };
           if (name === "./stats") return { resetStats() {}, initStats() {}, flushSync() {}, reloadStore() {}, recordListening() {}, summary: () => ({ totalMs: 0 }), HISTORY_STORE: "listening-history", onStoreWrite(fn) { statsNotify = fn; } };
           if (name === "./pip") return { registerPipIpc() {}, isTrustedSender: () => true };
+          if (name === "./listens") return { clearListens: async () => {}, readListens: async () => ({ listens: [], more: false, total: 0 }), listensCsv: async () => ({ csv: "", count: 0 }) };
           return {};
         }
         if (name.startsWith(".")) return load(path.resolve(path.dirname(file), `${name}.ts`));

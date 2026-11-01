@@ -811,7 +811,9 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+        // Nothing here may wrap: while the panel widens from the rail, a
+        // wrapped "Your Library" grew the header and pushed every row down.
+        <div className="flex items-center gap-2 px-5 pt-4 pb-2 whitespace-nowrap">
           <button
             onClick={() => navigate({ name: "library" })}
             className="flex items-center gap-2 text-[14px] font-semibold text-ink-hi/75 hover:text-ink-hi transition-colors"
@@ -837,7 +839,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       {/* Filter chips, Spotify's: one category at a time (a second click shows
           everything again); the sort button orders the albums. */}
       {!collapsed && (
-        <div className="flex items-center gap-2 px-4 pb-2">
+        <div className="flex items-center gap-2 px-4 pb-2 whitespace-nowrap">
           {(Object.keys(FILTER_LABEL) as LibFilter[])
             .filter((k) => k !== "artists" || followedArtists.length > 0)
             .map((k) => (
@@ -845,7 +847,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                 key={k}
                 onClick={() => setFilter((f) => (f === k ? null : k))}
                 aria-pressed={filter === k}
-                className={`h-8 px-3 rounded-full text-[13px] font-medium transition-colors ${
+                className={`h-8 px-3 shrink-0 rounded-full text-[13px] font-medium transition-colors ${
                   filter === k ? "bg-ink-hi text-black" : "bg-ink-hi/[0.07] text-ink-hi hover:bg-ink-hi/[0.12]"
                 }`}
               >
@@ -872,7 +874,12 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
 
       {/* Rows — drops bubble to the panel root, which imports playlists and
           artists anywhere they land; specific rows handle their own targets. */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 pt-1 space-y-0.5">
+      {/* The rail keeps the scrollbar's room on both sides: on one side only
+          it pulled every cover off the rail's centre line. */}
+      <div
+        className={`flex-1 min-h-0 overflow-y-auto pb-2 pt-1 space-y-0.5 ${collapsed ? "" : "px-2"}`}
+        style={collapsed ? { scrollbarGutter: "stable both-edges" } : undefined}
+      >
         {rows.length === 0 && !collapsed ? (
           <div className="px-3 py-8 text-center text-[13px] text-ink-hi/55">
             Nothing here yet — play a track to fill your library.
@@ -898,8 +905,8 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                 aria-label={collapsed ? r.title : undefined}
                 // Hundreds of album rows: only the ones on screen are laid out and painted.
                 style={r.kind === "album" ? { contentVisibility: "auto", containIntrinsicSize: "auto 64px" } : undefined}
-                className={`group w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-ink-hi/[0.05] active:bg-ink-hi/[0.09] transition-[background-color,transform,opacity] duration-150 ${
-                  collapsed ? "justify-center" : r.kind === "playlist" && r.folderId ? "pl-6" : ""
+                className={`group w-full flex items-center gap-3 rounded-lg text-left hover:bg-ink-hi/[0.05] active:bg-ink-hi/[0.09] transition-[background-color,transform,opacity] duration-150 ${
+                  collapsed ? "justify-center p-1.5" : r.kind === "playlist" && r.folderId ? "p-2 pl-6" : "p-2"
                 } ${dropHover === r.id ? "ring-2 ring-inset ring-accent/60 bg-ink-hi/[0.08] scale-[1.02]" : ""} ${
                   pulse === r.id ? "animate-drop-pulse" : ""
                 } ${r.available === false ? "opacity-40" : ""}`}

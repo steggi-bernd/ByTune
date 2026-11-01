@@ -35,6 +35,7 @@ import {
   SlidersVertical,
   Speaker,
   Sparkles,
+  Squircle,
   Trash2,
   User,
   UserRound,
@@ -46,6 +47,7 @@ import {
   DOWNLOAD_QUALITY_LABEL,
   STREAM_QUALITY_LABEL,
   useSettings,
+  type Corners,
 } from "../stores/settings";
 import { useSession } from "../lib/session";
 import { setOnboardingIntent } from "../lib/onboardingIntent";
@@ -85,7 +87,7 @@ function SettingsGroup({
         </h2>
       )}
       {!header && <div className="pt-7" />}
-      <div className={`mx-4 rounded-[14px] bg-panel overflow-hidden ${GROUP_INSET}`}>{children}</div>
+      <div className={`mx-4 rounded-[calc(14px*var(--radius-scale))] bg-panel overflow-hidden ${GROUP_INSET}`}>{children}</div>
       {footer && <p className="text-[12.5px] text-ink-dim px-5 pt-2 leading-relaxed">{footer}</p>}
     </section>
   );
@@ -601,6 +603,8 @@ function EqualizerRows() {
 /** Builds the option list for the quality dropdowns. Every row carries the
     check glyph — filled on the current value, invisible on the rest so the
     labels keep their alignment — and picking one commits it immediately. */
+const CORNERS_LABEL: Record<Corners, string> = { round: "Round", soft: "Soft", square: "Square" };
+
 function qualityMenu<T extends string>(
   order: T[],
   labels: Record<T, string>,
@@ -1151,6 +1155,15 @@ export function SettingsView() {
 
       <SettingsGroup header="Appearance">
         <SettingsRow
+          icon={Squircle}
+          title="Corners"
+          subtitle="How round panels, cards and menus are"
+          value={CORNERS_LABEL[s.corners]}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => toggleDropdownAt(e, qualityMenu(["round", "soft", "square"], CORNERS_LABEL, s.corners, s.setCorners))}
+        />
+        <Divider />
+        <SettingsRow
           icon={AppWindow}
           title="Reduce animation"
           subtitle="Cut crossfades and motion through the app"
@@ -1264,7 +1277,7 @@ export function SettingsView() {
         <SettingsRow
           icon={BarChart3}
           title="Replay"
-          subtitle="Your listening wrapped over time"
+          subtitle="Your listening over time, and every listen — kept on this computer"
           onClick={() => useUI.getState().navigate({ name: "replay" })}
         />
         <Divider />

@@ -57,14 +57,16 @@ test("reset cancels stats flush and clears cached buckets and play-credit state"
     const track = { id: "played", title: "Played", artist: "Artist", duration: 60, thumb: "" };
     stats.initStats();
     stats.recordListening(track, 30_000);
-    assert.equal(timers.size, 1);
-    const staleCallback = [...timers][0];
+    // The stats flush, and the listening history's line for the play just counted (listens.ts).
+    assert.equal(timers.size, 2);
+    const staleCallbacks = [...timers];
     stats.resetStats();
     fs.rmSync(path.join(dir, "data", "listening-history.json"), { force: true });
     assert.equal(timers.size, 0);
-    staleCallback();
+    for (const fn of staleCallbacks) fn();
     stats.flushSync();
     assert.equal(fs.existsSync(path.join(dir, "data", "listening-history.json")), false);
+    assert.equal(fs.existsSync(path.join(dir, "data", "listens.jsonl")), false);
     assert.equal(stats.summary("month").totalMs, 0);
     stats.recordListening(track, 30_000);
     stats.flushSync();

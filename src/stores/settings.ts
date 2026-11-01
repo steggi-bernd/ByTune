@@ -86,6 +86,14 @@ interface SettingsState {
   gapless: boolean;
   /** Milkdrop behind the full-screen Now Playing */
   milkdrop: boolean;
+  /** Explore: the open tab, list or tiles, and each tab's column order */
+  exploreTab: ExploreTab;
+  exploreLayout: "list" | "grid";
+  exploreSort: Record<ExploreTab, ExploreSort>;
+  /** the right panel's width, px (dragged at its left edge) */
+  rightRailWidth: number;
+  /** corner style of every rounded surface: half the old radius by default */
+  corners: Corners;
 
   setDownloadDir(dir: string | null): void;
   setDownloadQuality(q: DownloadQuality): void;
@@ -126,6 +134,19 @@ interface SettingsState {
   setLyricsLatin(v: boolean): void;
   setGapless(v: boolean): void;
   setMilkdrop(v: boolean): void;
+  setExploreTab(v: ExploreTab): void;
+  setExploreLayout(v: "list" | "grid"): void;
+  setExploreSort(tab: ExploreTab, sort: ExploreSort): void;
+  setRightRailWidth(px: number): void;
+  setCorners(v: Corners): void;
+}
+
+export type ExploreTab = "albums" | "artists" | "genres";
+export type Corners = "round" | "soft" | "square";
+/** a column key of that tab's list, and whether it runs from the most / Z */
+export interface ExploreSort {
+  by: string;
+  desc: boolean;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -174,6 +195,15 @@ export const useSettings = create<SettingsState>()(
       lyricsLatin: true,
       gapless: true,
       milkdrop: false,
+      exploreTab: "albums",
+      exploreLayout: "list",
+      exploreSort: {
+        albums: { by: "title", desc: false },
+        artists: { by: "name", desc: false },
+        genres: { by: "songs", desc: true },
+      },
+      rightRailWidth: 328,
+      corners: "soft",
 
       setDownloadDir: (downloadDir) => set({ downloadDir }),
       setDownloadQuality: (downloadQuality) => set({ downloadQuality }),
@@ -215,6 +245,11 @@ export const useSettings = create<SettingsState>()(
       setLyricsLatin: (lyricsLatin) => set({ lyricsLatin }),
       setGapless: (gapless) => set({ gapless }),
       setMilkdrop: (milkdrop) => set({ milkdrop }),
+      setExploreTab: (exploreTab) => set({ exploreTab }),
+      setExploreLayout: (exploreLayout) => set({ exploreLayout }),
+      setExploreSort: (tab, sort) => set((st) => ({ exploreSort: { ...st.exploreSort, [tab]: sort } })),
+      setRightRailWidth: (px) => set({ rightRailWidth: Math.round(px) }),
+      setCorners: (corners) => set({ corners }),
     }),
     {
       name: "settings",

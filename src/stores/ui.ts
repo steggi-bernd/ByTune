@@ -6,6 +6,7 @@ import type { SearchFilter } from "../types";
 export type ViewName =
   | "home"
   | "explore"
+  | "genre"
   | "search"
   | "library"
   | "playlists"
@@ -70,6 +71,8 @@ export interface Toast {
   /** ms before auto-dismiss. The Toasts layer owns the timer (hover pauses it)
       and plays the exit animation before calling dismissToast. */
   duration?: number;
+  /** one button on the toast ("Branch off"); the toast closes after it */
+  action?: { label: string; run: () => void };
 }
 
 /** A modal request — replaces browser prompt()/confirm() with the ByTune dialog. */
@@ -126,7 +129,7 @@ export interface UIState {
   toggleNowPlaying(): void;
   setOsFullscreen(fs: boolean): void;
   closePanels(): void;
-  toast(message: string, kind?: Toast["kind"], duration?: number): void;
+  toast(message: string, kind?: Toast["kind"], duration?: number, action?: Toast["action"]): void;
   dismissToast(id: number): void;
   setTintThumb(url: string | null): void;
   openContextMenu(x: number, y: number, items: MenuItem[], options?: { above?: boolean; alignRight?: boolean }): void;
@@ -289,10 +292,10 @@ export const useUI = create<UIState>((set, get) => ({
     set({ rightPanel: "details", lyricsCenter: false, nowPlayingOpen: false });
   },
 
-  toast(message, kind = "info", duration = 4600) {
+  toast(message, kind = "info", duration = 4600, action) {
     // No self-removal timer here — ToastCard runs the countdown so hover can
     // pause it and the lift-out animation plays before dismissToast.
-    const toast: Toast = { id: toastSeq++, message, kind, duration };
+    const toast: Toast = { id: toastSeq++, message, kind, duration, action };
     set({ toasts: [...get().toasts, toast].slice(-4) });
   },
 

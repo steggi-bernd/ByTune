@@ -30,6 +30,7 @@ test("actual main reset IPC clears files and stops the real stats timer", async 
         if (name === "../src/lib/config") return { SYNCED_STORES: ["library", "settings", "recent-searches", "listening-signals"] };
         if (name === "./persist") return loaded.persist;
         if (name === "./stats") return loaded.stats;
+        if (name === "./listens") return loaded.listens;
         if (name === "./data-transition") return loaded.transition;
         if (name === "./sync") return { resetSyncState() {}, syncNowExclusive: async () => ({}), noteLocalWrite() {} };
         if (name === "./supabase") return { readProfile: () => null, signIn: async (id) => ({ mode: "account", userId: id }), signOut: async () => ({ mode: null, userId: null }) };
@@ -44,6 +45,7 @@ test("actual main reset IPC clears files and stops the real stats timer", async 
   }
   try {
     loaded.persist = await load("persist");
+    loaded.listens = await load("listens");
     loaded.stats = await load("stats");
     loaded.transition = await load("data-transition");
     loaded.transition.initializeOwner();

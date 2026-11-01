@@ -41,6 +41,11 @@ interface PlayerState {
   playQueue(tracks: Track[], startIndex?: number): void;
   playTrack(track: Track): void;
   addToQueue(tracks: Track | Track[], playNext?: boolean): void;
+  /**
+   * Songs into the queue at `at` (after the playing song at the earliest).
+   * `dropCopies`: songs coming up that they already bring are dropped — each plays once.
+   */
+  insertInQueue(tracks: Track[], at: number, dropCopies?: boolean): void;
   removeAt(i: number): void;
   moveInQueue(from: number, to: number): void;
   clearUpcoming(): void;
@@ -128,6 +133,23 @@ export const usePlayer = create<PlayerState>()(
         } else {
           set({ queue: [...queue, ...list] });
         }
+      },
+
+      insertInQueue(tracks, at, dropCopies = false) {
+        const list = withoutOtherCopies(tracks, songKey).list;
+        if (!list.length) return;
+        const { queue, index } = get();
+        if (!queue.length) {
+          set({ queue: list, index: 0, playing: false, position: 0 });
+          return;
+        }
+        const pos = clamp(Math.round(at), index + 1, queue.length);
+        // What is coming up, either side of the new songs (the playing one stays as it is).
+        const keys = new Set(list.map((t) => songKey(t.id)));
+        const keep = (t: Track): boolean => !dropCopies || !keys.has(songKey(t.id));
+        set({
+          queue: [...queue.slice(0, index + 1), ...queue.slice(index + 1, pos).filter(keep), ...list, ...queue.slice(pos).filter(keep)],
+        });
       },
 
       removeAt(i) {

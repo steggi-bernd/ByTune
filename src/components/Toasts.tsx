@@ -135,6 +135,17 @@ function ToastCard({ toast, onDone }: { toast: Toast; onDone: () => void }) {
             </div>
           </div>
           <p className="text-[13px] font-medium text-ink-hi leading-snug pr-0.5 select-none">{toast.message}</p>
+          {toast.action && (
+            <button
+              onClick={() => {
+                toast.action?.run();
+                close();
+              }}
+              className="relative shrink-0 ml-auto h-7 px-3 rounded-full text-[12.5px] font-semibold text-ink-hi bg-white/[0.12] hover:bg-white/[0.2] transition-colors"
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             onClick={close}
             className="relative shrink-0 ml-auto w-6 h-6 rounded-full grid place-items-center text-ink-faint hover:text-ink-hi hover:bg-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-200"

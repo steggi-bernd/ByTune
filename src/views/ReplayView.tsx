@@ -1,11 +1,16 @@
 /**
  * Replay — the listening-statistics experience, fed exclusively by what
  * ByTune actually recorded (electron/stats.ts). No fake numbers: an empty
- * period says so.
+ * period says so. Below the numbers, the listening history: every listen,
+ * kept on this computer only (electron/listens.ts).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Clock3 } from "lucide-react";
-import { Artwork, EmptyState, ErrorState, Pills } from "../components/primitives";
+import { Clock3, FileDown } from "lucide-react";
+import type { Listen } from "../../electron/listens";
+import { Artwork, Btn, EmptyState, ErrorState, Pills } from "../components/primitives";
+import { plural } from "../lib/format";
+import { ipcErrorText } from "../lib/ipcError";
+import { useCatalog } from "../stores/catalog";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import { resolveArtistAbout } from "../lib/artistAbout";
@@ -173,7 +178,7 @@ export function ReplayView() {
       <div className="flex items-center justify-between gap-4 flex-wrap animate-slide-up">
         <div>
           <h1 className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink-hi">Replay</h1>
-          <p className="text-[13.5px] text-ink-dim mt-1">Your listening, counted by ByTune — nothing estimated.</p>
+          <p className="text-[13.5px] text-ink-dim mt-1">Your listening, counted by ByTune — nothing estimated, kept on this computer.</p>
         </div>
         <Pills options={PERIODS.map((p) => ({ key: p.key, label: p.label }))} value={period} onChange={(k) => setPeriod(k as typeof period)} />
       </div>
@@ -341,6 +346,111 @@ export function ReplayView() {
           </div>
         </>
       )}
+
+      <ListeningHistory />
     </div>
+  );
+}
+
+/** "Today", "Yesterday", else the weekday and date (the year only when it isn't this one). */
+function dayTitle(ms: number): string {
+  const d = new Date(ms);
+  const today = new Date();
+  const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
+}
+
+/**
+ * Every listen, newest first and by day — scrobbling that never leaves this
+ * computer (electron/listens.ts), a page at a time. A song still in the
+ * library plays from its row; "Export…" saves the whole history as a
+ * spreadsheet.
+ */
+function ListeningHistory() {
+  const [listens, setListens] = useState<Listen[]>([]);
+  const [more, setMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const byId = useCatalog((s) => s.byId);
+  const toast = useUI((s) => s.toast);
+
+  const load = (before?: number): void => {
+    void window.bytune
+      ?.listensPage(before, 100)
+      .then((page) => {
+        setListens((prev) => (before ? [...prev, ...page.listens] : page.listens));
+        setMore(page.more);
+        setTotal(page.total);
+      })
+      .catch(() => undefined);
+  };
+  useEffect(() => load(), []);
+
+  const exportCsv = async (): Promise<void> => {
+    try {
+      const res = await window.bytune?.listensExport();
+      if (res) toast(`Saved ${plural(res.count, "listen", "listens")} to ${res.path.split(/[\\/]/).pop()}`, "success");
+    } catch (err) {
+      toast(ipcErrorText(err, "Couldn't save the listening history"), "error");
+    }
+  };
+
+  if (!listens.length) return null;
+  const days: { title: string; items: Listen[] }[] = [];
+  for (const l of listens) {
+    const title = dayTitle(l.at);
+    const last = days[days.length - 1];
+    if (last?.title === title) last.items.push(l);
+    else days.push({ title, items: [l] });
+  }
+
+  return (
+    <section>
+      <div className="flex items-end justify-between gap-4 mb-4">
+        <div>
+          <h2 className="section-title text-[21px]">Listening history</h2>
+          <p className="text-[13px] text-ink-dim mt-1">{plural(total, "listen", "listens")} · kept on this computer only</p>
+        </div>
+        <Btn variant="glass" size="sm" icon={FileDown} onClick={() => void exportCsv()}>
+          Export…
+        </Btn>
+      </div>
+      <div className="glass-pill rounded-2xl p-2">
+        {days.map((d) => (
+          <div key={d.title}>
+            <div className="px-3 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">{d.title}</div>
+            {d.items.map((l, i) => {
+              const track = byId.get(l.id);
+              return (
+                <div
+                  key={`${l.at}-${i}`}
+                  onClick={track ? () => usePlayer.getState().playTrack(track) : undefined}
+                  title={track ? `Play ${l.title}` : undefined}
+                  className={`flex items-center gap-3 px-3 h-11 rounded-lg transition-colors hover:bg-ink-hi/[0.05] ${track ? "cursor-pointer" : ""}`}
+                >
+                  <span className="w-12 shrink-0 text-[12.5px] tabular-nums text-ink-faint">
+                    {new Date(l.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink-hi">{l.title}</span>
+                  <span className="w-[40%] min-w-0 truncate text-[13px] text-ink-dim">
+                    {l.artist}
+                    {l.album ? ` · ${l.album}` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {more && (
+          <button
+            onClick={() => load(listens[listens.length - 1].at)}
+            className="w-full h-10 mt-1 rounded-lg text-[13px] font-semibold text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.05] transition-colors"
+          >
+            Show more
+          </button>
+        )}
+      </div>
+    </section>
   );
 }

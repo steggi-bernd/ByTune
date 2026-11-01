@@ -1,12 +1,13 @@
 import { Fragment, memo, useCallback } from "react";
-import { AlertCircle, Check, Download, Heart, Loader2, MoreHorizontal, Pause, Play } from "lucide-react";
-import { useAvailabilityCheck } from "../stores/availability";
-import { sameSong } from "../stores/catalog";
+import { AlertCircle, ArrowDownCircle, Check, Download, Heart, Loader2, MoreHorizontal, Pause, Play } from "lucide-react";
+import { sourceOf, useAvailabilityCheck } from "../stores/availability";
+import { sameSong, useCatalog, versionsOf } from "../stores/catalog";
 import { likedIdSet, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI, type MenuItem } from "../stores/ui";
 import { trackMenuItems } from "../lib/trackActions";
-import { useDrag } from "../lib/dnd";
+import { downloadForOffline, SERVER_SONG } from "../lib/downloads";
+import { useDrag, type TrackSource } from "../lib/dnd";
 import { fmtTime } from "../lib/format";
 import { Artwork, EqBars, EmptyState, ExplicitBadge } from "./primitives";
 import { ArtistLinks } from "./ArtistLinks";
@@ -16,7 +17,7 @@ import type { Track } from "../types";
 export function DownloadBadge({ id }: { id: string }) {
   const dl = useLibrary((s) => s.downloads[id]);
   if (!dl) return null;
-  if (dl.status === "downloading") {
+  if (dl.status === "downloading" || dl.status === "queued") {
     return (
       <span className="p-1.5 rounded-md text-ink-hi" title="Downloading…">
         <Loader2 className="w-4 h-4 animate-spin" />
@@ -37,6 +38,38 @@ export function DownloadBadge({ id }: { id: string }) {
   );
 }
 
+/**
+ * Beside the like button: a song that lives only on a server is saved for
+ * offline listening from here (lib/downloads.ts). Once saved — or while it
+ * loads — its state stays in view, like a like; the button itself shows on
+ * hover. Songs with a file of their own are offline already and show nothing.
+ */
+export function OfflineButton({ track }: { track: Track }) {
+  // Re-read when the catalogue changes: a finished copy joins the song as its local version,
+  // and the merged song may then carry the file's id — the download is the server copy's.
+  const serverId = useCatalog(() => versionsOf(track).find((v) => SERVER_SONG.test(v.id))?.id ?? null);
+  const hasFile = useCatalog(() => versionsOf(track).some((v) => sourceOf(v) === "local"));
+  const dl = useLibrary((s) => (serverId ? s.downloads[serverId] : undefined));
+  if (!serverId) return null;
+  if (dl?.status === "queued" || dl?.status === "downloading" || dl?.status === "done") return <DownloadBadge id={serverId} />;
+  if (hasFile) return null;
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        downloadForOffline([track]);
+      }}
+      title={dl?.status === "failed" ? "Download failed — try again" : "Download for offline listening"}
+      aria-label={`Download ${track.title} for offline listening`}
+      className={`p-1.5 rounded-md hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${
+        dl?.status === "failed" ? "text-red-400" : "text-ink-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+      }`}
+    >
+      {dl?.status === "failed" ? <AlertCircle className="w-4 h-4" /> : <ArrowDownCircle className="w-4 h-4" />}
+    </button>
+  );
+}
+
 interface TrackRowProps {
   track: Track;
   index: number;
@@ -45,8 +78,11 @@ interface TrackRowProps {
   /** false while none of the song's copies can be reached (drive or server away) */
   available: boolean;
   onPlay: (index: number) => void;
-  menuFor: (track: Track) => MenuItem[];
+  menuFor: (track: Track, from?: TrackSource) => MenuItem[];
   showAlbum: boolean;
+  /** the list's name and songs (stable references, so the row memo holds): Branch off continues there */
+  sourceName?: string;
+  sourceTracks?: Track[];
 }
 
 /**
@@ -54,15 +90,27 @@ interface TrackRowProps {
  * play/pause, but only the rows whose props actually change (the old and the
  * new current row) do work — the rest are skipped.
  */
-const TrackRow = memo(function TrackRow({ track, index, isCurrent, isPlaying, available, onPlay, menuFor, showAlbum }: TrackRowProps) {
+const TrackRow = memo(function TrackRow({
+  track,
+  index,
+  isCurrent,
+  isPlaying,
+  available,
+  onPlay,
+  menuFor,
+  showAlbum,
+  sourceName,
+  sourceTracks,
+}: TrackRowProps) {
   const liked = useLibrary((s) => likedIdSet(s.liked).has(track.id));
   const toggleLike = useLibrary((s) => s.toggleLike);
   const openContextMenu = useUI((s) => s.openContextMenu);
   const navigate = useUI((s) => s.navigate);
-  const drag = useDrag({ track });
+  const from: TrackSource | undefined = sourceName && sourceTracks ? { name: sourceName, tracks: sourceTracks, index } : undefined;
+  const drag = useDrag({ track, from });
 
   const openMenu = (x: number, y: number): void => {
-    openContextMenu(x, y, menuFor(track));
+    openContextMenu(x, y, menuFor(track, from));
   };
 
   /** The row's own spot plays it — and pauses/resumes it once it's the current song. */
@@ -153,7 +201,8 @@ const TrackRow = memo(function TrackRow({ track, index, isCurrent, isPlaying, av
         </div>
       )}
 
-      <div className="w-[88px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      {/* A like and a saved copy stay in view; the rest shows on hover. */}
+      <div className="w-[88px] shrink-0 flex items-center justify-end gap-0.5">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -161,13 +210,11 @@ const TrackRow = memo(function TrackRow({ track, index, isCurrent, isPlaying, av
           }}
           title={liked ? "Remove from Liked" : "Add to Liked"}
           aria-label={liked ? "Remove from Liked" : "Add to Liked"}
-          className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
+          className={`p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${liked ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
         >
           <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-ink-hi text-ink-hi" : ""}`} />
         </button>
-        <span className="opacity-80">
-          <DownloadBadge id={track.id} />
-        </span>
+        <OfflineButton track={track} />
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -175,7 +222,7 @@ const TrackRow = memo(function TrackRow({ track, index, isCurrent, isPlaying, av
           }}
           title="More options"
           aria-label="More options"
-          className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
+          className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>
@@ -193,7 +240,9 @@ interface TrackListProps {
   onPlay?: (index: number) => void;
   showAlbum?: boolean;
   showHeader?: boolean;
-  menuFor?: (track: Track) => MenuItem[];
+  menuFor?: (track: Track, from?: TrackSource) => MenuItem[];
+  /** the list's name ("Lanterns", "Liked Songs"): its songs can be branched off into from the queue */
+  sourceName?: string;
   emptyLabel?: string;
   emptyTitle?: string;
 }
@@ -204,6 +253,7 @@ export function TrackList({
   showAlbum = true,
   showHeader = true,
   menuFor = trackMenuItems,
+  sourceName,
   emptyLabel,
   emptyTitle = "Nothing here yet",
 }: TrackListProps) {
@@ -258,6 +308,8 @@ export function TrackList({
                 onPlay={play}
                 menuFor={menuFor}
                 showAlbum={showAlbum}
+                sourceName={sourceName}
+                sourceTracks={tracks}
               />
               {/* Hairline divider, inset to the title column — mobile's
                   ROW_DIVIDER_INSET clears the 52dp artwork the same way. */}

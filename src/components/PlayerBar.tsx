@@ -26,7 +26,7 @@
  *    beneath the bar (Spotify's Connect treatment, in the primary colour)
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Cast, Check, Heart, Laptop, ListMusic, ListPlus, Loader2, RefreshCw, Speaker } from "lucide-react";
+import { Check, Heart, Laptop, ListMusic, ListPlus, Loader2, RefreshCw, Speaker } from "lucide-react";
 import {
   SpCheck,
   SpCoverNote,
@@ -302,7 +302,7 @@ function CastButton() {
         active ? "text-white" : "text-white/70 hover:text-white"
       }`}
     >
-      {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cast className="h-4 w-4" />}
+      {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Speaker className="h-4 w-4" />}
       {active && <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white" />}
     </button>
   );
@@ -552,7 +552,7 @@ export function PlayerBar() {
       </div>
       {castingTo && (
         <div className="-mx-2 flex h-6 items-center justify-end gap-1.5 bg-primary px-4 text-[12px] font-semibold text-on-primary">
-          <Cast className="h-3.5 w-3.5" />
+          <Speaker className="h-3.5 w-3.5" />
           Playing on {castingTo.name}
         </div>
       )}

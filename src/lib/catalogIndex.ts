@@ -7,7 +7,7 @@ import { useAlbumEdits } from "../stores/albumEdits";
 import { useCatalog, type PlayCounts } from "../stores/catalog";
 import type { Track } from "../types";
 import { albumKeyOf, albumRoute, artistRoute, creditedArtists, leadArtist, parseRoute, splitCredits } from "./libraryTracks";
-import { classifyRelease, releaseYear, type ReleaseKind } from "./releases";
+import { classifyRelease, compareReleases, releaseDate, releaseOrder, releaseYear, type ReleaseKind } from "./releases";
 
 export interface LibAlbum {
   key: string;
@@ -18,6 +18,10 @@ export interface LibAlbum {
   kind: ReleaseKind;
   /** the year it first came out (original year where tagged) */
   year?: number;
+  /** the day within that year, where the sources know it ("YYYY-MM-DD" or "YYYY-MM") */
+  date?: string;
+  /** its place in "newest first" — the day, or the year alone, with series parts kept in order (releaseOrder) */
+  order?: string;
   thumb: string;
   tracks: Track[];
   /** newest addedAt among its tracks */
@@ -67,19 +71,24 @@ export function buildAlbums(tracks: Track[], artistEdits: Record<string, string>
     }
     const artist = artistEdits[key] ?? [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? first.artist;
     const title = first.album ?? "";
+    const year = releaseYear(list);
     albums.push({
       key,
       route: albumRoute(key),
       title,
       artist,
       kind: classifyRelease(title, artist, list),
-      year: releaseYear(list),
+      year,
+      date: releaseDate(list, year),
       thumb: list.find((t) => t.thumb)?.thumb ?? "",
       tracks: list,
       addedAt: Math.max(0, ...list.map((t) => t.addedAt ?? 0)),
       duration: list.reduce((sum, t) => sum + (t.duration || 0), 0),
     });
   }
+  // Places in time are set across the whole library: a series' parts know each other.
+  const order = releaseOrder(albums);
+  albums.forEach((a, i) => (a.order = order[i]));
   return albums.sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -117,9 +126,12 @@ export function artistTracks(tracks: Track[], name: string): Track[] {
   return tracks.filter((t) => creditedArtists(t).includes(key));
 }
 
-/** Newest first — the latest release on top; releases without a year go last. */
-export const newestFirst = (a: LibAlbum, b: LibAlbum): number =>
-  (b.year ?? -Infinity) - (a.year ?? -Infinity) || a.title.localeCompare(b.title);
+/**
+ * Newest first — the latest release on top: by year, then by day within it,
+ * then series parts highest first (lib/releases.ts); releases without a
+ * year go last.
+ */
+export const newestFirst = (a: LibAlbum, b: LibAlbum): number => compareReleases(a, b);
 
 /**
  * Releases owned by the artist (an album by "A, B" belongs to both), then
@@ -134,6 +146,47 @@ export function artistAlbums(albums: LibAlbum[], name: string): { own: LibAlbum[
     else if (a.tracks.some((t) => creditedArtists(t).includes(key))) appearsOn.push(a);
   }
   return { own: own.sort(newestFirst), appearsOn: appearsOn.sort(newestFirst) };
+}
+
+export interface LibGenre {
+  /** the name lower-cased — one genre however its tags spell it */
+  key: string;
+  name: string;
+  /** the genre page's address */
+  route: string;
+  tracks: Track[];
+  albumCount: number;
+  artistCount: number;
+  /** newest addedAt among its songs */
+  addedAt: number;
+}
+
+/** The library's genres — a song tagged "Rock; Indie" counts in both — most songs first. */
+export function buildGenres(tracks: Track[]): LibGenre[] {
+  const byKey = new Map<string, { name: string; tracks: Track[]; albums: Set<string>; artists: Set<string>; addedAt: number }>();
+  for (const t of tracks) {
+    for (const g of genresOf(t)) {
+      const key = g.toLowerCase();
+      let cur = byKey.get(key);
+      if (!cur) byKey.set(key, (cur = { name: g, tracks: [], albums: new Set(), artists: new Set(), addedAt: 0 }));
+      cur.tracks.push(t);
+      const album = albumKeyOf(t);
+      if (album) cur.albums.add(album);
+      for (const a of splitCredits(t.artist)) cur.artists.add(a.toLowerCase());
+      cur.addedAt = Math.max(cur.addedAt, t.addedAt ?? 0);
+    }
+  }
+  return [...byKey.entries()]
+    .map(([key, v]) => ({
+      key,
+      name: v.name,
+      route: encodeURIComponent(key),
+      tracks: v.tracks,
+      albumCount: v.albums.size,
+      artistCount: v.artists.size,
+      addedAt: v.addedAt,
+    }))
+    .sort((a, b) => b.tracks.length - a.tracks.length || a.name.localeCompare(b.name));
 }
 
 /** Genre names of a track: "Rock; Indie" / "Rock/Indie" / "Rock, Indie" → two genres. */
@@ -175,4 +228,15 @@ export function useLibraryIndex(): { albums: LibAlbum[]; artists: LibArtist[]; t
     }
     return { albums: albumsMemo.albums, artists: albumsMemo.artists, tracks, loaded };
   }, [tracks, loaded, artistEdits]);
+}
+
+let genresMemo: { tracks: Track[]; genres: LibGenre[] } | null = null;
+
+/** The library's genres, built once per catalogue load and shared (Explore, genre pages). */
+export function useLibraryGenres(): LibGenre[] {
+  const tracks = useCatalog((s) => s.tracks);
+  return useMemo(() => {
+    if (!genresMemo || genresMemo.tracks !== tracks) genresMemo = { tracks, genres: buildGenres(tracks) };
+    return genresMemo.genres;
+  }, [tracks]);
 }

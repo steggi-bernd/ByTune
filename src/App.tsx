@@ -42,6 +42,8 @@ import { SpotifyImportView } from "./views/SpotifyImportView";
 import { LibrarySearchView } from "./views/LibrarySearchView";
 import { LibraryView } from "./views/LibraryView";
 import { LocalMusicView } from "./views/LocalMusicView";
+import { ExploreView } from "./views/ExploreView";
+import { GenreView } from "./views/GenreView";
 import { PlaylistView } from "./views/PlaylistView";
 import { ReplayView } from "./views/ReplayView";
 import { SettingsView } from "./views/SettingsView";
@@ -230,13 +232,15 @@ function useAppearance(): void {
   const reduceAnimation = useSettings((s) => s.reduceAnimation);
   const reduceDynamicBlur = useSettings((s) => s.reduceDynamicBlur);
   const liquidGlass = useSettings((s) => s.liquidGlass);
+  const corners = useSettings((s) => s.corners);
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle("reduce-motion", reduceAnimation);
     root.classList.toggle("reduce-blur", reduceDynamicBlur);
     root.classList.toggle("noglass", !liquidGlass);
-  }, [reduceAnimation, reduceDynamicBlur, liquidGlass]);
+    root.dataset.corners = corners;
+  }, [reduceAnimation, reduceDynamicBlur, liquidGlass, corners]);
 }
 
 /**
@@ -251,6 +255,10 @@ function CurrentView(): ReactNode {
       return <LibraryHomeView />;
     case "local":
       return <LocalMusicView />;
+    case "explore":
+      return <ExploreView />;
+    case "genre":
+      return <GenreView param={view.param ?? ""} />;
     case "album":
       return <LibraryAlbumView param={view.param ?? ""} />;
     case "artist":

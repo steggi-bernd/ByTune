@@ -9,18 +9,21 @@
  * underline treatment, X returns to details). Lyrics live in the centre pane
  * (see LyricsCenter.tsx), not here.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Music2, X } from "lucide-react";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import { useAvailabilityCheck } from "../stores/availability";
 import { Artwork, EqBars, IconBtn } from "./primitives";
 import { upgradeArtwork, wideArtwork } from "../lib/artwork";
-import { dragHasQueueRow, readQueueIndex, useDrag } from "../lib/dnd";
+import { draggedTrack, dragHasQueueRow, dragHasTrack, readQueueIndex, readTrack, useDrag } from "../lib/dnd";
+import { branchOffAfterDrop } from "../lib/trackActions";
 import { fmtTime } from "../lib/format";
 import { useArtistImage } from "../lib/artistImage";
 import { useArtistAbout } from "../lib/artistAbout";
+import { useSongInfo } from "../lib/songInfo";
 import { useLibrary } from "../stores/library";
+import { useSettings } from "../stores/settings";
 import type { Track } from "../types";
 
 /** The queue's "Now playing" row — draggable like every other song row. */
@@ -74,6 +77,7 @@ function TrackRow({
   return (
     <div
       {...drag.props}
+      data-queue-at={queueIndex}
       onClick={available ? onPlay : undefined}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -137,9 +141,10 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
 
-  /* Drag to reorder "Next up": the row under the pointer shows where the
-     dragged song lands (above or below it, by the pointer's half); empty
-     space below the list means "to the end". The playing song stays put. */
+  /* Drag to reorder "Next up" — or drag a song in from any list: the row
+     under the pointer shows where it lands (above or below it, by the
+     pointer's half); empty space below the list means "to the end". The
+     playing song stays put. */
   const [drop, setDrop] = useState<{ index: number; before: boolean } | null>(null);
   useEffect(() => {
     const clear = (): void => setDrop(null);
@@ -156,19 +161,49 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
     const to = from < insertAt ? insertAt - 1 : insertAt;
     if (to !== from && to > index) moveInQueue(from, to);
   };
+  /** A queue row moves; a song from elsewhere is added (its drag allows copying only). */
+  const accepts = (e: React.DragEvent): boolean => dragHasQueueRow(e) || dragHasTrack(e);
+  const dropSong = (e: React.DragEvent, insertAt: number): void => {
+    setDrop(null);
+    const track = readTrack(e);
+    if (!track) return;
+    usePlayer.getState().insertInQueue([track], insertAt);
+    // From a list: the toast offers to go on with the rest of that list behind it.
+    const drag = draggedTrack();
+    const from = drag?.from && drag.track.id === track.id ? drag.from : null;
+    const branch = from && from.index < from.tracks.length - 1 ? from : null;
+    useUI.getState().toast(
+      `Added “${track.title}” to the queue`,
+      "info",
+      branch ? 7000 : 4600,
+      branch ? { label: "Branch off", run: () => branchOffAfterDrop(branch) } : undefined
+    );
+  };
   const rowDragOver = (at: number) => (e: React.DragEvent): void => {
-    if (!dragHasQueueRow(e)) return;
+    if (!accepts(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
+    e.dataTransfer.dropEffect = dragHasQueueRow(e) ? "move" : "copy";
     const before = edgeOf(e);
     setDrop((d) => (d?.index === at && d.before === before ? d : { index: at, before }));
   };
   const rowDrop = (at: number) => (e: React.DragEvent): void => {
-    if (!dragHasQueueRow(e)) return;
+    if (!accepts(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    moveTo(readQueueIndex(e), edgeOf(e) ? at : at + 1);
+    const insertAt = edgeOf(e) ? at : at + 1;
+    if (dragHasQueueRow(e)) moveTo(readQueueIndex(e), insertAt);
+    else dropSong(e, insertAt);
+  };
+  /** The list itself — the gaps between rows and the space below them: before
+      the first row whose middle is below the pointer, else after the last. (On
+      a gap the line used to jump to the end of the list.) */
+  const slotAt = (e: React.DragEvent): { index: number; before: boolean } => {
+    for (const row of Array.from(e.currentTarget.querySelectorAll<HTMLElement>("[data-queue-at]"))) {
+      const r = row.getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) return { index: Number(row.dataset.queueAt), before: true };
+    }
+    return { index: queue.length - 1, before: false };
   };
   // Row keys must not depend on the current queue index: embedding `index`
   // shifted every key on each track advance, remounting the whole upcoming
@@ -251,19 +286,22 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
           <div
             className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-0.5"
             onDragOver={(e) => {
-              if (!dragHasQueueRow(e) || !upcoming.length) return;
+              if (!accepts(e) || (dragHasQueueRow(e) && !upcoming.length)) return;
               e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              const last = queue.length - 1;
-              setDrop((d) => (d?.index === last && !d.before ? d : { index: last, before: false }));
+              e.dataTransfer.dropEffect = dragHasQueueRow(e) ? "move" : "copy";
+              const slot = slotAt(e);
+              setDrop((d) => (d?.index === slot.index && d.before === slot.before ? d : slot));
             }}
             onDragLeave={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(null);
             }}
             onDrop={(e) => {
-              if (!dragHasQueueRow(e)) return;
+              if (!accepts(e)) return;
               e.preventDefault();
-              moveTo(readQueueIndex(e), queue.length);
+              const slot = slotAt(e);
+              const insertAt = slot.before ? slot.index : slot.index + 1;
+              if (dragHasQueueRow(e)) moveTo(readQueueIndex(e), insertAt);
+              else dropSong(e, insertAt);
             }}
           >
             {upcoming.length === 0 ? (
@@ -357,8 +395,81 @@ function DetailsBody() {
         </div>
       </div>
 
+      <AboutSongCard track={track} />
       <AboutArtistCard track={track} fallbackImage={artistImage ?? track.thumb ?? null} />
     </div>
+  );
+}
+
+const CLAMP_5 = { display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden" } as const;
+
+/**
+ * About the song, from Genius (lib/songInfo.ts): when and on what it came
+ * out, its story — five lines, the rest on "Show more" — its credits
+ * (written, produced, then the detailed ones) and what it samples. The
+ * Genius button opens the song's page, the source of all of it.
+ */
+function AboutSongCard({ track }: { track: Track }) {
+  const info = useSongInfo(track);
+  const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [track.id]);
+  if (!info || (!info.description && !info.credits.length && !info.released)) return null;
+
+  const credits = open ? info.credits : info.credits.slice(0, 4);
+  const more = (info.description?.length ?? 0) > 260 || info.credits.length > 4 || info.samples.length > 0 || !!info.recordedAt;
+  return (
+    <section aria-label="About the song" className="rounded-xl bg-ink-hi/[0.04] p-3.5 animate-fade-in">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[15px] font-bold text-ink-hi">About the song</h3>
+        <button
+          onClick={() => window.open(info.url, "_blank")}
+          title="Open the song on Genius"
+          className="shrink-0 h-7 px-3 rounded-full border border-ink-hi/30 text-[12px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
+        >
+          Genius
+        </button>
+      </div>
+      {(info.released || info.album) && (
+        <div className="text-[12.5px] text-ink-hi/55 mt-1 truncate">{[info.released, info.album].filter(Boolean).join(" · ")}</div>
+      )}
+      {info.description && (
+        <p className="mt-2.5 text-[13px] leading-relaxed text-ink-hi/70 whitespace-pre-line" style={open ? undefined : CLAMP_5}>
+          {info.description}
+        </p>
+      )}
+      {(credits.length > 0 || (open && (info.samples.length > 0 || !!info.recordedAt))) && (
+        <dl className="mt-3 space-y-2">
+          {credits.map((c, i) => (
+            <div key={`${c.label}-${i}`}>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">{c.label}</dt>
+              <dd className="text-[13px] text-ink-hi/85 mt-0.5">{c.names.join(", ")}</dd>
+            </div>
+          ))}
+          {open && info.samples.length > 0 && (
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Samples</dt>
+              {info.samples.map((x, i) => (
+                <dd key={i} className="text-[13px] text-ink-hi/85 mt-0.5">
+                  {x.title}
+                  {x.artist && <span className="text-ink-hi/55"> · {x.artist}</span>}
+                </dd>
+              ))}
+            </div>
+          )}
+          {open && info.recordedAt && (
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Recorded at</dt>
+              <dd className="text-[13px] text-ink-hi/85 mt-0.5">{info.recordedAt}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      {more && (
+        <button onClick={() => setOpen(!open)} className="mt-2.5 text-[12.5px] font-semibold text-ink-hi/65 hover:text-ink-hi transition-colors">
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -461,16 +572,111 @@ function AboutArtistCard({
 
 /* ------------------------------------------------------------------ root */
 
+const RAIL_MIN = 280;
+const RAIL_DEFAULT = 328;
+/** At most this share of the window — the page in the middle keeps the rest. */
+const RAIL_MAX_SHARE = 0.45;
+const railClamp = (px: number): number => Math.round(Math.min(Math.max(px, RAIL_MIN), Math.max(RAIL_MIN, window.innerWidth * RAIL_MAX_SHARE)));
+
 export function RightRail() {
   const mode = useUI((s) => s.rightPanel);
   const closeQueue = () => useUI.setState({ rightPanel: "details" });
+  const saved = useSettings((s) => s.rightRailWidth);
+  const setSaved = useSettings((s) => s.setRightRailWidth);
+  // While dragging, the width follows the pointer here and is saved once, on release.
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  // A smaller window lowers the cap: measure again when it changes.
+  const [, remeasure] = useState(0);
+  useEffect(() => {
+    const onResize = (): void => remeasure((n) => n + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const width = railClamp(dragWidth ?? saved);
+
+  // A song dragged over the details turns the panel to the queue, so it can be dropped there.
+  const springTimer = useRef<number | null>(null);
+  const stopSpring = (): void => {
+    if (springTimer.current !== null) window.clearTimeout(springTimer.current);
+    springTimer.current = null;
+  };
+  useEffect(() => stopSpring, []);
+  const springToQueue = (e: React.DragEvent): void => {
+    if (mode === "queue" || !dragHasTrack(e) || springTimer.current !== null) return;
+    springTimer.current = window.setTimeout(() => {
+      springTimer.current = null;
+      useUI.setState({ rightPanel: "queue" });
+    }, 450);
+  };
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {
+      /* no capture (a pointer that is already gone): the moves still reach the grip */
+    }
+    const startX = e.clientX;
+    const startWidth = width;
+    let latest = startWidth;
+    const move = (ev: PointerEvent): void => {
+      // The panel sits on the right: pulling its left edge left makes it wider.
+      latest = railClamp(startWidth + (startX - ev.clientX));
+      setDragWidth(latest);
+    };
+    const end = (): void => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      setSaved(latest);
+      setDragWidth(null);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
 
   return (
     <aside
-      className="w-[328px] shrink-0 flex flex-col glass-pill rounded-2xl overflow-hidden"
+      style={{ width }}
+      onDragOver={springToQueue}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) stopSpring();
+      }}
+      onDrop={stopSpring}
+      className="relative shrink-0 flex flex-col glass-pill rounded-2xl"
       aria-label="Now playing panel"
     >
-      {mode === "queue" ? <QueuePanel onClose={closeQueue} /> : <DetailsBody />}
+      {/* The resize grip lives in the gap to the page; a double click goes back to the standard width. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the side panel"
+        aria-valuenow={width}
+        aria-valuemin={RAIL_MIN}
+        tabIndex={0}
+        onPointerDown={startDrag}
+        onDoubleClick={() => setSaved(RAIL_DEFAULT)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault();
+            setSaved(railClamp(width + (e.key === "ArrowLeft" ? 16 : -16)));
+          }
+        }}
+        title="Drag to resize · double-click for the standard width"
+        className="group/grip absolute -left-[7px] top-0 bottom-0 z-20 w-[8px] cursor-col-resize outline-none"
+      >
+        <span
+          className={`absolute left-1/2 top-1/2 h-12 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors ${
+            dragWidth !== null ? "bg-ink-hi/50" : "bg-transparent group-hover/grip:bg-ink-hi/30 group-focus-visible/grip:bg-ink-hi/50"
+          }`}
+        />
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-[inherit]">
+        {mode === "queue" ? <QueuePanel onClose={closeQueue} /> : <DetailsBody />}
+      </div>
     </aside>
   );
 }

@@ -120,9 +120,29 @@ function SourcesAndSettings() {
           onClick={() => navigate({ name: "subsonic" })}
         />
       )}
-      <div className="mx-1 h-6 w-px bg-ink-hi/15" />
       <ClusterButton icon={Settings} label="Settings" active={view.name === "settings"} onClick={() => navigate({ name: "settings" })} />
     </div>
+  );
+}
+
+/**
+ * A vinyl record — rim, two grooves and a solid label around the spindle
+ * hole — for Explore. Drawn here: lucide has no record, and its Disc3 is
+ * already Navidrome's button.
+ */
+function VinylIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 5.5a6.5 6.5 0 0 1 6.5 6.5" strokeWidth="1.5" />
+      <path d="M12 18.5a6.5 6.5 0 0 1-6.5-6.5" strokeWidth="1.5" />
+      <path
+        d="M12 8.6a3.4 3.4 0 1 0 0 6.8a3.4 3.4 0 1 0 0-6.8Zm0 2.4a1 1 0 1 1 0 2a1 1 0 1 1 0-2Z"
+        fill="currentColor"
+        fillRule="evenodd"
+        stroke="none"
+      />
+    </svg>
   );
 }
 
@@ -311,9 +331,8 @@ export function TopBar() {
         isMac ? "pl-[84px]" : "pl-3"
       }`}
     >
-      {/* Left cluster — brand flush to the edge, then a hairline divider so the
-          logo reads as separate from the history + refresh controls (Spotify's
-          top-bar model: 32px circular buttons, 16px glyphs). */}
+      {/* Left cluster — brand flush to the edge, then the history + refresh
+          controls (Spotify's top-bar model: 32px circular buttons, 16px glyphs). */}
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={goHome}
@@ -322,7 +341,6 @@ export function TopBar() {
         >
           <BrandHeader />
         </button>
-        <div className="mx-1.5 h-6 w-px bg-ink-hi/15" />
         <button
           onClick={() => goBack()}
           title="Go back"
@@ -504,10 +522,11 @@ export function TopBar() {
             </div>
           )}
           {/* Spotify's right side of the field: clear (once there's text), a
-              hairline divider, and the Explore (browse) button. Clearing
-              from the results view would leave the empty search shell
-              behind, so it hops home instead; from any other view it just
-              wipes the field and stays put. */}
+              hairline divider, and the Explore button — the whole library as
+              sortable lists of albums, artists and genres. Clearing from the
+              results view would leave the empty search shell behind, so it
+              hops home instead; from any other view it just wipes the field
+              and stays put. */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2.5">
             {query.trim() !== "" && (
               <button
@@ -527,6 +546,19 @@ export function TopBar() {
                 <X className="w-[18px] h-[18px]" />
               </button>
             )}
+            <div className="h-6 w-px bg-ink-hi/20" />
+            <button
+              onClick={() => navigate({ name: "explore" })}
+              title="Explore your library"
+              aria-label="Explore"
+              className={`p-1.5 rounded-full transition-colors ${
+                view.name === "explore" || view.name === "genre"
+                  ? "text-ink-hi bg-ink-hi/[0.10]"
+                  : "text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.08]"
+              }`}
+            >
+              <VinylIcon className="w-[18px] h-[18px]" />
+            </button>
           </div>
         </div>
       </div>

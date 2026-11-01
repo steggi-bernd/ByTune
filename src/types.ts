@@ -46,6 +46,10 @@ export interface Track {
   releaseType?: string;
   /** first release year — a reissue's own `year` can be decades later */
   originalYear?: number;
+  /** the release's day where the source knows it: "YYYY-MM-DD", or "YYYY-MM" / "YYYY" */
+  date?: string;
+  /** the first release's day — a reissue's own `date` can be decades later */
+  originalDate?: string;
 }
 
 export interface Album {

@@ -22,6 +22,7 @@ import { artistAlbums, artistTracks, byPlays, useLibraryIndex, type LibAlbum } f
 import { fmtLength } from "../lib/format";
 import { parseRoute } from "../lib/libraryTracks";
 import { RELEASE_LABEL } from "../lib/releases";
+import { useArtistImages } from "../lib/songInfo";
 import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useUI } from "../stores/ui";
 
@@ -71,7 +72,7 @@ function DiscographyRelease({ album }: { album: LibAlbum }) {
           </div>
         </div>
       </div>
-      <TrackList tracks={album.tracks} showAlbum={false} showHeader={false} emptyLabel="No songs." />
+      <TrackList tracks={album.tracks} showAlbum={false} showHeader={false} sourceName={album.title} emptyLabel="No songs." />
     </section>
   );
 }
@@ -100,6 +101,7 @@ export function LibraryArtistView({ param }: { param: string }) {
     };
   }, [name]);
 
+  const images = useArtistImages(name);
   const songs = useMemo(() => artistTracks(tracks, name), [tracks, name]);
   const popular = useMemo(() => byPlays(songs, playCounts), [songs, playCounts]);
   const { own, appearsOn } = useMemo(() => artistAlbums(albums, name), [albums, name]);
@@ -117,7 +119,8 @@ export function LibraryArtistView({ param }: { param: string }) {
     return <EmptyState icon={User} title={`No songs by ${name}`} body="Nothing in your library credits this artist." />;
   }
 
-  const photo = about?.thumb ?? own[0]?.thumb ?? songs[0]?.thumb ?? "";
+  // The banner: Genius's wide header image, else the photo (open databases, then Genius), else a cover.
+  const photo = images?.banner ?? about?.thumb ?? images?.photo ?? own[0]?.thumb ?? songs[0]?.thumb ?? "";
   const counts = [
     byType.albums.length ? `${byType.albums.length} ${byType.albums.length === 1 ? "album" : "albums"}` : null,
     byType.eps.length ? `${byType.eps.length} ${byType.eps.length === 1 ? "single or EP" : "singles & EPs"}` : null,

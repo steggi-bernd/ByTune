@@ -17,6 +17,8 @@ import * as jellyfin from "./jellyfin";
 import * as subsonic from "./subsonic";
 import { libraryLyrics } from "./library-lyrics";
 import * as meta from "./metadata";
+import * as songInfo from "./song-info";
+import * as listens from "./listens";
 import * as music from "./music-service";
 import { backupExport, backupImport } from "./backup";
 import * as locallib from "./local-library";
@@ -519,6 +521,11 @@ function registerIpc(): void {
   ipc.handle("meta:recording", (_e, title: string, artist: string, durationSec?: number) =>
     meta.lookupRecording(String(title ?? ""), String(artist ?? ""), Number(durationSec) || 0)
   );
+  // About a song (story, credits) and an artist's photo and banner, from Genius (song-info.ts).
+  ipc.handle("meta:song", (_e, title: unknown, artist: unknown) =>
+    songInfo.songInfo(String(title ?? "").slice(0, 200), String(artist ?? "").slice(0, 200))
+  );
+  ipc.handle("meta:artistImages", (_e, name: unknown) => songInfo.artistImages(String(name ?? "").slice(0, 200)));
   // Jellyfin server as a second library source.
   ipc.handle("jellyfin:status", () => jellyfin.status());
   ipc.handle("jellyfin:connect", (_e, input: { server: string; username?: string; password?: string; apiKey?: string }) =>
@@ -601,6 +608,22 @@ function registerIpc(): void {
   ipc.on("discord:activity", (_e, activity: unknown) => discord.setDiscordActivity(activity));
 
   ipc.handle("stats:playcounts", () => stats.playCounts());
+  // The listening history (listens.ts): on this computer only — read a page, export it as CSV.
+  ipc.handle("listens:page", (_e, before: unknown, limit: unknown) =>
+    listens.readListens(typeof before === "number" ? before : undefined, Number(limit) || 100)
+  );
+  ipc.handle("listens:export", async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: "Export listening history",
+      defaultPath: path.join(app.getPath("documents"), "ByTune listening history.csv"),
+      filters: [{ name: "Spreadsheet (CSV)", extensions: ["csv"] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    const { csv, count } = await listens.listensCsv();
+    await fs.promises.writeFile(res.filePath, csv, "utf-8");
+    return { path: res.filePath, count };
+  });
   ipc.handle("stats:summary", (_e, period: string) => {
     const p = (["month", "lastMonth", "year", "all"] as const).find((x) => x === period) ?? "month";
     return stats.summary(p);
@@ -655,6 +678,7 @@ function registerIpc(): void {
       sync.resetSyncState();
       await auth.signOut();
       stats.resetStats();
+      await listens.clearListens();
       await Promise.all([downloads.resetDownloads(), locallib.resetLocalLibrary()]);
       await persist.resetAppData();
       // Approvals live in memory too — drop them and re-approve the default
@@ -1079,7 +1103,7 @@ if (!gotLock) {
       // Mark the real quit BEFORE the drain: the hide-on-close guard must
       // stand down for any close events that fire during shutdown.
       quitting = true;
-      stats.flushSync();
+      stats.flushSync(); // the listening history's last lines too
       pip.savePipRect();
       discord.stopDiscord();
   void cast.stop();

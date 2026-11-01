@@ -30,6 +30,7 @@ import { app } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
+import { dropPendingListens, flushListensSync, noteListen } from "./listens";
 import type { Track } from "../src/types";
 
 export interface TrackEntry {
@@ -238,6 +239,7 @@ async function writeStore(): Promise<void> {
 export function resetStats(): void {
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = null;
+  dropPendingListens();
   dirty = false;
   open.clear();
   loaded = false;
@@ -377,6 +379,8 @@ export function recordListening(track: Track, listenedMs: number, at = new Date(
     const threshold = Math.min(Math.max(durMs / 2, PLAY_FLOOR_MS), PLAY_CEILING_MS);
     if (listened >= threshold) {
       ruleCounted.add(track.id);
+      // The listening history's line for it, stamped with when the listen began.
+      noteListen(track, at.getTime() - listened);
       t.plays += 1;
       a.plays += 1;
       if (track.album) b.albums[`${track.album.toLowerCase()}|${key}`].plays += 1;
@@ -479,6 +483,7 @@ export function summary(period: ReplayPeriod): ReplaySummary {
 
 /** Synchronous persist for shutdown paths: `before-quit` cannot await. */
 export function flushSync(): void {
+  flushListensSync();
   if (!ready || !dirty) return;
   dirty = false;
   try {

@@ -19,6 +19,7 @@ import * as path from "path";
 import * as persist from "./persist";
 import { openSecret, sealSecret } from "./secrets";
 import { normalizeServer } from "./jellyfin";
+import { isoDate } from "./release-date";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -29,7 +30,7 @@ const MAX_ITEMS = 100_000;
 const API_VERSION = "1.16.1";
 const CLIENT = "ByTune";
 /** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
-const LIB_VERSION = 2;
+const LIB_VERSION = 3;
 /** Formats Chromium can't decode — the server transcodes these to MP3. */
 /** Formats the server converts to MP3 on the way (the player can't open them). */
 export const SERVER_TRANSCODE = new Set(["aif", "aiff", "aifc", "wma", "wv", "ape", "dsf", "dff", "alac"]);
@@ -53,6 +54,9 @@ export interface SubsonicTrack {
   releaseType?: string;
   /** OpenSubsonic original release year */
   originalYear?: number;
+  /** OpenSubsonic: the album's release day, and its first release's ("YYYY-MM-DD" or shorter) */
+  date?: string;
+  originalDate?: string;
   year?: number;
   genre?: string;
   art?: string;
@@ -250,15 +254,20 @@ export async function refreshLibrary(): Promise<SubsonicLibrary> {
     }
   };
   /** Release facts per album id — songs carry only the album's id. */
-  const albumFacts = new Map<string, Pick<SubsonicTrack, "trackTotal" | "releaseType" | "originalYear">>();
+  type AlbumFacts = Pick<SubsonicTrack, "trackTotal" | "releaseType" | "originalYear" | "date" | "originalDate">;
+  const albumFacts = new Map<string, AlbumFacts>();
   const noteAlbum = (a: any): void => {
     if (!a?.id) return;
-    const facts: Pick<SubsonicTrack, "trackTotal" | "releaseType" | "originalYear"> = {};
+    const facts: AlbumFacts = {};
     if (typeof a.songCount === "number" && a.songCount > 0) facts.trackTotal = a.songCount;
     const types: string[] = Array.isArray(a.releaseTypes) ? a.releaseTypes.filter((x: unknown) => typeof x === "string") : [];
     if (types.length) facts.releaseType = types.join(" ").toLowerCase().slice(0, 80);
     const year = a.originalReleaseDate?.year;
     if (typeof year === "number" && year > 0) facts.originalYear = year;
+    const date = isoDate(a.releaseDate);
+    if (date) facts.date = date;
+    const originalDate = isoDate(a.originalReleaseDate);
+    if (originalDate) facts.originalDate = originalDate;
     albumFacts.set(String(a.id), facts);
   };
   // Navidrome (and most OpenSubsonic servers) list every song for an empty search.

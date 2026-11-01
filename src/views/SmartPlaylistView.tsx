@@ -68,7 +68,7 @@ export function SmartPlaylistView({ id }: { id: string }) {
         }
       />
       {songs.length ? (
-        <TrackList tracks={songs} showAlbum emptyLabel="No songs." />
+        <TrackList tracks={songs} showAlbum sourceName={sp.name} emptyLabel="No songs." />
       ) : (
         <EmptyState icon={Sparkles} title="No songs match yet" body="Change the rules, or add music that fits them." />
       )}

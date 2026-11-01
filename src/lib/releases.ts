@@ -78,3 +78,92 @@ export function releaseYear(tracks: Track[]): number | undefined {
     .filter((y): y is number => typeof y === "number" && y > 0);
   return years.length ? Math.min(...years) : undefined;
 }
+
+/**
+ * The day a release came out, as precisely as its songs say ("2019-05-03",
+ * else "2019-05"). Only a date in the release's own year counts, so a
+ * reissue's day never moves an old album; and 1 January says nothing — it
+ * is what Jellyfin fills in for a release whose tags only know the year.
+ */
+export function releaseDate(tracks: Track[], year: number | undefined): string | undefined {
+  if (!year) return undefined;
+  let best: string | undefined;
+  for (const t of tracks) {
+    for (const d of [t.originalDate, t.date]) {
+      if (!d || d.length < 7 || !d.startsWith(`${year}-`) || d.endsWith("-01-01")) continue;
+      // The more precise date wins, then the earlier one.
+      if (!best || d.length > best.length || (d.length === best.length && d < best)) best = d;
+    }
+  }
+  return best;
+}
+
+/** A title with its numbers blanked: "Season 9" and "Season 12" are parts of one series. */
+const seriesStem = (title: string): string => title.toLowerCase().replace(/\d+/g, "#");
+const seriesNumbers = (title: string): number[] => (title.match(/\d+/g) ?? []).map(Number);
+
+interface Placed {
+  artist?: string;
+  title: string;
+  year?: number;
+  date?: string;
+  /** its place from releaseOrder; without one, its own day or year */
+  order?: string;
+}
+
+/** A sortable place in time: the day, or the year alone ("2025-00-00", before every day of it); none without a year. */
+const ownPlace = (a: Placed): string => (a.year ? (a.date ?? `${a.year}-00-00`) : "");
+
+/**
+ * Every release's place in time, for a whole list at once (compareReleases
+ * sorts by it). Its own day, or its year alone — except that the parts of a
+ * series keep their numbers' order: Season 9 comes after Season 8 even when
+ * only Season 8's day is known, since a later part never came out first. A
+ * part that would land before the one it follows is placed just after it.
+ */
+export function releaseOrder(albums: Placed[]): string[] {
+  const places = albums.map(ownPlace);
+  const series = new Map<string, number[]>();
+  albums.forEach((a, i) => {
+    if (!places[i] || !/\d/.test(a.title)) return;
+    const key = `${(a.artist ?? "").toLowerCase()}|${seriesStem(a.title)}`;
+    series.set(key, [...(series.get(key) ?? []), i]);
+  });
+  for (const parts of series.values()) {
+    if (parts.length < 2) continue;
+    parts.sort((x, y) => {
+      const nx = seriesNumbers(albums[x].title);
+      const ny = seriesNumbers(albums[y].title);
+      for (let k = 0; k < Math.min(nx.length, ny.length); k++) if (nx[k] !== ny[k]) return nx[k] - ny[k];
+      return 0;
+    });
+    let previous = "";
+    for (const i of parts) {
+      // "+" sorts right after the place it extends, before any later day.
+      if (places[i] <= previous) places[i] = `${previous}+`;
+      previous = places[i];
+    }
+  }
+  return places;
+}
+
+/**
+ * Newest first: by place in time (releaseOrder, else the release's own day
+ * or year; a known day before the year alone), then by title — the parts of
+ * a series highest first ("Season 12, 11 … 1"), the rest alphabetically.
+ * Releases without a year go last.
+ */
+export function compareReleases(a: Placed, b: Placed): number {
+  const pa = a.order ?? ownPlace(a);
+  const pb = b.order ?? ownPlace(b);
+  if (pa !== pb) {
+    if (!pa || !pb) return pa ? -1 : 1;
+    return pa < pb ? 1 : -1;
+  }
+  const stem = seriesStem(a.title).localeCompare(seriesStem(b.title));
+  if (stem) return stem;
+  const na = seriesNumbers(a.title);
+  const nb = seriesNumbers(b.title);
+  for (let i = 0; i < Math.min(na.length, nb.length); i++) if (na[i] !== nb[i]) return nb[i] - na[i];
+  return a.title.localeCompare(b.title);
+}

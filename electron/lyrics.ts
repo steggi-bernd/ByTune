@@ -45,7 +45,7 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const LYRICS_AGENT = "ByTune (https://github.com/bytune-music)";
 
-async function getText(url: string, timeoutMs = 6000, headers: Record<string, string> = {}): Promise<string | null> {
+export async function getText(url: string, timeoutMs = 6000, headers: Record<string, string> = {}): Promise<string | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -1884,13 +1884,13 @@ function geniusCleanQuery(text: string): string {
 }
 
 function geniusBestMatch(
-  candidates: { url?: unknown; path?: unknown; title?: unknown; artistNames?: unknown }[],
+  candidates: { id?: unknown; url?: unknown; path?: unknown; title?: unknown; artistNames?: unknown }[],
   title: string,
   artist: string
-): string | null {
+): { id: number; url: string } | null {
   const normTitle = title.toLowerCase();
   const normArtist = artist.toLowerCase();
-  let bestUrl: string | null = null;
+  let best: { id: number; url: string } | null = null;
   let bestScore = 0;
   for (const item of candidates) {
     const t = String(item.title ?? "").toLowerCase();
@@ -1907,12 +1907,12 @@ function geniusBestMatch(
     if (path.includes("translation") && !normTitle.includes("translation")) score -= 30;
     if (path.includes("türkçe") || path.includes("polskie-tlumaczenie")) score -= 40;
     if (path.includes("tracklist") || path.includes("album-art")) score -= 50;
-    if (score > bestScore) {
+    if (score > bestScore && typeof item.url === "string") {
       bestScore = score;
-      bestUrl = typeof item.url === "string" ? item.url : null;
+      best = { id: Number(item.id) || 0, url: item.url };
     }
   }
-  return bestScore > 0 ? bestUrl : null;
+  return bestScore > 0 ? best : null;
 }
 
 async function geniusExtractLyrics(html: string): Promise<string | null> {
@@ -1950,9 +1950,20 @@ async function geniusExtractLyrics(html: string): Promise<string | null> {
   }
 }
 
-async function fetchGenius(q: LyricQuery): Promise<ProviderResult | null> {
-  const artist = primaryArtist(q.artist || "");
-  const title = queryTitle(q.title);
+export const GENIUS_HEADERS = {
+  "User-Agent": GENIUS_AGENT,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
+/**
+ * The song's Genius page (id + url) — the search's best hit; null when Genius
+ * answered without one, undefined when it didn't answer at all (offline).
+ * Lyrics and song info share it.
+ */
+export async function geniusFindSong(songTitle: string, songArtist: string): Promise<{ id: number; url: string } | null | undefined> {
+  const artist = primaryArtist(songArtist || "");
+  const title = queryTitle(songTitle);
   if (!title) return null;
   const cleanTitle2 = geniusCleanQuery(title);
   const attempts: { query: string; title: string; artist: string }[] = [];
@@ -1968,15 +1979,11 @@ async function fetchGenius(q: LyricQuery): Promise<ProviderResult | null> {
   }
   push(cleanTitle2 || title, cleanTitle2 || title, artist);
 
-  const headers = {
-    "User-Agent": GENIUS_AGENT,
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-  };
-  let songUrl: string | null = null;
+  let answered = false;
   for (const attempt of attempts) {
-    const body = await getText(`https://genius.com/api/search/multi?q=${encodeURIComponent(attempt.query)}`, 8000, headers);
+    const body = await getText(`https://genius.com/api/search/multi?q=${encodeURIComponent(attempt.query)}`, 8000, GENIUS_HEADERS);
     if (!body) continue;
+    answered = true;
     try {
       const sections = JSON.parse(body)?.response?.sections;
       if (!Array.isArray(sections)) continue;
@@ -1985,18 +1992,20 @@ async function fetchGenius(q: LyricQuery): Promise<ProviderResult | null> {
       const candidates = hits
         .map((h) => h?.result)
         .filter(Boolean)
-        .map((r) => ({ url: r.url, path: r.path, title: r.title, artistNames: r.artist_names }));
+        .map((r) => ({ id: r.id, url: r.url, path: r.path, title: r.title, artistNames: r.artist_names }));
       const best = geniusBestMatch(candidates, attempt.title, attempt.artist);
-      if (best) {
-        songUrl = best;
-        break;
-      }
+      if (best) return best;
     } catch {
       /* next attempt */
     }
   }
-  if (!songUrl) return null;
-  const html = await getText(songUrl, 9000, headers);
+  return answered ? null : undefined;
+}
+
+async function fetchGenius(q: LyricQuery): Promise<ProviderResult | null> {
+  const song = await geniusFindSong(q.title, q.artist);
+  if (!song) return null;
+  const html = await getText(song.url, 9000, GENIUS_HEADERS);
   if (!html) return null;
   const text = await geniusExtractLyrics(html);
   return text ? { source: "Genius", wordSynced: false, lines: [], plainText: text } : null;

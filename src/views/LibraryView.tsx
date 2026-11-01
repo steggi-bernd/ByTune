@@ -583,7 +583,7 @@ export function LibraryView() {
                 </Btn>
               </div>
               <div className="mt-5">
-                <TrackList tracks={liked} showAlbum emptyTitle="No liked songs yet" />
+                <TrackList tracks={liked} showAlbum sourceName="Liked Songs" emptyTitle="No liked songs yet" />
               </div>
             </>
           ) : (

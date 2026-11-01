@@ -451,7 +451,7 @@ export function NowPlaying() {
         {!track ? (
           <div className="flex-1 grid place-items-center">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-[18px] glass grid place-items-center mx-auto mb-5">
+              <div className="w-16 h-16 rounded-[calc(18px*var(--radius-scale))] glass grid place-items-center mx-auto mb-5">
                 <Music2 className="w-7 h-7 text-white/55" />
               </div>
               <p className="text-sm text-white/85">Nothing playing yet</p>
@@ -483,7 +483,7 @@ export function NowPlaying() {
                   <div
                     ref={artRef}
                     {...heroDrag.props}
-                    className={`relative rounded-[20px] overflow-hidden shadow-art art-hairline aspect-square w-[min(38vh,32vw,480px)] grid place-items-center bg-white/[0.04] ${
+                    className={`relative rounded-[calc(20px*var(--radius-scale))] overflow-hidden shadow-art art-hairline aspect-square w-[min(38vh,32vw,480px)] grid place-items-center bg-white/[0.04] ${
                       heroDrag.dragging ? "opacity-60" : ""
                     }`}
                     title="Drag to a playlist to add this song"

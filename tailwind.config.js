@@ -60,11 +60,22 @@ export default {
         glow: "0 8px 24px -6px rgb(var(--accent) / 0.45)",
         /* Apple-Music artwork drop: deep, wide, no colour cast */
         art: "0 24px 60px -16px rgba(0, 0, 0, 0.8)",
-        /* Liquid-glass inset highlight (top edge catches the light) */
-        glass: "inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 4px 24px rgba(0, 0, 0, 0.25)",
+        /* Liquid-glass drop (no light along the top edge: it read as a white strip) */
+        glass: "0 4px 24px rgba(0, 0, 0, 0.25)",
         /* Pill chrome: a lighter glass drop for the small rounded surfaces
            in the sidebar and the player bar. */
-        pill: "inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 4px 18px rgba(0, 0, 0, 0.18)",
+        pill: "0 4px 18px rgba(0, 0, 0, 0.18)",
+      },
+      /* Every rounded-* step scales with --radius-scale (index.css), set by
+         Settings → Appearance → Corners. rounded-full stays a circle. */
+      borderRadius: {
+        sm: "calc(2px * var(--radius-scale))",
+        DEFAULT: "calc(4px * var(--radius-scale))",
+        md: "calc(6px * var(--radius-scale))",
+        lg: "calc(8px * var(--radius-scale))",
+        xl: "calc(12px * var(--radius-scale))",
+        "2xl": "calc(16px * var(--radius-scale))",
+        "3xl": "calc(24px * var(--radius-scale))",
       },
       keyframes: {
         "pop-in": {

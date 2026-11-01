@@ -201,7 +201,10 @@ test("recovered months survive a reload racing in right after migration", async 
     h.api.flushSync();
     h.api.reloadStore();
     assert.equal(h.api.summary("all").totalMs, 93_000);
-    assert.deepEqual([...h.api.summary("all").months].map(String), ["2026-09", "2026-10"]);
+    // The fresh listening lands in the month it happens in — whatever month the test runs.
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    assert.deepEqual([...h.api.summary("all").months].map(String), ["2026-09", thisMonth]);
   } finally { h.close(); }
 });
 

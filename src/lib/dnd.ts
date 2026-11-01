@@ -21,6 +21,19 @@ export const ALBUM_MIME = "application/x-bytune-album";
 /** A queue row's position, alongside its track payload — the queue reorders on it. */
 export const QUEUE_MIME = "application/x-bytune-queue-index";
 
+/** The list a song was picked from — its name, its songs and where the song sits in it. */
+export interface TrackSource {
+  name: string;
+  tracks: Track[];
+  index: number;
+}
+
+/** The song being dragged right now and its list (drop targets in this window read it). */
+let activeTrackDrag: { track: Track; from: TrackSource | null } | null = null;
+export function draggedTrack(): { track: Track; from: TrackSource | null } | null {
+  return activeTrackDrag;
+}
+
 export function dragHasQueueRow(e: React.DragEvent): boolean {
   return e.dataTransfer.types.includes(QUEUE_MIME);
 }
@@ -292,7 +305,13 @@ export function useTrackDrop(
  */
 export function useDrag(
   payload:
-    | { track: Track; /** queue rows: their queue position, so the queue can reorder */ queueIndex?: number }
+    | {
+        track: Track;
+        /** queue rows: their queue position, so the queue can reorder */
+        queueIndex?: number;
+        /** list rows: the list it belongs to (a drop into the queue can branch off into it) */
+        from?: TrackSource;
+      }
     | { playlist: PlaylistPayload }
     | { artist: ArtistPayload }
     | { album: AlbumPayload }
@@ -354,6 +373,7 @@ export function useDrag(
         }
         if ("track" in payload) {
           beginTrackDrag(e, payload.track);
+          activeTrackDrag = { track: payload.track, from: payload.from ?? null };
           if (payload.queueIndex !== undefined) {
             e.dataTransfer.setData(QUEUE_MIME, String(payload.queueIndex));
             e.dataTransfer.effectAllowed = "copyMove";
@@ -368,6 +388,8 @@ export function useDrag(
       onDragEnd: () => {
         downOnControl.current = false;
         setDragging(false);
+        // After the drop: the target has read it by now.
+        activeTrackDrag = null;
         // The browser suppresses the post-drag click itself in the common
         // case; this only guards engines that deliver one anyway. The flag
         // clears on that click, or expires shortly after so a later,

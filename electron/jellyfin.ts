@@ -22,6 +22,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
 import { jellyfinStreamPlan } from "./jellyfin-stream";
+import { isoDate } from "./release-date";
 import { openSecret, sealSecret } from "./secrets";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -33,7 +34,7 @@ const MAX_ITEMS = 100_000;
 const CLIENT = "ByTune";
 const VERSION = "1.0.7";
 /** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
-const LIB_VERSION = 2;
+const LIB_VERSION = 3;
 
 export interface JellyfinTrack {
   /** "jf:<itemId>" — the id prefix routes playback to this module */
@@ -47,6 +48,8 @@ export interface JellyfinTrack {
   trackNo?: number;
   discNo?: number;
   year?: number;
+  /** the item's PremiereDate: "YYYY-MM-DD" */
+  date?: string;
   genre?: string;
   /** jfart:// URL for the item's (or its album's) cover */
   art?: string;
@@ -270,6 +273,7 @@ function toTrack(item: any): JellyfinTrack | null {
     trackNo: typeof item.IndexNumber === "number" ? item.IndexNumber : undefined,
     discNo: typeof item.ParentIndexNumber === "number" ? item.ParentIndexNumber : undefined,
     year: typeof item.ProductionYear === "number" ? item.ProductionYear : undefined,
+    date: isoDate(item.PremiereDate),
     genre: Array.isArray(item.Genres) && typeof item.Genres[0] === "string" ? item.Genres[0] : undefined,
     art,
     addedAt: item.DateCreated ? Date.parse(item.DateCreated) || undefined : undefined,

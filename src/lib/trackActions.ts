@@ -11,17 +11,47 @@ import {
   Play,
   RotateCcw,
   Search,
+  Split,
   Trash2,
   User,
 } from "lucide-react";
 import { downloadForOffline, SERVER_SONG, startDownload } from "./downloads";
+import type { TrackSource } from "./dnd";
 import { versionsOf } from "../stores/catalog";
 import { useLibrary, type Playlist } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useUI, type MenuItem } from "../stores/ui";
 import type { Track } from "../types";
 
-export function trackMenuItems(track: Track): MenuItem[] {
+/**
+ * Branch off: the song — next, or where it was dropped — and after it the rest
+ * of the list it came from, in that list's order. What was coming in the
+ * queue goes on afterwards, minus the songs the branch already plays.
+ */
+export function branchOff(from: TrackSource, at?: number): void {
+  const rest = from.tracks.slice(from.index);
+  if (!rest.length) return;
+  const player = usePlayer.getState();
+  if (!player.queue.length) {
+    player.playQueue(rest, 0);
+    return;
+  }
+  player.insertInQueue(rest, at ?? player.index + 1, true);
+  useUI.getState().toast(`Branching off into “${from.name}” — ${rest.length} ${rest.length === 1 ? "song" : "songs"}`);
+}
+
+/** After a song dropped into the queue: the rest of its list behind it, wherever the song is now. */
+export function branchOffAfterDrop(from: TrackSource): void {
+  const { queue, index } = usePlayer.getState();
+  const song = from.tracks[from.index];
+  const at = queue.findIndex((t, i) => i > index && t.id === song?.id);
+  const rest = from.tracks.slice(from.index + 1);
+  if (at < 0 || !rest.length) return;
+  usePlayer.getState().insertInQueue(rest, at + 1, true);
+  useUI.getState().toast(`Then the rest of “${from.name}” — ${rest.length} ${rest.length === 1 ? "song" : "songs"}`);
+}
+
+export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
   const lib = useLibrary.getState();
   const ui = useUI.getState();
   const liked = lib.isLiked(track.id);
@@ -40,6 +70,10 @@ export function trackMenuItems(track: Track): MenuItem[] {
         useUI.getState().toast("Playing next");
       },
     },
+    // Under "Play next": the same, then the rest of the list the song is in.
+    ...(from && from.index < from.tracks.length - 1
+      ? [{ label: `Branch off into “${from.name}”`, icon: Split, action: () => branchOff(from) }]
+      : []),
     {
       label: "Add to queue",
       icon: ListPlus,
@@ -141,7 +175,7 @@ function requireReveal(path: string): void {
   if (window.bytune) window.bytune.revealPath(path);
 }
 
-export function playlistMenuItems(playlist: Playlist, track: Track): MenuItem[] {
+export function playlistMenuItems(playlist: Playlist, track: Track, from?: TrackSource): MenuItem[] {
   return [
     {
       label: "Remove from this playlist",
@@ -152,7 +186,7 @@ export function playlistMenuItems(playlist: Playlist, track: Track): MenuItem[] 
         useUI.getState().toast("Removed from playlist");
       },
     },
-    ...trackMenuItems(track),
+    ...trackMenuItems(track, from),
   ];
 }
 

@@ -8,7 +8,7 @@ import { Download, FileDown, Heart, ListMusic, ListPlus, MoreHorizontal, Play, S
 import { exportM3uPlaylist } from "../lib/playlistFiles";
 import { downloadForOffline, SERVER_SONG } from "../lib/downloads";
 import { versionsOf } from "../stores/catalog";
-import { DownloadBadge } from "../components/TrackList";
+import { OfflineButton } from "../components/TrackList";
 import { Artwork, EmptyState, EqBars, ExplicitBadge } from "../components/primitives";
 import { playlistHeaderItems, playlistMenuItems } from "../lib/trackActions";
 import { useDrag } from "../lib/dnd";
@@ -243,11 +243,13 @@ function PlaylistTrackRow({
   const playing = usePlayer((s) => s.playing);
   const liked = useLibrary((s) => s.liked.some((t) => t.id === track.id));
   const toggleLike = useLibrary((s) => s.toggleLike);
-  const drag = useDrag({ track });
+  // The playlist is the song's list: Branch off from the menu or a drop into the queue continues in it.
+  const from = { name: playlist.name, tracks: queue, index };
+  const drag = useDrag({ track, from });
   const isCurrent = currentId === track.id;
 
   const openMenu = (x: number, y: number): void => {
-    openContextMenu(x, y, playlistMenuItems(playlist, track));
+    openContextMenu(x, y, playlistMenuItems(playlist, track, from));
   };
 
   return (
@@ -292,7 +294,8 @@ function PlaylistTrackRow({
         </div>
         <div className="text-[14px] truncate text-ink-dim mt-0.5">{track.artist}</div>
       </div>
-      <div className="w-[88px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      {/* A like and a saved copy stay in view; the rest shows on hover. */}
+      <div className="w-[88px] shrink-0 flex items-center justify-end gap-0.5">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -300,13 +303,11 @@ function PlaylistTrackRow({
           }}
           title={liked ? "Remove from Liked" : "Add to Liked"}
           aria-label={liked ? "Remove from Liked" : "Add to Liked"}
-          className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
+          className={`p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${liked ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
         >
           <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-ink-hi text-ink-hi" : ""}`} />
         </button>
-        <span className="opacity-80">
-          <DownloadBadge id={track.id} />
-        </span>
+        <OfflineButton track={track} />
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -314,7 +315,7 @@ function PlaylistTrackRow({
           }}
           title="More options"
           aria-label={`More options for ${track.title}`}
-          className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
+          className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>

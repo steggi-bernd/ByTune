@@ -179,6 +179,7 @@ export async function resetAppData(): Promise<void> {
         "spotify-import",
         "album-edits",
         "server-sync",
+        "song-info",
       ]);
       // Enumerate after draining so every ownership archive is accounted for.
       for (const f of fs.readdirSync(dir)) {

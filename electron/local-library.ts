@@ -23,6 +23,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
 import { isUnderPath } from "./local-paths";
+import { isoDate } from "./release-date";
 
 export interface LocalTrack {
   /** stable id — hash of the absolute path */
@@ -50,6 +51,10 @@ export interface LocalTrack {
   releaseType?: string;
   /** first release year (ORIGINALYEAR) — a reissue's own year can be decades later */
   originalYear?: number;
+  /** the release's day (RELEASEDATE, else DATE): "YYYY-MM-DD", or "YYYY-MM" / "YYYY" */
+  date?: string;
+  /** the first release's day (ORIGINALDATE) */
+  originalDate?: string;
   /** ReplayGain 2.0 values (dB, linear peak), from the tags; Opus R128 tags converted */
   rg?: ReplayGainTags;
   sampleRate?: number;
@@ -71,7 +76,7 @@ export interface ReplayGainTags {
 }
 
 /** Bump when the scan reads new fields: unchanged files are then re-read once. */
-const SCAN_VERSION = 3;
+const SCAN_VERSION = 4;
 
 /** ReplayGain from the tags; Opus files carry R128 gains (Q7.8 dB, −23 LUFS) instead. */
 function readReplayGain(meta: import("music-metadata").IAudioMetadata): ReplayGainTags | undefined {
@@ -652,6 +657,8 @@ export async function scanLibrary(
         trackTotal: num(c.track?.of),
         releaseType: bounded(c.releasetype?.join(" ").toLowerCase()),
         originalYear: num(c.originalyear),
+        date: isoDate(c.releasedate) ?? isoDate(c.date),
+        originalDate: isoDate(c.originaldate),
         rg: readReplayGain(meta),
         sampleRate: num(meta.format.sampleRate),
         bitsPerSample: num(meta.format.bitsPerSample),
