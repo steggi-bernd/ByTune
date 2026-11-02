@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ArtistMeta } from "../../electron/metadata";
+import type { ArtistPicture } from "../../electron/wikimedia";
 import type { Track } from "../types";
 import { leadArtist } from "./libraryTracks";
 
@@ -84,4 +85,35 @@ export function useArtistAbout(track: Track | null): ArtistAbout | null {
   }, [artist]);
 
   return data;
+}
+
+const pictures = new Map<string, Promise<ArtistPicture | null>>();
+
+/** The artist's Wikimedia picture at banner size, with its size — for the artist page's banner (lib/artistBanner.ts). */
+export function resolveArtistPicture(artist: string): Promise<ArtistPicture | null> {
+  const key = artist.trim().toLowerCase();
+  if (!key || key === JUNK_ARTIST || !window.bytune?.metaArtistPicture) return Promise.resolve(null);
+  let job = pictures.get(key);
+  if (!job) {
+    job = window.bytune.metaArtistPicture(artist).catch(() => {
+      pictures.delete(key); // offline for now — the next visit asks again
+      return null;
+    });
+    pictures.set(key, job);
+  }
+  return job;
+}
+
+/** The artist page's banner picture; null while asking and when there is none. */
+export function useArtistPicture(artist: string): ArtistPicture | null {
+  const [picture, setPicture] = useState<ArtistPicture | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setPicture(null);
+    void resolveArtistPicture(artist).then((p) => alive && setPicture(p));
+    return () => {
+      alive = false;
+    };
+  }, [artist]);
+  return picture;
 }

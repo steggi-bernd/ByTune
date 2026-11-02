@@ -72,12 +72,12 @@ export function LibraryAlbumView({ param }: { param: string }) {
         <div className="min-w-0 pb-1">
           <div className="text-[13px] font-semibold text-ink-hi/80">{RELEASE_LABEL[album.kind]}</div>
           <h1
-            className="font-display font-extrabold tracking-[-0.04em] text-ink-hi leading-[1.02] mt-1 line-clamp-2"
+            className="font-display font-extrabold tracking-[-0.04em] text-ink-hi leading-[1.15] pb-[0.08em] line-clamp-2"
             style={{ fontSize: album.title.length > 28 ? 44 : 64 }}
           >
             {album.title}
           </h1>
-          <div className="flex flex-wrap items-center gap-x-1.5 text-[14px] text-ink-hi/80 mt-4">
+          <div className="flex flex-wrap items-center gap-x-1.5 text-[14px] text-ink-hi/80 mt-2">
             <span className="font-bold text-ink-hi">
               <ArtistLinks artist={album.artist} />
             </span>

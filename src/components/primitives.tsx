@@ -236,6 +236,8 @@ export function IconBtn({
   onClick,
   className = "",
   size = "md",
+  type,
+  disabled,
 }: {
   icon: LucideIcon;
   title: string;
@@ -244,14 +246,19 @@ export function IconBtn({
   onClick?: (e: React.MouseEvent) => void;
   className?: string;
   size?: "sm" | "md";
+  /** "button" inside a form, where a button otherwise submits it */
+  type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   const dim = size === "sm" ? "p-1.5" : "p-2";
   return (
     <button
+      type={type}
+      disabled={disabled}
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`${dim} rounded-lg transition-all active:scale-90 ${className} ${
+      className={`${dim} rounded-lg transition-all active:scale-90 disabled:opacity-30 disabled:pointer-events-none ${className} ${
         active
           ? "text-accent bg-accent/10"
           : danger

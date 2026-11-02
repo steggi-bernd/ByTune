@@ -1,6 +1,7 @@
 /**
  * CreateMenu — the library "+" trigger and its Spotify-style dropdown:
- * Playlist and Folder (deliberately no Blend). Picking one asks for a name
+ * Playlist and Folder (deliberately no Blend), a smart playlist, and a
+ * playlist brought over — from an M3U file, or recovered from Spotify. Picking one asks for a name
  * first (the shared dialog, pre-filled with the numbered default) — nothing
  * is created until the name is confirmed, so cancel means no empty entry.
  * The menu is portal'd to <body> because the library pill clips
@@ -9,7 +10,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileUp, Folder, ListPlus, Plus, Sparkles } from "lucide-react";
+import { FileUp, Folder, ListMusic, ListPlus, Plus, Sparkles } from "lucide-react";
 import { importM3uPlaylist } from "../lib/playlistFiles";
 import { newSmartPlaylist } from "../stores/smartPlaylists";
 import { useSmartEditor } from "./SmartPlaylistEditor";
@@ -158,6 +159,21 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
               <span className="min-w-0">
                 <span className="block text-[14px] font-semibold text-ink-hi">Import playlist</span>
                 <span className="block text-[12px] text-ink-hi/55 truncate">From an M3U file — foobar2000, VLC …</span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                navigate({ name: "spotify", param: "playlist" });
+              }}
+              className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-left hover:bg-ink-hi/[0.06] transition-colors"
+            >
+              <span className="w-10 h-10 rounded-full bg-ink-hi/[0.08] grid place-items-center shrink-0">
+                <ListMusic className="w-5 h-5 text-ink-hi" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-semibold text-ink-hi">Recover a Spotify playlist</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">From its export — the songs you have, in order</span>
               </span>
             </button>
             <button

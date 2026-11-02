@@ -1,32 +1,25 @@
 /**
  * Album editor: fix an album's artists and gather the albums its tags split
  * off ("Disc 2", a song tagged with another album artist) back into it.
- * The corrections live in ByTune only (stores/albumEdits.ts) — files and
+ * Songs put on it by hand (views/LooseSongsView.tsx) come off it here. The
+ * corrections live in ByTune only (stores/albumEdits.ts) — files and
  * servers stay as they are — and show everywhere at once.
  */
 import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 import { Plus, RotateCcw, Search, Split, X } from "lucide-react";
-import { resolveAlbumKey } from "../lib/albumEdits";
+import { baseTitle, resolveAlbumKey } from "../lib/albumEdits";
 import { useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
 import { foldTag } from "../lib/duplicates";
 import { albumKeyOf, splitCredits } from "../lib/libraryTracks";
 import { RELEASE_LABEL } from "../lib/releases";
 import { useAlbumEdits } from "../stores/albumEdits";
+import { versionsOf } from "../stores/catalog";
 import { useUI } from "../stores/ui";
 import { Artwork, Btn, IconBtn } from "./primitives";
 
 /** Which album page should open its editor (set by the library panel's "Edit album…"). */
 export const useAlbumEditorRequest = create<{ key: string | null }>(() => ({ key: null }));
-
-/** The title without disc/edition markers: "Album (Disc 2)", "Album [CD1]", "Album (Deluxe)" → "album". */
-function baseTitle(title: string): string {
-  return foldTag(
-    title
-      .replace(/\s*[([][^)\]]*\b(?:disc|disk|cd|deluxe|bonus|edition|remaster(?:ed)?|expanded|anniversary|b-sides?)\b[^)\]]*[)\]]/gi, "")
-      .replace(/\s*[-–:]\s*(?:disc|disk|cd)\s*\d+\s*$/i, "")
-  );
-}
 
 function AlbumRow({ album, action }: { album: LibAlbum; action: React.ReactNode }) {
   return (
@@ -47,7 +40,9 @@ function AlbumRow({ album, action }: { album: LibAlbum; action: React.ReactNode 
 export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () => void }) {
   const credit = useAlbumEdits((s) => s.artists[album.key]);
   const mergedInto = useAlbumEdits((s) => s.mergedInto);
+  const handPut = useAlbumEdits((s) => s.songs);
   const { albums, artists } = useLibraryIndex();
+  const navigate = useUI((s) => s.navigate);
   const toast = useUI((s) => s.toast);
   const [adding, setAdding] = useState("");
   const [query, setQuery] = useState("");
@@ -94,6 +89,19 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
     );
     return [...sameTitle, ...sameArtist].slice(0, 20);
   }, [albums, album, query, names]);
+
+  // Songs put on this album by hand, with every copy's id the edit is kept under.
+  const putOn = album.tracks.filter((t) => versionsOf(t).some((v) => handPut?.[v.id]) || !!handPut?.[t.id]);
+  const takeOff = (): void => {
+    const ids = putOn.flatMap((t) => [t.id, ...versionsOf(t).map((v) => v.id)]);
+    useAlbumEdits.getState().clearSongs(ids);
+    const n = putOn.length;
+    toast(`${n} ${n === 1 ? "song is" : "songs are"} without an album again`);
+    if (n === album.tracks.length) {
+      onClose();
+      navigate({ name: "loose" });
+    }
+  };
 
   return (
     <div
@@ -166,6 +174,21 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
               </Btn>
             </form>
           </section>
+
+          {putOn.length > 0 && (
+            <section>
+              <h3 className="text-[14px] font-bold text-ink-hi">Put together by hand</h3>
+              <div className="flex items-center gap-3 mt-2">
+                <p className="min-w-0 flex-1 text-[13px] text-ink-dim">
+                  {putOn.length === album.tracks.length ? "Its songs were" : `${putOn.length} of its songs were`} put on this album by hand —
+                  their tags name no album.
+                </p>
+                <Btn variant="glass" size="sm" icon={Split} onClick={takeOff}>
+                  Take {putOn.length === 1 ? "it" : "them"} off
+                </Btn>
+              </div>
+            </section>
+          )}
 
           <section>
             <h3 className="text-[14px] font-bold text-ink-hi">Parts of this album</h3>

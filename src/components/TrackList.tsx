@@ -1,5 +1,5 @@
 import { Fragment, memo, useCallback } from "react";
-import { AlertCircle, ArrowDownCircle, Check, Download, Heart, Loader2, MoreHorizontal, Pause, Play } from "lucide-react";
+import { AlertCircle, ArrowDownCircle, Check, Download, FolderOpen, Heart, Loader2, MoreHorizontal, Pause, Play } from "lucide-react";
 import { sourceOf, useAvailabilityCheck } from "../stores/availability";
 import { sameSong, useCatalog, versionsOf } from "../stores/catalog";
 import { likedIdSet, useLibrary } from "../stores/library";
@@ -44,15 +44,35 @@ export function DownloadBadge({ id }: { id: string }) {
  * loads — its state stays in view, like a like; the button itself shows on
  * hover. Songs with a file of their own are offline already and show nothing.
  */
-export function OfflineButton({ track }: { track: Track }) {
+/**
+ * The row's file spot — the same width on every row, so the hearts line up:
+ * a server song's saved mark or download button; for a song with a file on
+ * this computer, its folder (opened in the file manager, shown on hover);
+ * otherwise empty room.
+ */
+export function FileButton({ track }: { track: Track }) {
   // Re-read when the catalogue changes: a finished copy joins the song as its local version,
   // and the merged song may then carry the file's id — the download is the server copy's.
   const serverId = useCatalog(() => versionsOf(track).find((v) => SERVER_SONG.test(v.id))?.id ?? null);
-  const hasFile = useCatalog(() => versionsOf(track).some((v) => sourceOf(v) === "local"));
+  const filePath = useCatalog(() => versionsOf(track).find((v) => sourceOf(v) === "local" && v.localPath)?.localPath ?? null);
   const dl = useLibrary((s) => (serverId ? s.downloads[serverId] : undefined));
-  if (!serverId) return null;
-  if (dl?.status === "queued" || dl?.status === "downloading" || dl?.status === "done") return <DownloadBadge id={serverId} />;
-  if (hasFile) return null;
+  if (serverId && (dl?.status === "queued" || dl?.status === "downloading" || dl?.status === "done")) return <DownloadBadge id={serverId} />;
+  if (filePath) {
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          void window.bytune?.revealPath(filePath);
+        }}
+        title="Show in folder"
+        aria-label={`Show ${track.title} in its folder`}
+        className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <FolderOpen className="w-4 h-4" />
+      </button>
+    );
+  }
+  if (!serverId) return <span aria-hidden className="w-7 h-7 shrink-0" />;
   return (
     <button
       onClick={(e) => {
@@ -170,7 +190,7 @@ const TrackRow = memo(function TrackRow({
           basis is 0, it would collapse to zero width before anything else gives.
           The floor keeps the title visible; the album column shrinks instead. */}
       <div className="flex-1 min-w-[120px]">
-        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-ink-hi" : "text-ink-hi"}`}>
+        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : "text-ink-hi"}`}>
           {track.explicit && <ExplicitBadge />}
           <span className="truncate">{track.title}</span>
         </div>
@@ -208,13 +228,13 @@ const TrackRow = memo(function TrackRow({
             e.stopPropagation();
             toggleLike(track);
           }}
-          title={liked ? "Remove from Liked" : "Add to Liked"}
-          aria-label={liked ? "Remove from Liked" : "Add to Liked"}
+          title={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+          aria-label={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
           className={`p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${liked ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
         >
-          <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-ink-hi text-ink-hi" : ""}`} />
+          <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-accent text-accent" : ""}`} />
         </button>
-        <OfflineButton track={track} />
+        <FileButton track={track} />
         <button
           onClick={(e) => {
             e.stopPropagation();

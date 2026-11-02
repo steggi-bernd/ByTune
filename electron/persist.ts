@@ -178,6 +178,7 @@ export async function resetAppData(): Promise<void> {
         "smart-playlists",
         "spotify-import",
         "album-edits",
+        "library-order",
         "server-sync",
         "song-info",
       ]);

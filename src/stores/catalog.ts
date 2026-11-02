@@ -14,7 +14,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import type { JellyfinStatus } from "../../electron/jellyfin";
 import type { SubsonicStatus } from "../../electron/subsonic";
-import { applyAlbumMerges } from "../lib/albumEdits";
+import { applyAlbumMerges, applyArtistAliases, applySongEdits } from "../lib/albumEdits";
 import { mergeDuplicates } from "../lib/duplicates";
 import { loadAllLibraryTracks } from "../lib/libraryTracks";
 import { useAlbumEdits } from "./albumEdits";
@@ -61,6 +61,15 @@ function mergeCounts(counts: PlayCounts, versions: Map<string, Track[]>): PlayCo
   return out;
 }
 
+/**
+ * The songs as shown: the songs put on an album by hand first, then the
+ * user's artist spellings, then their album merges (stores/albumEdits.ts).
+ */
+function shownTracks(base: Track[], versions: Map<string, Track[]>): Track[] {
+  const { aliases, mergedInto, songs } = useAlbumEdits.getState();
+  return applyAlbumMerges(applyArtistAliases(applySongEdits(base, songs ?? {}, versions), aliases ?? {}), mergedInto);
+}
+
 let inflight: Promise<void> | null = null;
 let again = false;
 
@@ -87,7 +96,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
         ]);
         const { tracks, versions } = mergeDuplicates(all);
         set((s) => ({
-          tracks: applyAlbumMerges(tracks, useAlbumEdits.getState().mergedInto),
+          tracks: shownTracks(tracks, versions),
           base: tracks,
           versions,
           byId: new Map(all.map((t) => [t.id, t])),
@@ -109,11 +118,11 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   },
 }));
 
-// An album merge (or its undo) regroups the songs at once — no reload from disk.
+// An album merge, an artist spelling or songs put on an album (or their undo) regroup the songs at once — no reload from disk.
 useAlbumEdits.subscribe((s, prev) => {
-  if (s.mergedInto === prev.mergedInto) return;
+  if (s.mergedInto === prev.mergedInto && s.aliases === prev.aliases && s.songs === prev.songs) return;
   const c = useCatalog.getState();
-  if (c.loaded) useCatalog.setState({ tracks: applyAlbumMerges(c.base, s.mergedInto), version: c.version + 1 });
+  if (c.loaded) useCatalog.setState({ tracks: shownTracks(c.base, c.versions), version: c.version + 1 });
 });
 
 /**

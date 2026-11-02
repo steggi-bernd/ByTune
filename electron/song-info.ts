@@ -119,9 +119,9 @@ export function sameName(a: string, b: string): boolean {
   return !!x && x === norm(b);
 }
 
-/** Genius's stand-in pictures ("default_avatar", "default_cover") are no picture. */
+/** Genius's stand-in pictures ("default_avatar", "default_cover", "default_banner") are no picture. */
 function picture(url: unknown): string | null {
-  return typeof url === "string" && /^https:\/\//.test(url) && !/default_(avatar|cover)/i.test(url) ? url : null;
+  return typeof url === "string" && /^https:\/\//.test(url) && !/default_(avatar|cover|banner)/i.test(url) ? url : null;
 }
 
 const text = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
@@ -202,5 +202,13 @@ export function artistImages(name: string): Promise<ArtistImages | null> {
   return cached(key, async () => {
     const data = await getJson(`https://genius.com/api/search/multi?q=${encodeURIComponent(name)}`);
     return artistFromGenius(data?.response?.sections, name);
-  });
+  }).then(withoutStandIns);
+}
+
+/** Answers kept before a stand-in picture was recognized as one lose it here. */
+function withoutStandIns(found: ArtistImages | null): ArtistImages | null {
+  if (!found) return null;
+  const photo = picture(found.photo);
+  const banner = picture(found.banner);
+  return photo || banner ? { ...found, photo, banner } : null;
 }

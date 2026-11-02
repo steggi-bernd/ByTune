@@ -1,10 +1,12 @@
 /**
  * Right rail — the always-on song-details panel, Spotify-style.
  *
- * Default mode ("details"): a sharp artwork tile over the track title and an
+ * Default mode ("details"): a sharp artwork tile over the track title (it
+ * opens the album) and the artists (each opens their page), then Next up,
+ * About the song (Genius, plus the measured tempo and key) and an
  * About-the-artist card in Spotify's shape — photo header, name, facts line
- * beside a Wikipedia pill, and the Wikipedia lead — clicking it searches the
- * library for that artist. The queue button in the player bar swaps the
+ * beside a Wikipedia pill, and the Wikipedia lead — clicking it opens the
+ * artist in the library. The queue button in the player bar swaps the
  * body to the queue sheet ("Queue" / "Recently played" text tabs with the
  * underline treatment, X returns to details). Lyrics live in the centre pane
  * (see LyricsCenter.tsx), not here.
@@ -19,11 +21,14 @@ import { upgradeArtwork, wideArtwork } from "../lib/artwork";
 import { draggedTrack, dragHasQueueRow, dragHasTrack, readQueueIndex, readTrack, useDrag } from "../lib/dnd";
 import { branchOffAfterDrop } from "../lib/trackActions";
 import { fmtTime } from "../lib/format";
-import { useArtistImage } from "../lib/artistImage";
 import { useArtistAbout } from "../lib/artistAbout";
-import { useSongInfo } from "../lib/songInfo";
+import { useArtistImages, useSongInfo } from "../lib/songInfo";
+import { isLibraryTrack, leadArtist } from "../lib/libraryTracks";
+import { ArtistLinks } from "./ArtistLinks";
 import { useLibrary } from "../stores/library";
 import { useSettings } from "../stores/settings";
+import { soundOf, useSound } from "../stores/sound";
+import { keyName } from "../../electron/sound-analysis";
 import type { Track } from "../types";
 
 /** The queue's "Now playing" row — draggable like every other song row. */
@@ -96,7 +101,7 @@ function TrackRow({
       )}
       <Artwork src={track.thumb} className="w-9 h-9 rounded-md shrink-0" iconClassName="w-3.5 h-3.5" alt="" />
       <div className="flex-1 min-w-0">
-        <div className={`text-[13px] truncate font-semibold ${isCurrent ? "text-ink-hi" : "text-ink-hi"}`}>
+        <div className={`text-[13px] truncate font-semibold ${isCurrent ? "text-accent" : "text-ink-hi"}`}>
           {track.title}
         </div>
         <div className="text-[11.5px] truncate text-ink-hi/55 mt-0.5">{track.artist}</div>
@@ -122,29 +127,18 @@ function TrackRow({
   );
 }
 
-/* ------------------------------------------------------------ queue sheet */
+/* ------------------------------------------------------------ dropping on the queue */
 
-/** Exported for the fullscreen player's Queue view — the same sheet, data
-    and behavior as the right-rail queue; only the mount point differs. */
-export function QueuePanel({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"queue" | "recent">("queue");
-  const queue = usePlayer((s) => s.queue);
+/**
+ * Drag to reorder "Next up" — or drag a song in from any list: the row
+ * under the pointer shows where it lands (above or below it, by the
+ * pointer's half). `tail` is the row the space below the list stands for:
+ * the queue's last song in the queue panel, the card's last row in the
+ * details' "Next up". The playing song stays put.
+ */
+function useQueueDrop(tail: () => number) {
   const index = usePlayer((s) => s.index);
-  const playing = usePlayer((s) => s.playing);
-  const playAt = usePlayer((s) => s.playQueue);
-  const removeAt = usePlayer((s) => s.removeAt);
   const moveInQueue = usePlayer((s) => s.moveInQueue);
-  const history = useLibrary((s) => s.history);
-  const playTrack = usePlayer((s) => s.playTrack);
-  const available = useAvailabilityCheck();
-
-  const current = queue[index] ?? null;
-  const upcoming = queue.slice(index + 1);
-
-  /* Drag to reorder "Next up" — or drag a song in from any list: the row
-     under the pointer shows where it lands (above or below it, by the
-     pointer's half); empty space below the list means "to the end". The
-     playing song stays put. */
   const [drop, setDrop] = useState<{ index: number; before: boolean } | null>(null);
   useEffect(() => {
     const clear = (): void => setDrop(null);
@@ -203,8 +197,30 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
       const r = row.getBoundingClientRect();
       if (e.clientY < r.top + r.height / 2) return { index: Number(row.dataset.queueAt), before: true };
     }
-    return { index: queue.length - 1, before: false };
+    return { index: tail(), before: false };
   };
+  return { drop, setDrop, accepts, moveTo, dropSong, rowDragOver, rowDrop, slotAt };
+}
+
+/* ------------------------------------------------------------ queue sheet */
+
+/** Exported for the fullscreen player's Queue view — the same sheet, data
+    and behavior as the right-rail queue; only the mount point differs. */
+export function QueuePanel({ onClose }: { onClose: () => void }) {
+  const [tab, setTab] = useState<"queue" | "recent">("queue");
+  const queue = usePlayer((s) => s.queue);
+  const index = usePlayer((s) => s.index);
+  const playing = usePlayer((s) => s.playing);
+  const playAt = usePlayer((s) => s.playQueue);
+  const removeAt = usePlayer((s) => s.removeAt);
+  const history = useLibrary((s) => s.history);
+  const playTrack = usePlayer((s) => s.playTrack);
+  const available = useAvailabilityCheck();
+
+  const current = queue[index] ?? null;
+  const upcoming = queue.slice(index + 1);
+
+  const { drop, setDrop, accepts, moveTo, dropSong, rowDragOver, rowDrop, slotAt } = useQueueDrop(() => queue.length - 1);
   // Row keys must not depend on the current queue index: embedding `index`
   // shifted every key on each track advance, remounting the whole upcoming
   // list (new drag state, new <img> decode) per track. Key by id plus its
@@ -284,7 +300,7 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
             <h2 className="text-[20px] font-extrabold tracking-[-0.4px] text-ink-hi">Next up</h2>
           </div>
           <div
-            className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-0.5"
+            className="flex-1 min-h-0 overflow-y-auto scroll-center px-2 pb-3 space-y-0.5"
             onDragOver={(e) => {
               if (!accepts(e) || (dragHasQueueRow(e) && !upcoming.length)) return;
               e.preventDefault();
@@ -334,7 +350,7 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-0.5">
+        <div className="flex-1 min-h-0 overflow-y-auto scroll-center px-2 py-2 space-y-0.5">
           {history.length === 0 ? (
             <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">
               Nothing here yet — tracks you play land in Recently played.
@@ -354,7 +370,7 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
 
 function DetailsBody() {
   const track = usePlayer((s) => s.queue[s.index] ?? null);
-  const { artistImage } = useArtistImage(track);
+  const navigate = useUI((s) => s.navigate);
   const detailsDrag = useDrag({ track: track ?? { id: "", title: "", artist: "", duration: 0, thumb: "" } });
 
   if (!track) {
@@ -371,8 +387,13 @@ function DetailsBody() {
     );
   }
 
+  const album = track.albumId?.startsWith("lib:album:") ? track.albumId : null;
+  const openAlbum = (): void => {
+    if (album) navigate({ name: "album", param: album });
+  };
+
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto scroll-center px-3 py-3 space-y-3">
       {/* Full-width square artwork, Spotify-panel style — everything scrolls.
           The cover + title block is a drag source: drop it on a sidebar
           playlist. The whole header (art, title, artist) shares one drag
@@ -386,58 +407,166 @@ function DetailsBody() {
           alt=""
         />
 
-        {/* Title + artist directly under the art. */}
+        {/* Title + artist directly under the art, as in the player bar: the
+            title opens the album, each credited artist their own page. */}
         <div className="px-0.5 mt-2.5 animate-meta-in" key={`rrmeta-${track.id}`}>
-          <div className="text-[24px] font-extrabold tracking-[-0.5px] text-ink-hi leading-tight" title={track.title}>
-            {track.title}
+          <div className="text-[24px] font-extrabold tracking-[-0.5px] text-ink-hi leading-tight">
+            {album ? (
+              <span
+                role="link"
+                tabIndex={0}
+                onClick={openAlbum}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") openAlbum();
+                }}
+                title={track.album ? `Go to ${track.album}` : undefined}
+                className="cursor-pointer hover:underline"
+              >
+                {track.title}
+              </span>
+            ) : (
+              <span title={track.title}>{track.title}</span>
+            )}
           </div>
-          <div className="text-[14px] text-ink-hi/70 mt-1">{track.artist}</div>
+          <div className="text-[14px] text-ink-hi/70 mt-1">
+            {isLibraryTrack(track) ? <ArtistLinks artist={track.artist} className="hover:text-ink-hi" /> : track.artist}
+          </div>
         </div>
       </div>
 
+      <NextUpCard />
       <AboutSongCard track={track} />
-      <AboutArtistCard track={track} fallbackImage={artistImage ?? track.thumb ?? null} />
+      <AboutArtistCard track={track} />
     </div>
+  );
+}
+
+/**
+ * The next three songs of the queue, right under the song's own details:
+ * a click plays one, "Open queue" shows the rest. Songs dragged here land
+ * where the line shows and its rows move like the queue's (useQueueDrop);
+ * while a song hovers here the panel doesn't turn to the queue. Nothing
+ * after this song, no card.
+ */
+function NextUpCard() {
+  const queue = usePlayer((s) => s.queue);
+  const index = usePlayer((s) => s.index);
+  const playQueue = usePlayer((s) => s.playQueue);
+  const available = useAvailabilityCheck();
+  const next = queue.slice(index + 1, index + 4);
+  const last = index + next.length;
+  const { drop, setDrop, accepts, moveTo, dropSong, slotAt } = useQueueDrop(() => last);
+  if (!next.length) return null;
+  return (
+    <section
+      aria-label="Next up"
+      data-next-up
+      onDragOver={(e) => {
+        if (!accepts(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = dragHasQueueRow(e) ? "move" : "copy";
+        const slot = slotAt(e);
+        setDrop((d) => (d?.index === slot.index && d.before === slot.before ? d : slot));
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(null);
+      }}
+      onDrop={(e) => {
+        if (!accepts(e)) return;
+        e.preventDefault();
+        const slot = slotAt(e);
+        const insertAt = slot.before ? slot.index : slot.index + 1;
+        if (dragHasQueueRow(e)) moveTo(readQueueIndex(e), insertAt);
+        else dropSong(e, insertAt);
+      }}
+      className="rounded-xl bg-ink-hi/[0.04] px-1.5 pt-3 pb-1.5 animate-fade-in"
+    >
+      <div className="flex items-center justify-between gap-3 px-2 pb-1.5">
+        <h3 className="text-[15px] font-bold text-ink-hi">Next up</h3>
+        <button
+          onClick={() => useUI.getState().toggleQueue()}
+          className="text-[12.5px] font-semibold text-ink-hi/65 hover:text-ink-hi transition-colors"
+        >
+          Open queue
+        </button>
+      </div>
+      {next.map((t, i) => {
+        const at = index + 1 + i;
+        return (
+          <TrackRow
+            key={`${at}:${t.id}`}
+            track={t}
+            queueIndex={at}
+            available={available(t)}
+            dropEdge={drop?.index === at ? (drop.before ? "before" : "after") : null}
+            onPlay={() => playQueue(queue, at)}
+          />
+        );
+      })}
+    </section>
   );
 }
 
 const CLAMP_5 = { display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden" } as const;
 
 /**
- * About the song, from Genius (lib/songInfo.ts): when and on what it came
- * out, its story — five lines, the rest on "Show more" — its credits
- * (written, produced, then the detailed ones) and what it samples. The
- * Genius button opens the song's page, the source of all of it.
+ * About the song: its tempo and key as the sound analysis measured them, and
+ * from Genius (lib/songInfo.ts) when and on what it came out, its story —
+ * five lines, the rest on "Show more" — its credits (written, produced, then
+ * the detailed ones) and what it samples. The Genius button opens the song's
+ * page, the source of all of that. Neither known, no card.
  */
 function AboutSongCard({ track }: { track: Track }) {
-  const info = useSongInfo(track);
+  const songInfo = useSongInfo(track);
+  const sound = useSound((s) => soundOf(track, s.facts));
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [track.id]);
-  if (!info || (!info.description && !info.credits.length && !info.released)) return null;
+  const info = songInfo && (songInfo.description || songInfo.credits.length || songInfo.released) ? songInfo : null;
+  const tempo = sound?.bpm ? `${Math.round(sound.bpm)} BPM` : "";
+  const key = sound ? keyName(sound.key, sound.minor) : "";
+  if (!info && !tempo && !key) return null;
 
-  const credits = open ? info.credits : info.credits.slice(0, 4);
-  const more = (info.description?.length ?? 0) > 260 || info.credits.length > 4 || info.samples.length > 0 || !!info.recordedAt;
+  const credits = !info ? [] : open ? info.credits : info.credits.slice(0, 4);
+  const more = !!info && ((info.description?.length ?? 0) > 260 || info.credits.length > 4 || info.samples.length > 0 || !!info.recordedAt);
   return (
     <section aria-label="About the song" className="rounded-xl bg-ink-hi/[0.04] p-3.5 animate-fade-in">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 min-h-[28px]">
         <h3 className="text-[15px] font-bold text-ink-hi">About the song</h3>
-        <button
-          onClick={() => window.open(info.url, "_blank")}
-          title="Open the song on Genius"
-          className="shrink-0 h-7 px-3 rounded-full border border-ink-hi/30 text-[12px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
-        >
-          Genius
-        </button>
+        {info && (
+          <button
+            onClick={() => window.open(info.url, "_blank")}
+            title="Open the song on Genius"
+            className="shrink-0 h-7 px-3 rounded-full border border-ink-hi/30 text-[12px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
+          >
+            Genius
+          </button>
+        )}
       </div>
-      {(info.released || info.album) && (
+      {info && (info.released || info.album) && (
         <div className="text-[12.5px] text-ink-hi/55 mt-1 truncate">{[info.released, info.album].filter(Boolean).join(" · ")}</div>
       )}
-      {info.description && (
+      {(tempo || key) && (
+        <dl className="mt-2.5 flex gap-7" title="Measured from the audio by the sound analysis">
+          {tempo && (
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Tempo</dt>
+              <dd className="text-[13px] text-ink-hi/85 mt-0.5 tabular-nums">{tempo}</dd>
+            </div>
+          )}
+          {key && (
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Key</dt>
+              <dd className="text-[13px] text-ink-hi/85 mt-0.5">{key}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      {info?.description && (
         <p className="mt-2.5 text-[13px] leading-relaxed text-ink-hi/70 whitespace-pre-line" style={open ? undefined : CLAMP_5}>
           {info.description}
         </p>
       )}
-      {(credits.length > 0 || (open && (info.samples.length > 0 || !!info.recordedAt))) && (
+      {info && (credits.length > 0 || (open && (info.samples.length > 0 || !!info.recordedAt))) && (
         <dl className="mt-3 space-y-2">
           {credits.map((c, i) => (
             <div key={`${c.label}-${i}`}>
@@ -476,21 +605,20 @@ function AboutSongCard({ track }: { track: Track }) {
 /**
  * About the artist, Spotify-panel style: photo header with the section label
  * over its top edge, the artist's name, the MusicBrainz facts line and the
- * Wikipedia lead. Everything comes from the open databases (artistAbout.ts).
- * Clicking the card searches the library for the artist; the Wikipedia
- * button opens the source article in the browser, which is also the credit
- * the CC BY-SA licence of the text asks for.
+ * Wikipedia lead. Everything comes from the open databases (artistAbout.ts);
+ * the picture is the artist's own — the Wikimedia photo, else the one the
+ * song's source carries, else Genius's photo or banner — never the song's
+ * cover again; with none, the card goes without a picture. Clicking the
+ * card opens the artist in the library; the Wikipedia button opens the
+ * source article in the browser, which is also the credit the CC BY-SA
+ * licence of the text asks for.
  */
-function AboutArtistCard({
-  track,
-  fallbackImage,
-}: {
-  track: Track;
-  fallbackImage: string | null;
-}) {
+function AboutArtistCard({ track }: { track: Track }) {
   const about = useArtistAbout(track);
   const navigate = useUI((s) => s.navigate);
-  const photo = about?.thumb ?? fallbackImage;
+  // Genius is asked only when the open databases have no photo.
+  const genius = useArtistImages(about && !about.thumb && !track.artistImage ? leadArtist(track.artist) : "");
+  const photo = about?.thumb ?? track.artistImage ?? genius?.photo ?? genius?.banner ?? null;
 
   if (!about) return null;
 
@@ -518,17 +646,17 @@ function AboutArtistCard({
     >
       {/* Photo header with the label over its top edge, Spotify-style — a tall
           3:2 frame showing the whole artist shot, not a cropped strip. */}
-      <div className="relative aspect-[3/2] bg-ink-hi/[0.06]">
-        {photo ? (
+      {photo ? (
+        <div className="relative aspect-[3/2] bg-ink-hi/[0.06]">
           <img src={wideArtwork(photo)} alt="" className="w-full h-full object-cover object-top art-hairline" />
-        ) : (
-          <div className="w-full h-full art-hairline" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/10 to-transparent" />
-        <div className="absolute top-2.5 left-3.5 text-[15px] font-bold text-ink-hi">About the artist</div>
-      </div>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/10 to-transparent" />
+          <div className="absolute top-2.5 left-3.5 text-[15px] font-bold text-ink-hi">About the artist</div>
+        </div>
+      ) : (
+        <h3 className="px-3.5 pt-3.5 text-[15px] font-bold text-ink-hi">About the artist</h3>
+      )}
 
-      <div className="p-3.5 pt-3">
+      <div className={photo ? "p-3.5 pt-3" : "p-3.5 pt-2"}>
         <div className="text-[15px] font-bold text-ink-hi truncate">{about.name}</div>
         {about.genres.length > 0 && (
           <div className="text-[12.5px] text-ink-hi/55 truncate mt-0.5">{about.genres.slice(0, 3).join(" · ")}</div>
@@ -602,6 +730,8 @@ export function RightRail() {
   };
   useEffect(() => stopSpring, []);
   const springToQueue = (e: React.DragEvent): void => {
+    // Over the details' "Next up" the song lands right there.
+    if ((e.target as HTMLElement).closest?.("[data-next-up]")) return stopSpring();
     if (mode === "queue" || !dragHasTrack(e) || springTimer.current !== null) return;
     springTimer.current = window.setTimeout(() => {
       springTimer.current = null;

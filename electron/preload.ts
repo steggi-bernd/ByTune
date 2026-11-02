@@ -8,7 +8,11 @@ import type { ArchiveImport } from "./archive-import";
 import type { M3uEntry } from "./m3u";
 import type { CastStatus } from "./cast";
 import type { ArtistImages, SongInfo } from "./song-info";
-import type { Listen } from "./listens";
+import type { ArtistPicture } from "./wikimedia";
+import type { Listen, MomentScore } from "./listens";
+import type { LyricMatch } from "./lyrics-index";
+import type { SoundFacts } from "./sound-analysis";
+import type { SoundStatus } from "./sound-library";
 
 // The PiP window loads this same preload but its scope requests are rejected
 // by design (main-window-only handler) — an eager invoke there would leave an
@@ -91,6 +95,12 @@ const api = {
     ipcRenderer.invoke("ffmpeg:status", recheck) as Promise<{ path: string | null; version: string | null }>,
   localArtBytes: (thumb: string) => ipcRenderer.invoke("library:artbytes", thumb),
   /** Background cover/album fills for the local library land here, batch by batch. */
+  /** the mouse's back/forward buttons, where the system reports them as app commands (Windows) */
+  onNavCommand: (cb: (dir: "back" | "forward") => void): (() => void) => {
+    const listener = (_e: unknown, dir: "back" | "forward"): void => cb(dir);
+    ipcRenderer.on("nav:command", listener as never);
+    return () => ipcRenderer.removeListener("nav:command", listener as never);
+  },
   onLibraryEnriched: (cb: (lib: unknown) => void): (() => void) => {
     const listener = (_e: unknown, lib: unknown): void => cb(lib);
     ipcRenderer.on("library:enriched", listener as never);
@@ -112,12 +122,27 @@ const api = {
   metaRecording: (title: string, artist: string, durationSec = 0) =>
     ipcRenderer.invoke("meta:recording", title, artist, durationSec),
   /** The listening history, kept on this computer (electron/listens.ts): newest first, a page at a time; or all of it as CSV */
+  /** songs by a line of their lyrics, from the lyrics already on this computer */
+  searchLyrics: (query: string) => ipcRenderer.invoke("lyrics:search", query) as Promise<LyricMatch[]>,
+  /** the sound analysis: its progress, its results by song id, the Settings switch, and word when more are measured */
+  soundStatus: () => ipcRenderer.invoke("sound:status") as Promise<SoundStatus>,
+  soundFacts: () => ipcRenderer.invoke("sound:facts") as Promise<Record<string, SoundFacts>>,
+  setSoundAnalysis: (on: boolean) => ipcRenderer.invoke("sound:enabled", on),
+  onSoundUpdated: (cb: () => void): (() => void) => {
+    const listener = (): void => cb();
+    ipcRenderer.on("sound:updated", listener);
+    return () => ipcRenderer.removeListener("sound:updated", listener);
+  },
+  /** how much each song belongs to this moment of the day and week, from the listening history */
+  listensMoment: () => ipcRenderer.invoke("listens:moment") as Promise<MomentScore[]>,
   listensPage: (before?: number, limit = 100) =>
     ipcRenderer.invoke("listens:page", before, limit) as Promise<{ listens: Listen[]; more: boolean; total: number }>,
   listensExport: () => ipcRenderer.invoke("listens:export") as Promise<{ path: string; count: number } | null>,
   /** About a song — its story and credits — and an artist's photo and banner (Genius, electron/song-info.ts) */
   metaSong: (title: string, artist: string) => ipcRenderer.invoke("meta:song", title, artist) as Promise<SongInfo | null>,
   metaArtistImages: (name: string) => ipcRenderer.invoke("meta:artistImages", name) as Promise<ArtistImages | null>,
+  /** an artist's Wikimedia picture at banner size, with its size (electron/wikimedia.ts) */
+  metaArtistPicture: (name: string) => ipcRenderer.invoke("meta:artistPicture", name) as Promise<ArtistPicture | null>,
 
   // Jellyfin server (token stays in the main process)
   jellyfinStatus: () => ipcRenderer.invoke("jellyfin:status"),

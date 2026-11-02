@@ -172,12 +172,12 @@ function TransportButton({
       title={title}
       aria-label={title}
       className={`relative grid h-8 w-8 place-items-center rounded-full transition-colors ${
-        active ? "text-white" : "text-[#b3b3b3] hover:text-white"
+        active ? "text-accent" : "text-[#b3b3b3] hover:text-white"
       }`}
     >
       {children}
       {active && (
-        <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white" />
+        <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent" />
       )}
     </button>
   );
@@ -204,14 +204,14 @@ function BarButton({
       aria-label={title}
       aria-pressed={active}
       className={`relative grid h-8 w-8 place-items-center rounded-full transition-colors ${extra} ${
-        active ? "text-white" : "text-white/70 hover:text-white"
+        active ? "text-accent" : "text-white/70 hover:text-white"
       }`}
     >
       {children}
       {/* Spotify's selected treatment for the right-cluster toggles: full
           white icon plus a small dot beneath — no highlight circle. */}
       {active && (
-        <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white" />
+        <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent" />
       )}
     </button>
   );
@@ -299,11 +299,11 @@ function CastButton() {
       aria-haspopup="menu"
       aria-pressed={!!active}
       className={`relative grid h-8 w-8 place-items-center rounded-full transition-colors ${
-        active ? "text-white" : "text-white/70 hover:text-white"
+        active ? "text-accent" : "text-white/70 hover:text-white"
       }`}
     >
       {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Speaker className="h-4 w-4" />}
-      {active && <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white" />}
+      {active && <span className="absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent" />}
     </button>
   );
 }
@@ -478,7 +478,7 @@ export function PlayerBar() {
             >
               {/* Spotify's model: the glyph reflects Liked state, the click
                   always opens the add-to-playlist picker. */}
-              {liked ? <SpCheck /> : <SpPlus />}
+              {liked ? <SpCheck className="text-accent" /> : <SpPlus />}
             </button>
           )}
         </div>

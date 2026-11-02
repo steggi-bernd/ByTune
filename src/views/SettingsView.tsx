@@ -6,6 +6,8 @@ import {
   BarChart3,
   Check,
   ChevronRight,
+  Circle,
+  CircleCheck,
   CloudDownload,
   CloudUpload,
   Disc3,
@@ -22,9 +24,11 @@ import {
   Infinity as InfinityIcon,
   KeyRound,
   Languages,
+  ListChecks,
   ListMusic,
   Maximize2,
   Music4,
+  Palette,
   Radio,
   RefreshCw,
   ShoppingBag,
@@ -47,6 +51,7 @@ import {
   DOWNLOAD_QUALITY_LABEL,
   STREAM_QUALITY_LABEL,
   useSettings,
+  type Accent,
   type Corners,
 } from "../stores/settings";
 import { useSession } from "../lib/session";
@@ -60,6 +65,7 @@ import type { OutputDeviceChoice } from "../lib/audio-output";
 import type { DiscordStatus } from "../../electron/discord";
 import type { JellyfinStatus } from "../../electron/jellyfin";
 import type { SubsonicStatus } from "../../electron/subsonic";
+import type { SoundStatus } from "../../electron/sound-library";
 import { syncFavorites } from "../lib/serverSync";
 
 /* ============================================================ settings chrome
@@ -117,7 +123,7 @@ function Switch({
         if (!disabled) onChange(!checked);
       }}
       className={`relative shrink-0 w-[42px] h-[26px] rounded-full transition-colors duration-200 disabled:opacity-40 ${
-        checked ? "bg-primary" : "bg-ink-hi/[0.16]"
+        checked ? "bg-accent" : "bg-ink-hi/[0.16]"
       }`}
     >
       <span
@@ -168,6 +174,55 @@ function FfmpegRow() {
       }
       value={status?.path ? `v${status.version}` : status ? "Missing" : undefined}
       onClick={() => check(true)}
+    />
+  );
+}
+
+/**
+ * Sound analysis (electron/sound-library.ts): tempo, key and energy of every
+ * local song, measured once in the background — its switch and how far it
+ * got, asked again every few seconds while Settings is open.
+ */
+function SoundAnalysisRow() {
+  const on = useSettings((s) => s.soundAnalysis);
+  const setOn = useSettings((s) => s.setSoundAnalysis);
+  const [status, setStatus] = useState<SoundStatus | null>(null);
+  useEffect(() => {
+    let live = true;
+    const read = (): void => {
+      void window.bytune
+        ?.soundStatus()
+        .then((st) => {
+          if (live) setStatus(st);
+        })
+        .catch(() => undefined);
+    };
+    read();
+    const timer = window.setInterval(read, 3000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+  const n = (v: number): string => v.toLocaleString("en-US");
+  const progress = !status
+    ? ""
+    : !status.ffmpeg
+      ? "needs FFmpeg"
+      : !on
+        ? ""
+        : status.total === 0
+          ? "no local songs yet"
+          : status.done >= status.total
+            ? `all ${n(status.total)} songs measured`
+            : `${n(status.done)} of ${n(status.total)} songs measured`;
+  return (
+    <SettingsRow
+      icon={AudioLines}
+      title="Sound analysis"
+      subtitle={`Tempo, key and energy of each song, measured once in the background${progress ? ` — ${progress}` : ""}`}
+      trailing={<Switch checked={on} onChange={setOn} />}
+      onClick={() => setOn(!on)}
     />
   );
 }
@@ -608,6 +663,47 @@ function EqualizerRows() {
     check glyph — filled on the current value, invisible on the rest so the
     labels keep their alignment — and picking one commits it immediately. */
 const CORNERS_LABEL: Record<Corners, string> = { round: "Round", soft: "Soft", square: "Square" };
+const ACCENT_LABEL: Record<Accent, string> = {
+  violet: "Violet",
+  blue: "Blue",
+  teal: "Teal",
+  green: "Green",
+  amber: "Amber",
+  coral: "Coral",
+  pink: "Pink",
+  white: "White",
+};
+/** Each accent drawn in its own colour on its menu row (whole class names, so Tailwind keeps them). */
+const ACCENT_SWATCH: Record<Accent, string> = {
+  violet: "fill-[#a78bfa] text-[#a78bfa]",
+  blue: "fill-[#60a5fa] text-[#60a5fa]",
+  teal: "fill-[#2dd4bf] text-[#2dd4bf]",
+  green: "fill-[#4ade80] text-[#4ade80]",
+  amber: "fill-[#fbbf24] text-[#fbbf24]",
+  coral: "fill-[#fb7185] text-[#fb7185]",
+  pink: "fill-[#f472b6] text-[#f472b6]",
+  white: "fill-white text-white",
+};
+const ACCENT_PICKED: Record<Accent, string> = {
+  violet: "fill-[#a78bfa]/25 text-[#a78bfa]",
+  blue: "fill-[#60a5fa]/25 text-[#60a5fa]",
+  teal: "fill-[#2dd4bf]/25 text-[#2dd4bf]",
+  green: "fill-[#4ade80]/25 text-[#4ade80]",
+  amber: "fill-[#fbbf24]/25 text-[#fbbf24]",
+  coral: "fill-[#fb7185]/25 text-[#fb7185]",
+  pink: "fill-[#f472b6]/25 text-[#f472b6]",
+  white: "fill-white/25 text-white",
+};
+
+/** The accent presets, each a dot of its colour; the current one is checked. */
+function accentMenu(current: Accent, onPick: (a: Accent) => void): MenuItem[] {
+  return (Object.keys(ACCENT_LABEL) as Accent[]).map((a) => ({
+    label: ACCENT_LABEL[a],
+    icon: a === current ? CircleCheck : Circle,
+    iconClassName: a === current ? ACCENT_PICKED[a] : ACCENT_SWATCH[a],
+    action: () => onPick(a),
+  }));
+}
 
 function qualityMenu<T extends string>(
   order: T[],
@@ -1048,6 +1144,15 @@ export function SettingsView() {
         />
         <Divider />
         <FfmpegRow />
+        <Divider />
+        <SoundAnalysisRow />
+        <Divider />
+        <SettingsRow
+          icon={ListChecks}
+          title="Library check"
+          subtitle="Artists written different ways, albums in parts, songs you have twice, missing covers"
+          onClick={() => useUI.getState().navigate({ name: "check" })}
+        />
       </SettingsGroup>
 
       <ServerSyncGroup />
@@ -1093,6 +1198,14 @@ export function SettingsView() {
           subtitle={s.smartFade ? "Enabled: transitions decided per track pair" : "Disabled: uses the crossfade above"}
           trailing={<Switch checked={s.smartFade} onChange={s.setSmartFade} />}
           onClick={() => s.setSmartFade(!s.smartFade)}
+        />
+        <Divider />
+        <SettingsRow
+          icon={InfinityIcon}
+          title="Seamless albums"
+          subtitle="Live albums, DJ mixes and songs that run into each other play on without a gap or a crossfade"
+          trailing={<Switch checked={s.seamlessAlbums} onChange={s.setSeamlessAlbums} />}
+          onClick={() => s.setSeamlessAlbums(!s.seamlessAlbums)}
         />
         <Divider />
         <SettingsRow
@@ -1165,6 +1278,15 @@ export function SettingsView() {
           value={CORNERS_LABEL[s.corners]}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => toggleDropdownAt(e, qualityMenu(["round", "soft", "square"], CORNERS_LABEL, s.corners, s.setCorners))}
+        />
+        <Divider />
+        <SettingsRow
+          icon={Palette}
+          title="Accent"
+          subtitle="The colour of what's playing, what's on, likes and the main buttons"
+          value={ACCENT_LABEL[s.accent]}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => toggleDropdownAt(e, accentMenu(s.accent, s.setAccent))}
         />
         <Divider />
         <SettingsRow

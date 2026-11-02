@@ -364,20 +364,23 @@ export function ExploreView() {
               </button>
             )}
           </label>
-          <button
-            ref={sortButton}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              openSortMenu();
-            }}
-            title={`Sorted by ${sortLabel.toLowerCase()}, ${sort.desc ? "descending" : "ascending"}`}
-            aria-label={`Sorted by ${sortLabel.toLowerCase()}`}
-            className="h-9 px-3 rounded-full flex items-center gap-1.5 text-[13px] font-medium text-ink-hi/80 hover:text-ink-hi bg-ink-hi/[0.06] hover:bg-ink-hi/[0.09] transition-colors"
-          >
-            <ArrowUpDown className="w-4 h-4" />
-            {sortLabel}
-          </button>
+          {/* The list sorts by its column heads; the tiles have none. */}
+          {layout === "grid" && (
+            <button
+              ref={sortButton}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                openSortMenu();
+              }}
+              title={`Sorted by ${sortLabel.toLowerCase()}, ${sort.desc ? "descending" : "ascending"}`}
+              aria-label={`Sorted by ${sortLabel.toLowerCase()}`}
+              className="h-9 px-3 rounded-full flex items-center gap-1.5 text-[13px] font-medium text-ink-hi/80 hover:text-ink-hi bg-ink-hi/[0.06] hover:bg-ink-hi/[0.09] transition-colors"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+              {sortLabel}
+            </button>
+          )}
           <div className="flex items-center rounded-full bg-ink-hi/[0.06] p-0.5">
             {(
               [

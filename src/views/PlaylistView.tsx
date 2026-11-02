@@ -8,7 +8,7 @@ import { Download, FileDown, Heart, ListMusic, ListPlus, MoreHorizontal, Play, S
 import { exportM3uPlaylist } from "../lib/playlistFiles";
 import { downloadForOffline, SERVER_SONG } from "../lib/downloads";
 import { versionsOf } from "../stores/catalog";
-import { OfflineButton } from "../components/TrackList";
+import { FileButton } from "../components/TrackList";
 import { Artwork, EmptyState, EqBars, ExplicitBadge } from "../components/primitives";
 import { playlistHeaderItems, playlistMenuItems } from "../lib/trackActions";
 import { useDrag } from "../lib/dnd";
@@ -50,7 +50,7 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   // count only appears once there's something to count.
   const meta = [
     "Playlist",
-    tracks.length ? plural(tracks.length, "track", "tracks") : "",
+    tracks.length ? plural(tracks.length, "song", "songs") : "",
     totalSec > 0 ? `about ${fmtTime(totalSec)}` : "",
   ]
     .filter(Boolean)
@@ -217,6 +217,12 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
                 >
                   Browse Explore
                 </button>
+                <button
+                  onClick={() => useUI.getState().navigate({ name: "spotify", param: `playlist:${playlist.id}` })}
+                  className="h-10 px-5 rounded-full bg-panel border border-ink-hi/[0.09] text-[13.5px] font-semibold text-ink-hi hover:bg-ink-hi/[0.05] hover:border-ink-hi/[0.2] transition-all active:scale-[0.98]"
+                >
+                  Recover a Spotify playlist
+                </button>
               </div>
             }
           />
@@ -270,7 +276,7 @@ function PlaylistTrackRow({
           <EqBars />
         ) : (
           <>
-            <span className={`group-hover:hidden ${isCurrent ? "text-ink-hi font-medium" : ""}`}>{index + 1}</span>
+            <span className={`group-hover:hidden ${isCurrent ? "text-accent font-medium" : ""}`}>{index + 1}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -288,7 +294,7 @@ function PlaylistTrackRow({
       </div>
       <Artwork src={track.thumb} className="w-[52px] h-[52px] rounded-lg shrink-0" iconClassName="w-4 h-4" alt="" />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] text-ink-hi">
+        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : "text-ink-hi"}`}>
           {track.explicit && <ExplicitBadge />}
           <span className="truncate">{track.title}</span>
         </div>
@@ -301,13 +307,13 @@ function PlaylistTrackRow({
             e.stopPropagation();
             toggleLike(track);
           }}
-          title={liked ? "Remove from Liked" : "Add to Liked"}
-          aria-label={liked ? "Remove from Liked" : "Add to Liked"}
+          title={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+          aria-label={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
           className={`p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${liked ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
         >
-          <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-ink-hi text-ink-hi" : ""}`} />
+          <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-accent text-accent" : ""}`} />
         </button>
-        <OfflineButton track={track} />
+        <FileButton track={track} />
         <button
           onClick={(e) => {
             e.stopPropagation();

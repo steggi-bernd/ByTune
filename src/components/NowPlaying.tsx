@@ -538,8 +538,8 @@ export function NowPlaying() {
                   aria-pressed={liked}
                   className="mt-4 inline-flex items-center gap-2 h-8 px-4 rounded-full bg-white/[0.06] hover:bg-white/[0.11] text-white/60 hover:text-white text-[12.5px] font-semibold transition-all active:scale-95"
                 >
-                  <Heart className={`w-3.5 h-3.5 shrink-0 ${liked ? "fill-current" : ""}`} />
-                  {liked ? "In Your Library" : "Add to Library"}
+                  <Heart className={`w-3.5 h-3.5 shrink-0 ${liked ? "fill-accent text-accent" : ""}`} />
+                  {liked ? "In Liked Songs" : "Add to Liked Songs"}
                 </button>
               </div>
 

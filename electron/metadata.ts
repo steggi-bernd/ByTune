@@ -16,6 +16,7 @@
 import { app } from "electron";
 import { storeFetchedArt } from "./local-library";
 import * as persist from "./persist";
+import { BANNER_WIDTH, imageInfoUrl, pictureFromImageInfo, wikimediaFile, type ArtistPicture } from "./wikimedia";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -48,6 +49,8 @@ export interface ArtistMeta {
   /** the Wikipedia article the bio came from */
   wikiUrl: string | null;
   genres: string[];
+  /** the Wikidata item ("Q1234") — answers cached before it was kept lack it */
+  wikidata?: string | null;
 }
 
 /* ------------------------------------------------------------- cache */
@@ -463,8 +466,44 @@ export async function lookupArtist(name: string): Promise<ArtistMeta | null> {
       image,
       wikiUrl,
       genres,
+      wikidata: qid ?? null,
     };
   });
   // Also upgrades entries cached before photos were stored locally.
   return meta ? localizeArtistPhoto(key, meta) : null;
+}
+
+/**
+ * The artist's Wikimedia picture at banner size, with its real size
+ * (electron/wikimedia.ts): the Wikidata image, else the Wikipedia article's
+ * lead image. Kept as a web address, asked only by the artist page — offline
+ * it shows the stored 600 px photo instead.
+ */
+export async function lookupArtistPicture(name: string): Promise<ArtistPicture | null> {
+  const meta = await lookupArtist(name);
+  if (!meta?.mbid) return null;
+  return cached<ArtistPicture>(`pic:${meta.mbid}:${BANNER_WIDTH}`, async () => {
+    let qid = meta.wikidata ?? null;
+    if (!qid) {
+      // Answers cached before the Wikidata item was kept: MusicBrainz names it again.
+      const full = await mb(`artist/${meta.mbid}?inc=url-rels`);
+      const rels: any[] = Array.isArray(full?.relations) ? full.relations : [];
+      const wikidataUrl: string | undefined = rels.find((r) => r.type === "wikidata")?.url?.resource;
+      qid = wikidataUrl?.match(/(Q\d+)$/)?.[1] ?? null;
+    }
+    if (!qid) return null;
+    const entity = await wikidataEntity(qid);
+    const p18 = entity?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+    let source: { host: string; file: string } | null = typeof p18 === "string" ? { host: "commons.wikimedia.org", file: p18 } : null;
+    for (const code of source ? [] : [...new Set([lang(), "en"])]) {
+      const title = entity?.sitelinks?.[`${code}wiki`]?.title;
+      if (!title) continue;
+      const summary = await wikipediaSummary(code, title).catch(() => null);
+      const lead: unknown = summary?.originalimage?.source ?? summary?.thumbnail?.source;
+      source = typeof lead === "string" ? wikimediaFile(lead) : null;
+      if (source) break;
+    }
+    if (!source) return null;
+    return pictureFromImageInfo(await getJson(imageInfoUrl(source.host, source.file)));
+  });
 }

@@ -152,7 +152,7 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
         <div className="mt-3 flex items-start justify-between gap-1">
           <div className="min-w-0">
             <div className="text-sm font-medium text-ink truncate">{playlist.name}</div>
-            <div className="text-[13px] text-ink-faint mt-0.5">{plural(playlist.tracks.length, "track", "tracks")}</div>
+            <div className="text-[13px] text-ink-faint mt-0.5">{plural(playlist.tracks.length, "song", "songs")}</div>
           </div>
           <button
             onClick={(e) => {
@@ -476,16 +476,12 @@ export function LibraryView() {
                       <ShortcutTile
                         key="liked"
                         title="Liked Songs"
-                        subtitle={plural(liked.length, "track", "tracks")}
+                        subtitle={plural(liked.length, "song", "songs")}
                         pinned={pinned}
                         onTogglePin={() => togglePinSingle("liked")}
                         onOpen={() => setTab("liked")}
-                        artClassName="from-accent/30 to-accent/[0.06]"
-                        art={
-                          <Heart
-                            className={`w-9 h-9 ${liked.length ? "fill-accent text-accent" : "text-accent"}`}
-                          />
-                        }
+                        artClassName="from-accent to-accent/25 bg-[#141418]"
+                        art={<Heart className="w-9 h-9 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" />}
                       />
                     );
                   }
@@ -494,7 +490,7 @@ export function LibraryView() {
                       <ShortcutTile
                         key="downloads"
                         title="Downloads"
-                        subtitle={plural(downloadedTracks.length, "track", "tracks")}
+                        subtitle={plural(downloadedTracks.length, "song", "songs")}
                         pinned={pinned}
                         onTogglePin={() => togglePinSingle("downloads")}
                         onOpen={() => navigate({ name: "downloads" })}
@@ -590,7 +586,7 @@ export function LibraryView() {
             <EmptyState
               icon={Heart}
               title="Songs you like will show up here"
-              body="Click the heart on any track — in the player, a playlist, or search — and it lands in this list. Or bring your Liked Songs over from Spotify."
+              body="Click the heart on any song — in the player, a playlist, or search — and it lands in this list. Or bring your Liked Songs over from Spotify."
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   <Btn variant="white" icon={FileUp} onClick={() => navigate({ name: "spotify" })}>

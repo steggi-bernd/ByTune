@@ -16,7 +16,9 @@ import * as cast from "./cast";
 import { samePath } from "./local-paths";
 import * as jellyfin from "./jellyfin";
 import * as subsonic from "./subsonic";
-import { libraryLyrics } from "./library-lyrics";
+import { indexLibraryLyrics, libraryLyrics } from "./library-lyrics";
+import { saveLyricsIndexSync, searchLyrics } from "./lyrics-index";
+import { analyseLibrarySound, configureSoundAnalysis, saveSoundIndexSync, setSoundAnalysisEnabled, soundFacts, soundStatus } from "./sound-library";
 import * as meta from "./metadata";
 import * as songInfo from "./song-info";
 import * as listens from "./listens";
@@ -245,6 +247,12 @@ function createWindow(): void {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.focus();
   });
 
+  // The mouse's back/forward buttons: Windows reports them as app commands; the views walk their history.
+  mainWindow.on("app-command", (_e, cmd) => {
+    if (cmd !== "browser-backward" && cmd !== "browser-forward") return;
+    mainWindow?.webContents.send("nav:command", cmd === "browser-backward" ? "back" : "forward");
+  });
+
   // Mirror native fullscreen to the renderer: F11 is handled here, while the
   // cinematic view (NowPlaying) drives it over IPC — the renderer tracks the
   // state either way (Escape leaves it; NowPlaying closes if it goes away).
@@ -318,11 +326,33 @@ function pushLibrary(lib: locallib.LocalLibrary): void {
   } catch {
     /* window gone */
   }
+  scheduleLyricsIndex();
+  scheduleSoundAnalysis();
 }
 
 /** Background cover/album fill; each batch is pushed to the renderer. */
 function startEnrichment(): void {
   enrichLocalLibrary(pushLibrary);
+}
+
+/** The lyrics index catches up a little after the library last changed (scans, enrichment). */
+let lyricsIndexTimer: NodeJS.Timeout | null = null;
+function scheduleLyricsIndex(delayMs = 15_000): void {
+  if (lyricsIndexTimer) clearTimeout(lyricsIndexTimer);
+  lyricsIndexTimer = setTimeout(() => {
+    lyricsIndexTimer = null;
+    void indexLibraryLyrics();
+  }, delayMs);
+}
+
+/** The sound analysis picks up new and changed files a minute after the library last changed. */
+let soundTimer: NodeJS.Timeout | null = null;
+function scheduleSoundAnalysis(delayMs = 60_000): void {
+  if (soundTimer) clearTimeout(soundTimer);
+  soundTimer = setTimeout(() => {
+    soundTimer = null;
+    void analyseLibrarySound();
+  }, delayMs);
 }
 
 /** After folders change: watch the new set and let the views know. */
@@ -372,6 +402,7 @@ const RENDERER_STORES = new Set([
   "smart-playlists",
   "spotify-import",
   "album-edits",
+  "library-order",
   "server-sync",
 ]);
 /** "jf:<item>" / "ss:<song>" — a song on one of the servers. */
@@ -419,6 +450,12 @@ function registerIpc(): void {
   ipc.handle("market:current", () => music.currentMarket());
   // Own lyrics first (.lrc, embedded tags, Jellyfin), then cache, then the open providers.
   ipc.handle("music:lyrics", (_e, q: music.LyricsMeta) => libraryLyrics(q));
+  // Songs by a line of their lyrics — only the lyrics already on this computer (lyrics-index.ts).
+  ipc.handle("lyrics:search", (_e, q: unknown) => (typeof q === "string" ? searchLyrics(q) : []));
+  // The sound analysis (sound-library.ts): progress for Settings, results for mixes, details and transitions.
+  ipc.handle("sound:status", () => soundStatus());
+  ipc.handle("sound:facts", () => soundFacts());
+  ipc.handle("sound:enabled", (_e, on: unknown) => setSoundAnalysisEnabled(on !== false));
   ipc.handle("music:enrich", (_e, ids: string[]) => music.enrichDurations(Array.isArray(ids) ? ids : []));
   ipc.handle("music:stream", async (_e, id: string, forceRotate?: boolean, quality?: string) => {
     // Hand the renderer a localhost proxy URL — the main process does the
@@ -527,6 +564,8 @@ function registerIpc(): void {
     songInfo.songInfo(String(title ?? "").slice(0, 200), String(artist ?? "").slice(0, 200))
   );
   ipc.handle("meta:artistImages", (_e, name: unknown) => songInfo.artistImages(String(name ?? "").slice(0, 200)));
+  // The artist page's banner at full size, from Wikimedia (metadata.ts lookupArtistPicture).
+  ipc.handle("meta:artistPicture", (_e, name: unknown) => meta.lookupArtistPicture(String(name ?? "").slice(0, 200)));
   // Jellyfin server as a second library source.
   ipc.handle("jellyfin:status", () => jellyfin.status());
   ipc.handle("jellyfin:connect", (_e, input: { server: string; username?: string; password?: string; apiKey?: string }) =>
@@ -613,6 +652,7 @@ function registerIpc(): void {
   ipc.handle("listens:page", (_e, before: unknown, limit: unknown) =>
     listens.readListens(typeof before === "number" ? before : undefined, Number(limit) || 100)
   );
+  ipc.handle("listens:moment", () => listens.momentScores());
   ipc.handle("listens:export", async () => {
     if (!mainWindow) return null;
     const res = await dialog.showSaveDialog(mainWindow, {
@@ -1075,6 +1115,19 @@ if (!gotLock) {
     });
     // Covers the tags lack are filled from the open databases in the background.
     startEnrichment();
+    // The lyrics search index catches up once the start is over.
+    scheduleLyricsIndex(30_000);
+    // So does the sound analysis, a little later; the renderer hears when more songs are measured.
+    configureSoundAnalysis({
+      onUpdate: () => {
+        try {
+          mainWindow?.webContents.send("sound:updated");
+        } catch {
+          /* window gone */
+        }
+      },
+    });
+    scheduleSoundAnalysis(90_000);
     // New, changed and deleted files show up without a manual rescan.
     folderWatch.configureFolderWatch({
       onRescanned: (lib) => {
@@ -1105,6 +1158,8 @@ if (!gotLock) {
       // stand down for any close events that fire during shutdown.
       quitting = true;
       stats.flushSync(); // the listening history's last lines too
+      saveLyricsIndexSync();
+      saveSoundIndexSync();
       pip.savePipRect();
       discord.stopDiscord();
   void cast.stop();

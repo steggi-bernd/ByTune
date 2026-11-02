@@ -80,7 +80,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
   const meta = [
     album.releaseType ?? "Album",
     album.year,
-    tracks.length ? `${tracks.length} ${tracks.length === 1 ? "track" : "tracks"}` : "",
+    tracks.length ? `${tracks.length} ${tracks.length === 1 ? "song" : "songs"}` : "",
   ]
     .filter(Boolean)
     .join(" • ")

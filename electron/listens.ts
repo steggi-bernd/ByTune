@@ -107,6 +107,51 @@ export async function readListens(before?: number, limit = 100): Promise<{ liste
   return { listens: from.slice(0, n), more: from.length > n, total: all.length };
 }
 
+export interface MomentScore {
+  id: string;
+  score: number;
+}
+
+/** Listens of the last hours belong to what plays now, not to a habit. */
+const SESSION_MS = 6 * 3600_000;
+
+/**
+ * How much each song belongs to this moment of the day and week: listens
+ * near this time of day count (within 2½ hours either side, the nearer the
+ * more), on the same weekday most, on the same kind of day (weekday or
+ * weekend) less, on the other kind a little; a listen loses half its weight
+ * every 90 days and none older than two years count. Highest first.
+ */
+export function scoreMoments(listens: readonly Listen[], now: number): MomentScore[] {
+  const here = new Date(now);
+  const hour = here.getHours() + here.getMinutes() / 60;
+  const weekday = here.getDay();
+  const weekend = (d: number): boolean => d === 0 || d === 6;
+  const scores = new Map<string, number>();
+  for (const l of listens) {
+    const age = now - l.at;
+    if (age < SESSION_MS || age > 730 * 86_400_000) continue;
+    const then = new Date(l.at);
+    let apart = Math.abs(then.getHours() + then.getMinutes() / 60 - hour);
+    if (apart > 12) apart = 24 - apart;
+    if (apart >= 2.5) continue;
+    const day = then.getDay();
+    const dayWeight = day === weekday ? 1 : weekend(day) === weekend(weekday) ? 0.6 : 0.25;
+    const weight = (1 - apart / 2.5) * dayWeight * Math.pow(0.5, age / (90 * 86_400_000));
+    scores.set(l.id, (scores.get(l.id) ?? 0) + weight);
+  }
+  return [...scores]
+    .map(([id, score]) => ({ id, score: Math.round(score * 1000) / 1000 }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 150);
+}
+
+/** This moment's songs from the whole history (the home page's time-of-day mix). */
+export async function momentScores(now = Date.now()): Promise<MomentScore[]> {
+  await flushListens();
+  return scoreMoments(readAll(), now);
+}
+
 /** The whole history as a spreadsheet: one row per listen, oldest first. */
 export async function listensCsv(): Promise<{ csv: string; count: number }> {
   await flushListens();

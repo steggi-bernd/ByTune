@@ -5,8 +5,11 @@ import {
   entryKey,
   importOrder,
   matchEntries,
+  mergeImportedPlaylist,
   parseCsv,
+  parsePlaylistExport,
   parseSpotifyExport,
+  playlistNameOf,
   shoppingListCsv,
   shoppingListText,
   spotifyLink,
@@ -164,4 +167,49 @@ test("the shopping list opens in Excel: BOM, semicolons, quoted fields, Spotify 
   assert.ok(csv.includes('"A; B";X, Y;"The ""Best""";2024-03-01;https://open.spotify.com/track/1111111111aaaaaaaaaaaa'));
   assert.equal(shoppingListText([{ title: "Song", artists: ["Band"], album: "LP" }]), "Band – Song (LP)");
   assert.equal(spotifyLink("spotify:local:x:y:z:1"), "");
+});
+
+/* ------------------------------------------------------------ playlists */
+
+test("a playlist's Exportify CSV keeps the playlist's order and is named after its file", () => {
+  const [list, ...more] = parsePlaylistExport(EXPORTIFY, "road_trip_2019.csv");
+  assert.equal(more.length, 0);
+  assert.equal(list.name, "Road trip 2019");
+  assert.deepEqual(list.entries.map((e) => e.title), ["Song A", "Song B - Remastered 2011", 'Song "Quoted", Live']);
+  assert.equal(playlistNameOf("C:\\Downloads\\chill.csv"), "Chill");
+  assert.equal(playlistNameOf(".csv"), "Spotify playlist");
+});
+
+test("Spotify's Playlist1.json: every playlist with songs, in order — local files too, episodes not", () => {
+  const json = JSON.stringify({
+    playlists: [
+      {
+        name: "Road Trip",
+        items: [
+          { track: { trackName: "One", artistName: "Alpha", albumName: "First", trackUri: "spotify:track:aaaaaaaaaaaaaaaaaaaaaa" }, addedDate: "2021-02-01" },
+          { track: null, episode: { episodeName: "Talk", showName: "Show" }, localTrack: null },
+          { track: null, localTrack: { uri: "spotify:local:The+Band:Home+Tapes:Kitchen+%26+Rain:245" } },
+          { track: { trackName: "One", artistName: "Alpha", albumName: "First", trackUri: "spotify:track:aaaaaaaaaaaaaaaaaaaaaa" } },
+          { track: { trackName: "Two", artistName: "Beta, Gamma", albumName: "Second", trackUri: "spotify:track:bbbbbbbbbbbbbbbbbbbbbb" } },
+        ],
+      },
+      { name: "Podcasts only", items: [{ track: null, episode: { episodeName: "Talk" } }] },
+      { name: "  ", items: [{ track: { trackName: "Three", artistName: "Delta" } }] },
+    ],
+  });
+  const lists = parsePlaylistExport(json, "Playlist1.json");
+  assert.deepEqual(lists.map((l) => l.name), ["Road Trip", "Untitled playlist"]);
+  const [road] = lists;
+  assert.deepEqual(road.entries.map((e) => e.title), ["One", "Kitchen & Rain", "Two"], "a song listed twice counts once");
+  assert.deepEqual(road.entries[1], { title: "Kitchen & Rain", artists: ["The Band"], album: "Home Tapes", durationMs: 245000, uri: "spotify:local:The+Band:Home+Tapes:Kitchen+%26+Rain:245" });
+  assert.deepEqual(road.entries[2].artists, ["Beta", "Gamma"]);
+  assert.equal(road.entries[0].addedAt, Date.parse("2021-02-01"));
+  assert.throws(() => parsePlaylistExport(JSON.stringify({ playlists: [] }), "Playlist1.json"), /No playlist with songs/);
+});
+
+test("a playlist after an import: Spotify's order first, songs added in ByTune after, each song once", () => {
+  const t = (id) => ({ id, title: id, artist: "A", duration: 1, thumb: "" });
+  const keyOf = (id) => (id === "b-flac" ? "b" : id);
+  const merged = mergeImportedPlaylist([t("x"), t("b"), t("y")], [t("a"), t("b-flac"), t("c")], keyOf);
+  assert.deepEqual(merged.map((x) => x.id), ["a", "b-flac", "c", "x", "y"]);
 });

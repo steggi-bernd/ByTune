@@ -97,6 +97,8 @@ test("only an artist of exactly that name counts; Genius's stand-in pictures are
   assert.equal(info.artistFromGenius(sections, "Daft"), null);
   const defaults = [{ type: "artist", hits: [{ result: { name: "Nobody", image_url: "https://assets.genius.com/images/default_avatar_300.png", header_image_url: "https://assets.genius.com/images/default_cover_image.png" } }] }];
   assert.equal(info.artistFromGenius(defaults, "Nobody"), null);
+  const standInBanner = [{ type: "artist", hits: [{ result: { name: "Plain", image_url: "https://images.genius.com/p.png", header_image_url: "https://assets.genius.com/images/default_banner.png" } }] }];
+  assert.equal(info.artistFromGenius(standInBanner, "Plain").banner, null);
   // A header that is the photo again is no banner.
   const same = [{ type: "artist", hits: [{ result: { name: "Solo", image_url: "https://images.genius.com/s.png", header_image_url: "https://images.genius.com/s.png" } }] }];
   assert.equal(info.artistFromGenius(same, "Solo").banner, null);

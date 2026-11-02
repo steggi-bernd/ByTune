@@ -84,7 +84,7 @@ export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
     },
     {
       separatorBefore: true,
-      label: liked ? "Remove from Liked" : "Add to Liked",
+      label: liked ? "Remove from Liked Songs" : "Add to Liked Songs",
       icon: Heart,
       action: () => useLibrary.getState().toggleLike(track),
     },

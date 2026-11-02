@@ -46,6 +46,8 @@ import type { Track } from "../types";
 import { requireBridge } from "./bridge";
 import { emitPlayEvent } from "./playEvents";
 import { analyseTrackHead, detectEdgeSilence } from "./analysis";
+import { runsOn } from "./continuity";
+import { soundOf } from "../stores/sound";
 import { upgradeArtwork } from "./artwork";
 import { createMediaKeyTap } from "./media-key-tap";
 import { isLibraryTrack, loadAllLibraryTracks } from "./libraryTracks";
@@ -636,11 +638,12 @@ function planFadeStart(nextId: string, fadeMs: number): { delayMs: number; smart
   const remainingMs = Math.max(0, (duration - a.currentTime) * 1000);
   if (!smartOn || remainingMs <= fadeMs) return { delayMs: Math.max(0, remainingMs - fadeMs), smart: false, reason: "standard" };
 
-  const grid = analyseTrackHead.getCached(nextId);
-  if (!grid || !grid.bpm || grid.bpm < 50 || grid.bpm > 220) {
+  // The head analysis' tempo, or else the whole song's from the sound analysis.
+  const bpm = analyseTrackHead.getCached(nextId)?.bpm || soundOf(usePlayer.getState().queue.find((t) => t.id === nextId))?.bpm || 0;
+  if (!bpm || bpm < 50 || bpm > 220) {
     return { delayMs: Math.max(0, remainingMs - fadeMs), smart: false, reason: "no tempo — standard fade" };
   }
-  const beatMs = 60000 / grid.bpm;
+  const beatMs = 60000 / bpm;
   const beatDist = (ms: number): number => {
     const m = Math.abs(ms % beatMs);
     return Math.min(m, beatMs - m);
@@ -658,7 +661,7 @@ function planFadeStart(nextId: string, fadeMs: number): { delayMs: number; smart
       best = t;
     }
   }
-  return { delayMs: Math.max(0, best), smart: true, reason: `beat-aligned @ ${grid.bpm} BPM` };
+  return { delayMs: Math.max(0, best), smart: true, reason: `beat-aligned @ ${bpm} BPM` };
 }
 
 /**
@@ -687,9 +690,22 @@ async function untilRemaining(ms: number, stale: () => boolean): Promise<void> {
   }
 }
 
+/**
+ * The next song runs on from this one (lib/continuity.ts) — the next track of
+ * a live album or a mix, or a pair that meets sounding: it takes over
+ * seamlessly, whatever the crossfade or Automix would do.
+ */
+function seamlessNext(): boolean {
+  const state = usePlayer.getState();
+  const cur = state.queue[state.index];
+  const next = state.queue[state.index + 1];
+  if (!useSettings.getState().seamlessAlbums || !cur || !next || state.shuffle || state.repeat === "one") return false;
+  return runsOn(cur, next, { cur: soundOf(cur), next: soundOf(next) });
+}
+
 function maybeArmTransition(): void {
   if (fade || armed) return;
-  const gapless = gaplessNext();
+  const gapless = gaplessNext() || seamlessNext();
   const fadeMs = gapless ? GAPLESS_MS : fadeMsForNext();
   if (!gapless && fadeMs < 500) return;
   const state = usePlayer.getState();
@@ -741,7 +757,7 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
     }
     // Smart mode needs the next track's tempo; if it isn't analysed yet this
     // is the moment it gets fetched and decoded (bounded by the arm window).
-    if (useSettings.getState().smartFade) {
+    if (useSettings.getState().smartFade && fadeMs > GAPLESS_MS) {
       await Promise.race([
         analyseTrackHead.ensure(nextTrack.id),
         new Promise<void>((r) => window.setTimeout(r, 2200)),
@@ -751,7 +767,8 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
       armed = null;
       return;
     }
-    const plan = planFadeStart(nextTrack.id, fadeMs);
+    // A seamless takeover is timed on the playing deck's clock below, never on a beat plan.
+    const plan = fadeMs > GAPLESS_MS ? planFadeStart(nextTrack.id, fadeMs) : { delayMs: 0, smart: false, reason: "seamless" };
     const startAt = performance.now() + plan.delayMs;
     stand.preload = "auto";
     stand.src = url;
@@ -1403,6 +1420,16 @@ function onTrackEnded(): void {
     return;
   }
   state.next(false);
+  // Repeat came round to this very song — a single on repeat, or a queue that
+  // starts with the song it ends on. The same song loads nothing new and the
+  // finished element stays paused at its end, so it starts over here, as
+  // repeat-one does.
+  const after = usePlayer.getState();
+  if (after.playing && after.queue[after.index]?.id === current.id) {
+    const a = el();
+    a.currentTime = 0;
+    void a.play().catch(() => undefined);
+  }
 }
 
 /** Guards against overlapping AutoPlay fetches when tracks end back-to-back. */

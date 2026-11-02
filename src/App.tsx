@@ -30,9 +30,12 @@ import { useSettings } from "./stores/settings";
 import { useUI } from "./stores/ui";
 import { SmartPlaylistEditorHost } from "./components/SmartPlaylistEditor";
 import { watchCatalog } from "./stores/catalog";
+import { watchSound } from "./stores/sound";
+import { watchRecentlyPlayed } from "./lib/recentlyPlayed";
 import { watchAvailability } from "./stores/availability";
 import { JellyfinView } from "./views/JellyfinView";
 import { LibraryAlbumView } from "./views/LibraryAlbumView";
+import { LooseSongsView } from "./views/LooseSongsView";
 import { LibraryArtistView } from "./views/LibraryArtistView";
 import { LibraryHomeView } from "./views/LibraryHomeView";
 import { MixView } from "./views/MixView";
@@ -43,6 +46,7 @@ import { LibrarySearchView } from "./views/LibrarySearchView";
 import { LibraryView } from "./views/LibraryView";
 import { LocalMusicView } from "./views/LocalMusicView";
 import { ExploreView } from "./views/ExploreView";
+import { LibraryCheckView } from "./views/LibraryCheckView";
 import { GenreView } from "./views/GenreView";
 import { PlaylistView } from "./views/PlaylistView";
 import { ReplayView } from "./views/ReplayView";
@@ -233,6 +237,7 @@ function useAppearance(): void {
   const reduceDynamicBlur = useSettings((s) => s.reduceDynamicBlur);
   const liquidGlass = useSettings((s) => s.liquidGlass);
   const corners = useSettings((s) => s.corners);
+  const accent = useSettings((s) => s.accent);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -240,7 +245,8 @@ function useAppearance(): void {
     root.classList.toggle("reduce-blur", reduceDynamicBlur);
     root.classList.toggle("noglass", !liquidGlass);
     root.dataset.corners = corners;
-  }, [reduceAnimation, reduceDynamicBlur, liquidGlass, corners]);
+    root.dataset.accent = accent;
+  }, [reduceAnimation, reduceDynamicBlur, liquidGlass, corners, accent]);
 }
 
 /**
@@ -257,6 +263,10 @@ function CurrentView(): ReactNode {
       return <LocalMusicView />;
     case "explore":
       return <ExploreView />;
+    case "check":
+      return <LibraryCheckView />;
+    case "loose":
+      return <LooseSongsView />;
     case "genre":
       return <GenreView param={view.param ?? ""} />;
     case "album":
@@ -281,7 +291,7 @@ function CurrentView(): ReactNode {
     case "replay":
       return <ReplayView />;
     case "spotify":
-      return <SpotifyImportView />;
+      return <SpotifyImportView key={view.param ?? "liked"} param={view.param} />;
     case "settings":
       return <SettingsView />;
     default:
@@ -335,6 +345,44 @@ export default function App() {
   useEffect(() => watchDiscordPresence(), []);
   useEffect(() => watchServerSync(), []);
   useEffect(() => watchArchiveDrops(), []);
+
+  // The mouse's back and forward buttons walk the views like the top bar's arrows (back closes
+  // the full-screen player first). They come as mouse buttons 3 and 4 and, on Windows, also as
+  // app commands from main — one press is one step either way.
+  useEffect(() => {
+    let last = 0;
+    const step = (dir: "back" | "forward"): void => {
+      const now = Date.now();
+      if (now - last < 400) return;
+      last = now;
+      const ui = useUI.getState();
+      if (dir === "back" && ui.nowPlayingOpen) ui.toggleNowPlaying();
+      else if (dir === "back") ui.goBack();
+      else ui.goForward();
+    };
+    const onButton = (e: MouseEvent): void => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (e.type === "mouseup") step(e.button === 3 ? "back" : "forward");
+    };
+    window.addEventListener("mousedown", onButton, true);
+    window.addEventListener("mouseup", onButton, true);
+    const off = window.bytune?.onNavCommand(step);
+    return () => {
+      window.removeEventListener("mousedown", onButton, true);
+      window.removeEventListener("mouseup", onButton, true);
+      off?.();
+    };
+  }, []);
+
+  // Tempo, key and energy from the sound analysis — measured in main, following its setting.
+  useEffect(() => watchSound(), []);
+  // When each album, playlist and Liked Songs last played — the library panel's order.
+  useEffect(() => watchRecentlyPlayed(), []);
+  const soundAnalysis = useSettings((s) => s.soundAnalysis);
+  useEffect(() => {
+    void window.bytune?.setSoundAnalysis(soundAnalysis);
+  }, [soundAnalysis]);
 
   // Folder watching follows its setting (main watches by default).
   const watchFolders = useSettings((s) => s.watchFolders);

@@ -210,6 +210,12 @@ export const usePlayer = create<PlayerState>()(
             }
           }
         }
+        if (ni === index) {
+          // Round to the very same song (a queue of one): it starts over — the
+          // same index alone changes nothing the engine would act on.
+          set({ playing: true, position: 0, error: null, seekNonce: get().seekNonce + 1 });
+          return;
+        }
         set({ index: ni, playing: true, position: 0, error: null });
       },
 
@@ -221,6 +227,10 @@ export const usePlayer = create<PlayerState>()(
         const { queue, index } = get();
         if (!queue.length) return;
         const ni = index > 0 ? index - 1 : queue.length - 1;
+        if (ni === index) {
+          set({ position: 0, seekNonce: get().seekNonce + 1 });
+          return;
+        }
         set({ index: ni, playing: true, position: 0, error: null });
       },
 

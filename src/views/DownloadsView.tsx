@@ -140,7 +140,7 @@ export function DownloadsView() {
             <span>
               {items.length === 0
                 ? "Saved music lives on your disk"
-                : plural(doneCount, "track", "tracks") + " saved"}
+                : plural(doneCount, "song", "songs") + " saved"}
             </span>
             {failedCount > 0 && <span className="text-red-400">· {plural(failedCount, "failure", "failures")}</span>}
             {activeCount > 0 && <span className="text-accent">· {plural(activeCount, "download", "downloads")} in progress</span>}

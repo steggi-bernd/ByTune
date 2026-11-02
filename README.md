@@ -5,14 +5,14 @@
 <h1 align="center">ByTune Local</h1>
 
 <p align="center">
-  <b>A desktop music player for the music you own.</b><br>
+  <b>A local music player for the music you own — Windows and Linux.</b><br>
   Local folders, Jellyfin and Navidrome in one library — Hi-Res playback, synced lyrics and a home page built from your own listening. No account, no ads.
 </p>
 
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#features">Features</a> ·
-  <a href="#spotify-liked-songs-import">Spotify import</a> ·
+  <a href="#spotify-import">Spotify import</a> ·
   <a href="#discord-status-optional">Discord</a> ·
   <a href="#build-from-source">Build</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -41,6 +41,7 @@ ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the o
 - **Unreachable songs are greyed out** — an unplugged drive, a server that doesn't answer — and come back by themselves.
 - **Missing facts come from open databases**: covers and album names from MusicBrainz and the Cover Art Archive (iTunes Search as a fallback), artist bios and photos from Wikidata, Wikipedia and Wikimedia Commons. Your files are never rewritten.
 - Credits like "Artist A, Artist B" count as two artists, each with their own page.
+- **Library check** (Settings): artists written different ways, albums split into parts, songs you have twice, albums without a cover, year or genre, and songs without an album — with a fix wherever ByTune can make one itself.
 
 ### Made for good files
 
@@ -49,16 +50,19 @@ ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the o
 - **Volume leveling** from ReplayGain tags, per song or per album, towards −18, −14 or −11 LUFS. It only ever turns loud songs down.
 - **Equalizer:** ten bands, or a parametric EQ with [AutoEQ](https://github.com/jaakkopasanen/AutoEq) corrections for about 9,000 headphones, Equalizer APO import and the frequency response drawn live.
 - Crossfade, Automix, skip silence, playback speed, and a volume slider that is actually quiet at the bottom.
+- **Sound analysis:** tempo, key and energy of every local song, measured once in the background with FFmpeg. They show in the song's details, Automix times its fades to the beat with them, and they make the *Calm* and *Upbeat* mixes.
+- **Seamless albums:** live albums, DJ mixes and songs that run into each other play on without a gap or a crossfade.
 
 ### Your music, arranged like a streaming app
 
 ![Home: quick-access tiles, Made for you mixes and recently added albums](docs/screenshots/local/home.jpg)
 
-- **Home**, built only from your library: quick-access tiles, *Made for you* mixes (On Repeat, Rediscover, one per big genre and decade, reshuffled daily), recently added albums, your top artists and recently played songs.
-- **Album and artist pages** with play and shuffle, popular songs ranked by your own plays, albums, singles & EPs, "appears on" and the Wikipedia bio.
+- **Home**, built only from your library: quick-access tiles, *Made for you* mixes (On Repeat, Rediscover, what you usually play at this time of day, Calm and Upbeat, one per big genre and decade, reshuffled daily), recently added albums, your top artists and recently played songs.
+- **Album and artist pages** with play and shuffle, popular songs ranked by your own plays, the artist's songs you've liked, albums, singles & EPs, "appears on" and the Wikipedia bio.
 - **Discography tab:** every release with its songs, newest first.
 - **Smart playlists** that fill themselves from rules — genre, artist, year, date added, plays, last played, length, format, sample rate, bit depth, source, liked — with an order and an optional limit.
-- The library panel lists your albums and folds down to an icon rail (<kbd>Ctrl</kbd>+<kbd>B</kbd>).
+- **The library panel** puts what you played last on top. Pinned playlists and albums stay above it, in the order you drag them into; the panel folds down to an icon rail (<kbd>Ctrl</kbd>+<kbd>B</kbd>).
+- **The right panel** shows the playing song — its title opens the album, its artists their pages — what plays next (drag songs in), the song's story and credits from Genius with its tempo and key, and the artist.
 
 ![An artist's Discography tab: releases newest first, each with its songs](docs/screenshots/local/discography.jpg)
 
@@ -71,6 +75,8 @@ Tags aren't always right. The album editor — the pencil on an album page, or r
 - **add or remove artists** on an album, with one click back to what the tags say, and
 - **merge albums** that show up as several (a "Disc 2", bonus tracks, one song with a different album artist), and separate them again.
 
+Songs whose tags name no album gather under **Songs without an album** in the library panel. *Make an album…* puts them on one — title, artist, year and order — or on an album you already have.
+
 ByTune keeps these edits itself; your files and servers stay exactly as they are.
 
 ### Lyrics and Now Playing
@@ -78,12 +84,13 @@ ByTune keeps these edits itself; your files and servers stay exactly as they are
 ![Full-screen Now Playing: the cover on the left, synced lyrics on the right](docs/screenshots/local/now-playing.jpg)
 
 - **Synced lyrics, your own first:** a `.lrc` next to the file, lyrics embedded in the tags, or your Jellyfin server's. Otherwise online providers such as LRCLIB and KuGou; answers are cached on disk.
+- **Search by lyrics:** a line you remember finds the song, among the lyrics already on this computer.
 - **Full-screen Now Playing** (<kbd>N</kbd>) with cover, lyrics and queue, tinted by the cover's colors.
 - **Mini player:** an always-on-top picture-in-picture window.
 - **A real queue:** drag to reorder, *Play next*, *Add to queue*. A song you have in several places still plays only once.
 - **Replay:** your listening over time — top artists and songs, hours listened, monthly and hourly patterns.
 
-## Spotify Liked Songs import
+## Spotify import
 
 ![Spotify import: 14 songs in your library, 3 to check with Same song / Different / Choose…, 5 missing](docs/screenshots/local/spotify-import.jpg)
 
@@ -94,6 +101,8 @@ Coming from Spotify? Export your Liked Songs with [Exportify](https://github.com
 - **Missing — to buy** — your shopping list, to save as a spreadsheet or copy.
 
 The import and your decisions are kept until you start over, so they survive restarts.
+
+**Playlists** come over the same way: **+ → Recover a Spotify playlist** in the library panel, or the button in an empty playlist. Use the playlist's CSV from Exportify, or `Playlist1.json` from the data download — it holds all your playlists, and you pick one. The songs you have go into a ByTune playlist in Spotify's order, and your *Same song* / *Different* answers carry over.
 
 ## Discord status (optional)
 
@@ -165,6 +174,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the project's conventions.
 | Queue · lyrics · Now Playing | <kbd>Q</kbd> · <kbd>L</kbd> · <kbd>N</kbd> |
 | Search | <kbd>Ctrl</kbd>+<kbd>F</kbd> or <kbd>/</kbd> |
 | Fold the library panel | <kbd>Ctrl</kbd>+<kbd>B</kbd> |
+| Back / forward | the mouse's back and forward buttons |
 
 Shortcuts never fire while you're typing in a text field.
 

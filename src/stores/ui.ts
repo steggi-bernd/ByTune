@@ -21,6 +21,8 @@ export type ViewName =
   | "mix"
   | "smart"
   | "replay"
+  | "check"
+  | "loose"
   | "spotify"
   | "settings";
 

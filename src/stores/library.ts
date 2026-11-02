@@ -80,6 +80,8 @@ interface LibraryState {
   togglePinPlaylist(id: string): void;
   deletePlaylist(id: string): void;
   addToPlaylist(playlistId: string, track: Track): boolean;
+  /** a playlist's songs in a new order and makeup — one brought over from another service */
+  setPlaylistTracks(playlistId: string, tracks: Track[]): void;
   removeFromPlaylist(playlistId: string, trackId: string): void;
   getPlaylist(id: string): Playlist | null;
   createFolder(name: string): LibraryFolder;
@@ -250,6 +252,18 @@ export const useLibrary = create<LibraryState>()(
         withChanges(set, get, { playlists },
           [{ kind: "add", group: "tracks", id: track.id, parent: playlistId }]);
         return true;
+      },
+
+      setPlaylistTracks(playlistId, tracks) {
+        const target = get().playlists.find((p) => p.id === playlistId);
+        if (!target) return;
+        const next = uniqueById(tracks);
+        const had = new Set(target.tracks.map((t) => t.id));
+        const kept = new Set(next.map((t) => t.id));
+        const changes: DeletionChange[] = [{ kind: "edit", group: "playlists", id: playlistId }];
+        for (const t of next) if (!had.has(t.id)) changes.push({ kind: "add", group: "tracks", id: t.id, parent: playlistId });
+        for (const t of target.tracks) if (!kept.has(t.id)) changes.push({ kind: "delete", group: "tracks", id: t.id, parent: playlistId });
+        withChanges(set, get, { playlists: get().playlists.map((p) => (p.id === playlistId ? { ...p, tracks: next } : p)) }, changes);
       },
 
       removeFromPlaylist(playlistId, trackId) {

@@ -328,11 +328,15 @@ export function TopBar() {
        so its content centres in the full 68px — equal space above and below. */
     <div
       className={`app-drag relative h-[68px] shrink-0 flex items-center gap-3 chrome-glass z-20 ${
-        isMac ? "pl-[84px]" : "pl-3"
+        isMac ? "pl-[84px]" : "pl-[30px]"
       }`}
     >
-      {/* Left cluster — brand flush to the edge, then the history + refresh
-          controls (Spotify's top-bar model: 32px circular buttons, 16px glyphs). */}
+      {/* Left cluster — the brand, then the history + refresh controls
+          (Spotify's top-bar model: 32px circular buttons, 16px glyphs). Off
+          the Mac the mark starts at 36px (30px + its button's 6px) and stays
+          there whether the library is open or folded: open, the covers' left
+          edge is there (see the list in Sidebar.tsx); folded,
+          the 24px mark sits on the 80px rail's centre (48px). */}
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={goHome}

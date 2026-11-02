@@ -12,7 +12,7 @@ export async function fetchAlbum(albumId: string): Promise<{ title: string; arti
 export async function playAlbum(albumId: string): Promise<void> {
   try {
     const { tracks } = await requireBridge().getAlbum(albumId);
-    if (!tracks.length) throw new Error("No playable tracks");
+    if (!tracks.length) throw new Error("No playable songs");
     usePlayer.getState().playQueue(tracks, 0);
   } catch {
     useUI.getState().toast("Couldn't load that album", "error");

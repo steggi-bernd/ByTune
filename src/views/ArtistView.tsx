@@ -254,7 +254,7 @@ export function ArtistView({ artistId }: { artistId: string }) {
         </div>
 
         <div className="relative flex flex-col items-center text-center px-8 pt-[300px] pb-2">
-          <h1 className="font-display text-[40px] leading-[1.05] font-extrabold tracking-[-0.03em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)] break-words max-w-3xl line-clamp-2">
+          <h1 className="font-display text-[40px] leading-[1.15] pb-[0.08em] font-extrabold tracking-[-0.03em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)] break-words max-w-3xl line-clamp-2">
             {artist.name}
           </h1>
 

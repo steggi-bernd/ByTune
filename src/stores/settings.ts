@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { storage } from "../lib/persist";
 
 export type StreamQuality = "low" | "medium" | "high" | "lossless";
+export type LibraryOrder = "played" | "added" | "alpha" | "artist";
 export type DownloadQuality = "standard" | "high" | "lossless";
 
 export const STREAM_QUALITY_LABEL: Record<StreamQuality, string> = {
@@ -50,8 +51,9 @@ interface SettingsState {
   /* Appearance */
   /** Left library panel folded down to an icon rail */
   sidebarCollapsed: boolean;
-  /** order of the albums in the library panel */
-  librarySort: "recent" | "alpha" | "artist";
+  /** the library panel's order: everything by when it last played (the pinned
+      rows aside), or the albums by when added, title or artist */
+  libraryOrder: LibraryOrder;
   /** Rescan imported folders automatically when files change */
   watchFolders: boolean;
   reduceAnimation: boolean;
@@ -84,6 +86,10 @@ interface SettingsState {
   lyricsLatin: boolean;
   /** with crossfade off, the next song starts the moment this one ends */
   gapless: boolean;
+  /** songs that run on (live albums, DJ mixes, pairs that meet sounding) never crossfade or pause (lib/continuity.ts) */
+  seamlessAlbums: boolean;
+  /** tempo, key and energy of every local song, measured once in the background (electron/sound-library.ts) */
+  soundAnalysis: boolean;
   /** Milkdrop behind the full-screen Now Playing */
   milkdrop: boolean;
   /** Explore: the open tab, list or tiles, and each tab's column order */
@@ -94,6 +100,8 @@ interface SettingsState {
   rightRailWidth: number;
   /** corner style of every rounded surface: half the old radius by default */
   corners: Corners;
+  /** the shell's one colour: what plays, what's on, likes and the main buttons */
+  accent: Accent;
 
   setDownloadDir(dir: string | null): void;
   setDownloadQuality(q: DownloadQuality): void;
@@ -112,7 +120,7 @@ interface SettingsState {
   setReplayGainMode(mode: "off" | "track" | "album"): void;
   setReplayGainTarget(lufs: number): void;
   setSidebarCollapsed(v: boolean): void;
-  setLibrarySort(v: "recent" | "alpha" | "artist"): void;
+  setLibraryOrder(v: LibraryOrder): void;
   setWatchFolders(v: boolean): void;
   setReduceAnimation(v: boolean): void;
   setReduceDynamicBlur(v: boolean): void;
@@ -133,16 +141,20 @@ interface SettingsState {
   setStoreLinks(v: boolean): void;
   setLyricsLatin(v: boolean): void;
   setGapless(v: boolean): void;
+  setSeamlessAlbums(v: boolean): void;
+  setSoundAnalysis(v: boolean): void;
   setMilkdrop(v: boolean): void;
   setExploreTab(v: ExploreTab): void;
   setExploreLayout(v: "list" | "grid"): void;
   setExploreSort(tab: ExploreTab, sort: ExploreSort): void;
   setRightRailWidth(px: number): void;
   setCorners(v: Corners): void;
+  setAccent(v: Accent): void;
 }
 
 export type ExploreTab = "albums" | "artists" | "genres";
 export type Corners = "round" | "soft" | "square";
+export type Accent = "violet" | "blue" | "teal" | "green" | "amber" | "coral" | "pink" | "white";
 /** a column key of that tab's list, and whether it runs from the most / Z */
 export interface ExploreSort {
   by: string;
@@ -171,7 +183,7 @@ export const useSettings = create<SettingsState>()(
       eqGains: Array(10).fill(0),
 
       sidebarCollapsed: false,
-      librarySort: "recent",
+      libraryOrder: "played",
       watchFolders: true,
       reduceAnimation: false,
       reduceDynamicBlur: false,
@@ -194,6 +206,8 @@ export const useSettings = create<SettingsState>()(
       storeLinks: false,
       lyricsLatin: true,
       gapless: true,
+      seamlessAlbums: true,
+      soundAnalysis: true,
       milkdrop: false,
       exploreTab: "albums",
       exploreLayout: "list",
@@ -204,6 +218,7 @@ export const useSettings = create<SettingsState>()(
       },
       rightRailWidth: 328,
       corners: "soft",
+      accent: "violet",
 
       setDownloadDir: (downloadDir) => set({ downloadDir }),
       setDownloadQuality: (downloadQuality) => set({ downloadQuality }),
@@ -222,7 +237,7 @@ export const useSettings = create<SettingsState>()(
       setReplayGainMode: (replayGainMode) => set({ replayGainMode }),
       setReplayGainTarget: (replayGainTarget) => set({ replayGainTarget }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
-      setLibrarySort: (librarySort) => set({ librarySort }),
+      setLibraryOrder: (libraryOrder) => set({ libraryOrder }),
       setWatchFolders: (watchFolders) => set({ watchFolders }),
       setReduceAnimation: (reduceAnimation) => set({ reduceAnimation }),
       setReduceDynamicBlur: (reduceDynamicBlur) => set({ reduceDynamicBlur }),
@@ -244,16 +259,28 @@ export const useSettings = create<SettingsState>()(
       setStoreLinks: (storeLinks) => set({ storeLinks }),
       setLyricsLatin: (lyricsLatin) => set({ lyricsLatin }),
       setGapless: (gapless) => set({ gapless }),
+      setSeamlessAlbums: (seamlessAlbums) => set({ seamlessAlbums }),
+      setSoundAnalysis: (soundAnalysis) => set({ soundAnalysis }),
       setMilkdrop: (milkdrop) => set({ milkdrop }),
       setExploreTab: (exploreTab) => set({ exploreTab }),
       setExploreLayout: (exploreLayout) => set({ exploreLayout }),
       setExploreSort: (tab, sort) => set((st) => ({ exploreSort: { ...st.exploreSort, [tab]: sort } })),
       setRightRailWidth: (px) => set({ rightRailWidth: Math.round(px) }),
       setCorners: (corners) => set({ corners }),
+      setAccent: (accent) => set({ accent }),
     }),
     {
       name: "settings",
       storage: createJSONStorage(() => storage),
+      // The panel used to sort only its albums ("librarySort"): a title or
+      // artist order chosen there stays; the old default gives way to
+      // Recently played.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<SettingsState> & { librarySort?: string };
+        const libraryOrder: LibraryOrder =
+          saved.libraryOrder ?? (saved.librarySort === "alpha" || saved.librarySort === "artist" ? saved.librarySort : "played");
+        return { ...current, ...saved, libraryOrder };
+      },
     }
   )
 );

@@ -7,17 +7,100 @@
  *  - artists: an album's artist credit line, replacing what its tags say
  *  - mergedInto: an album (by its tag key, see albumKeyOf) shown as part of
  *    another one
+ *  - aliases: an artist's other spellings, read as the chosen one ("Beyonce"
+ *    as "Beyoncé") wherever they are credited (the library check)
+ *  - songs: songs whose tags name no album, put on one by hand
+ *    (views/LooseSongsView.tsx)
  *
  * Pure, so the grouping rules are testable on their own.
  */
 import type { Track } from "../types";
-import { albumKeyOf, albumRoute } from "./libraryTracks";
+import { foldTag } from "./duplicates";
+import { albumKeyOf, albumRoute, artistRoute, leadArtist, splitCredits } from "./libraryTracks";
 
 export interface AlbumEdits {
   /** album key → artist credit line ("A, B") */
   artists: Record<string, string>;
   /** album key → the album it is shown as part of */
   mergedInto: Record<string, string>;
+  /** an artist name as tagged → the spelling it is shown as */
+  aliases: Record<string, string>;
+  /** a song put on an album by hand → what it carries, under every id of the song */
+  songs: Record<string, SongEdit>;
+}
+
+/** What a song put on an album by hand carries, as if tagged. */
+export interface SongEdit {
+  album: string;
+  /** the album's artist */
+  albumArtist?: string;
+  /** the song's artist, where its tags name none */
+  artist?: string;
+  trackNo?: number;
+  year?: number;
+}
+
+/** A song whose tags name no album — it shows on no album page until it's put on one. */
+export const isLoose = (t: Track): boolean => !albumKeyOf(t);
+
+/**
+ * Songs put on an album by hand carry it as if tagged — the album, its
+ * artist, their number and year, and an artist where their tags name none —
+ * and group with it. An edit is kept under every id of a song, so a song
+ * found twice keeps it whichever copy leads.
+ */
+export function applySongEdits(tracks: Track[], songs: Record<string, SongEdit>, versions?: Map<string, Track[]>): Track[] {
+  if (!songs || !Object.keys(songs).length) return tracks;
+  return tracks.map((t) => {
+    const edit = songs[t.id] ?? versions?.get(t.id)?.map((v) => songs[v.id]).find((e) => !!e);
+    if (!edit) return t;
+    const next: Track = {
+      ...t,
+      album: edit.album,
+      albumArtist: edit.albumArtist ?? t.albumArtist,
+      artist: edit.artist ?? t.artist,
+      trackNo: edit.trackNo ?? t.trackNo,
+      year: edit.year ?? t.year,
+    };
+    const key = albumKeyOf(next);
+    const lead = leadArtist(next.artist);
+    return {
+      ...next,
+      albumId: key ? albumRoute(key) : t.albumId,
+      artistId: edit.artist && lead && lead.toLowerCase() !== "unknown artist" ? artistRoute(lead) : t.artistId,
+    };
+  });
+}
+
+/** The title without disc/edition markers: "Album (Disc 2)", "Album [CD1]", "Album (Deluxe)" → "album". */
+export function baseTitle(title: string): string {
+  return foldTag(
+    title
+      .replace(/\s*[([][^)\]]*\b(?:disc|disk|cd|deluxe|bonus|edition|remaster(?:ed)?|expanded|anniversary|b-sides?)\b[^)\]]*[)\]]/gi, "")
+      .replace(/\s*[-–:]\s*(?:disc|disk|cd)\s*\d+\s*$/i, "")
+  );
+}
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Every credit of an aliased name reads as its chosen spelling — artist and album artist, the rest of the line as it was. */
+export function applyArtistAliases(tracks: Track[], aliases: Record<string, string>): Track[] {
+  if (!Object.keys(aliases).length) return tracks;
+  const rewrite = (credit: string | undefined): string | undefined => {
+    if (!credit) return credit;
+    let out = credit;
+    for (const name of splitCredits(credit)) {
+      const to = aliases[name];
+      if (!to || to === name) continue;
+      out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`, "u"), () => to);
+    }
+    return out;
+  };
+  return tracks.map((t) => {
+    const artist = rewrite(t.artist) ?? t.artist;
+    const albumArtist = rewrite(t.albumArtist);
+    return artist === t.artist && albumArtist === t.albumArtist ? t : { ...t, artist, albumArtist };
+  });
 }
 
 /** The album a key ends up in, following chained merges (a cycle stops where it started). */

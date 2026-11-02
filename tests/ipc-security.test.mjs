@@ -18,6 +18,8 @@ async function harness({ legacyStores = false } = {}) {
   const module = { exports: {} };
   vm.runInNewContext(code, {
     module, exports: module.exports, console, URL, __dirname: root,
+    // Timers main.ts arms in passing (the lyrics index catching up after a library change) never fire here.
+    setTimeout: () => 0, clearTimeout() {},
     process: { env: {}, on() {} },
     require(name) {
       if (name === "electron") return {

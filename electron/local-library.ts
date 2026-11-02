@@ -22,6 +22,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
+import { titleFromFile } from "./file-title";
 import { foldPathCase, isUnderPath } from "./local-paths";
 import { isoDate } from "./release-date";
 
@@ -76,7 +77,14 @@ export interface ReplayGainTags {
 }
 
 /** Bump when the scan reads new fields: unchanged files are then re-read once. */
-const SCAN_VERSION = 4;
+const SCAN_VERSION = 5;
+
+/**
+ * A record that needs no new read: this scan's, or one of the previous
+ * scan's that has an album — 5 only reads an untagged file's name better
+ * (electron/file-title.ts), so just the songs without an album are read again.
+ */
+const isCurrent = (t: LocalTrack): boolean => t.v === SCAN_VERSION || (t.v === 4 && t.album !== "Unknown album");
 
 /** ReplayGain from the tags; Opus files carry R128 gains (Q7.8 dB, −23 LUFS) instead. */
 function readReplayGain(meta: import("music-metadata").IAudioMetadata): ReplayGainTags | undefined {
@@ -203,15 +211,6 @@ function isNonMusic(relPath: string, fileName: string): boolean {
   if (NON_MUSIC_PATHS.some((frag) => rp.includes(frag))) return true;
   const name = fileName.toLowerCase();
   return NON_MUSIC_NAMES.some((frag) => name.startsWith(frag) || name.includes(` ${frag} `));
-}
-
-function titleFromFile(fileName: string): { title: string; artist?: string } {
-  const stem = fileName.replace(/\.[^.]+$/, "").replace(/_/g, " ").trim();
-  const dash = /^(.*?)\s*[-–]\s*(.+)$/.exec(stem);
-  if (dash && dash[1] && dash[2]) {
-    return { artist: dash[1].trim(), title: dash[2].trim() };
-  }
-  return { title: stem };
 }
 
 /** Accept both the current entry shape and the legacy bare-string folders. */
@@ -482,7 +481,7 @@ export function folderStatuses(): FolderStatus[] {
 
 /** Records read with an older scan schema: one rescan fills in the fields they lack. */
 export function hasStaleScanRecords(): boolean {
-  return readLocalLibrary().tracks.some((t) => t.v !== SCAN_VERSION);
+  return readLocalLibrary().tracks.some((t) => !isCurrent(t));
 }
 
 /** Legacy replace-all shape (pre-multi-folder callers). Entries are reused so a re-set never wipes display names. */
@@ -613,7 +612,7 @@ export async function scanLibrary(
     // Unchanged since the last scan — carry the previous record forward
     // (records from an older scan schema are re-read once for the new fields).
     const unchanged = !!prev && prev.mtime === Math.floor(stat.mtimeMs);
-    if (prev && unchanged && prev.v === SCAN_VERSION) {
+    if (prev && unchanged && isCurrent(prev)) {
       tracks.push(prev);
       continue;
     }
@@ -624,6 +623,7 @@ export async function scanLibrary(
       title: nameParts.title || path.basename(f.abs),
       artist: nameParts.artist ?? "Unknown artist",
       album: "Unknown album",
+      trackNo: nameParts.trackNo,
       duration: 0,
       size: stat.size,
       mtime: Math.floor(stat.mtimeMs),
@@ -653,7 +653,7 @@ export async function scanLibrary(
         duration: parsedDuration(meta.format.duration),
         year: num(c.year) ?? num(c.originalyear),
         albumArtist: bounded(c.albumartist?.trim()),
-        trackNo: num(c.track?.no),
+        trackNo: num(c.track?.no) ?? track.trackNo,
         discNo: num(c.disk?.no),
         trackTotal: num(c.track?.of),
         releaseType: bounded(c.releasetype?.join(" ").toLowerCase()),

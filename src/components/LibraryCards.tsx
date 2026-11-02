@@ -8,7 +8,7 @@ import { resolveArtistAbout } from "../lib/artistAbout";
 import { resolveArtistImages } from "../lib/songInfo";
 import type { LibAlbum, LibGenre } from "../lib/catalogIndex";
 import { trackAvailable } from "../stores/availability";
-import { sameSong } from "../stores/catalog";
+import { sameSong, songKey } from "../stores/catalog";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI } from "../stores/ui";
 import type { Track } from "../types";
@@ -19,11 +19,20 @@ const NO_TRACKS: Track[] = [];
 /**
  * Whether the playing song belongs to these tracks: the collection's play
  * button then pauses and resumes it in place instead of starting over.
+ * `exact`: only while the queue is these tracks — a few songs picked out of
+ * an album (the artist page's liked songs) still start as their own list
+ * while the album plays one of them.
  */
-export function useCollectionPlayback(tracks: Track[]): { active: boolean; playing: boolean } {
+export function useCollectionPlayback(tracks: Track[], exact = false): { active: boolean; playing: boolean } {
   const currentId = usePlayer((s) => s.queue[s.index]?.id ?? null);
+  const queue = usePlayer((s) => (exact ? s.queue : null));
   const playing = usePlayer((s) => s.playing);
-  const active = useMemo(() => !!currentId && tracks.some((t) => sameSong(t.id, currentId)), [tracks, currentId]);
+  const active = useMemo(() => {
+    if (!currentId || !tracks.some((t) => sameSong(t.id, currentId))) return false;
+    if (!queue) return true;
+    const keys = new Set(tracks.map((t) => songKey(t.id)));
+    return queue.every((q) => keys.has(songKey(q.id)));
+  }, [tracks, currentId, queue]);
   return { active, playing: active && playing };
 }
 
@@ -237,23 +246,38 @@ export function MixTile({ title, subtitle, tracks, route }: { title: string; sub
  * Spotify's round green play button for page headers. Given the page's
  * tracks, it turns into pause while one of them plays and resumes in place.
  */
-export function BigPlayButton({ onClick, label = "Play", tracks }: { onClick: () => void; label?: string; tracks?: Track[] }) {
-  const { active, playing } = useCollectionPlayback(tracks ?? NO_TRACKS);
+export function BigPlayButton({
+  onClick,
+  label = "Play",
+  tracks,
+  size = "lg",
+  exact = false,
+}: {
+  onClick: () => void;
+  label?: string;
+  tracks?: Track[];
+  /** md: a section's own play button, beside its heading */
+  size?: "lg" | "md";
+  /** pauses only while the queue is exactly these tracks (useCollectionPlayback) */
+  exact?: boolean;
+}) {
+  const { active, playing } = useCollectionPlayback(tracks ?? NO_TRACKS, exact);
   const title = playing ? "Pause" : label;
+  const glyph = size === "lg" ? "w-6 h-6" : "w-5 h-5";
   return (
     <button
       onClick={playOrToggle(active, onClick)}
       title={title}
       aria-label={title}
-      className="w-14 h-14 rounded-full bg-primary text-on-primary grid place-items-center shadow-float hover:scale-105 active:scale-95 transition-transform"
+      className={`${size === "lg" ? "w-14 h-14" : "w-11 h-11"} shrink-0 rounded-full bg-primary text-on-primary grid place-items-center shadow-float hover:scale-105 active:scale-95 transition-transform`}
     >
       {playing ? (
-        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current" aria-hidden>
+        <svg viewBox="0 0 24 24" className={`${glyph} fill-current`} aria-hidden>
           <rect x="6" y="5" width="4" height="14" rx="1" />
           <rect x="14" y="5" width="4" height="14" rx="1" />
         </svg>
       ) : (
-        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current ml-0.5" aria-hidden>
+        <svg viewBox="0 0 24 24" className={`${glyph} fill-current ml-0.5`} aria-hidden>
           <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
         </svg>
       )}
@@ -316,10 +340,10 @@ export function CollectionHeader({
         </div>
         <div className="min-w-0 pb-1">
           <div className="text-[13px] font-semibold text-ink-hi/80">{label}</div>
-          <h1 className="font-display font-extrabold tracking-[-0.04em] text-ink-hi leading-[1.02] mt-1 line-clamp-2" style={{ fontSize: title.length > 24 ? 44 : 64 }}>
+          <h1 className="font-display font-extrabold tracking-[-0.04em] text-ink-hi leading-[1.15] pb-[0.08em] line-clamp-2" style={{ fontSize: title.length > 24 ? 44 : 64 }}>
             {title}
           </h1>
-          <div className="text-[14px] text-ink-hi/75 mt-4">
+          <div className="text-[14px] text-ink-hi/75 mt-2">
             {subtitle ? `${subtitle} · ` : ""}
             {tracks.length} {tracks.length === 1 ? "song" : "songs"}
             {length > 0 && `, ${h > 0 ? `${h} hr ${m} min` : `${m} min`}`}

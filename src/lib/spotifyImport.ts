@@ -1,13 +1,16 @@
 /**
- * Spotify Liked Songs → ByTune: read an export, find each song in the
- * library, and list what is still missing.
+ * Spotify Liked Songs and playlists → ByTune: read an export, find each song
+ * in the library, and list what is still missing.
  *
- * Two exports are understood:
+ * The exports understood:
  *  - Exportify's CSV (exportify.net) — titles, artists, album, length and the
  *    date each song was liked, so Spotify's order (newest first) is exact.
- *    Columns are found by name, comma or semicolon separated.
+ *    Columns are found by name, comma or semicolon separated. A playlist's
+ *    CSV keeps the playlist's own order.
  *  - YourLibrary.json from Spotify's own data download — titles, artists and
  *    album, in the file's order (it carries no dates).
+ *  - Playlist1.json from the same download — every playlist, each in its
+ *    order, the local files in it too (parsePlaylistExport).
  *
  * Matching works on the merged catalogue (one entry per song), with the same
  * folding as the duplicate detection: case, accents, punctuation and
@@ -173,7 +176,7 @@ function fromCsv(text: string): SpotifyEntry[] {
   const title = col("title");
   const artists = col("artists");
   if (title === -1 || artists === -1) {
-    throw new Error("This CSV has no track name and artist columns — export Liked Songs with Exportify.");
+    throw new Error("This CSV has no track name and artist columns — export it with Exportify.");
   }
   const album = col("album");
   const duration = col("durationMs");
@@ -215,9 +218,10 @@ function fromJson(text: string): SpotifyEntry[] {
 
 /**
  * The songs of an export, newest like first where the export has dates (the
- * file's own order otherwise). A song listed twice under one URI counts once.
+ * file's own order otherwise, and always with `keepOrder` — a playlist's).
+ * A song listed twice under one URI counts once.
  */
-export function parseSpotifyExport(text: string, fileName: string): SpotifyExport {
+export function parseSpotifyExport(text: string, fileName: string, opts: { keepOrder?: boolean } = {}): SpotifyExport {
   const json = /\.json$/i.test(fileName) || /^\s*[[{]/.test(text.replace(/^﻿/, ""));
   const seen = new Set<string>();
   const entries = (json ? fromJson(text) : fromCsv(text)).filter((e) => {
@@ -228,12 +232,111 @@ export function parseSpotifyExport(text: string, fileName: string): SpotifyExpor
     return true;
   });
   if (!entries.length) throw new Error("No songs found in this file.");
-  const dated = entries.some((e) => e.addedAt);
+  const dated = !opts.keepOrder && entries.some((e) => e.addedAt);
   if (dated) {
     // Stable: songs without a date keep their place among themselves, after the dated ones.
     entries.sort((a, b) => (b.addedAt ?? -Infinity) - (a.addedAt ?? -Infinity) || 0);
   }
   return { entries, dated };
+}
+
+/** A playlist in an export: its name and songs, in its own order. */
+export interface SpotifyPlaylist {
+  name: string;
+  entries: SpotifyEntry[];
+}
+
+/** "road_trip_2019.csv" → "Road trip 2019": Exportify names its files after the playlist. */
+export function playlistNameOf(fileName: string): string {
+  const base = fileName
+    .replace(/^.*[\\/]/, "")
+    .replace(/\.[^.]+$/, "")
+    .replace(/_+/g, " ")
+    .trim();
+  return base ? base[0].toUpperCase() + base.slice(1) : "Spotify playlist";
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/** "spotify:local:Artist:Album:Title:245" — "+" for spaces, the rest URL-encoded. */
+function fromLocalUri(uri: string): SpotifyEntry | null {
+  const m = /^spotify:local:([^:]*):([^:]*):([^:]*):(\d*)$/.exec(uri);
+  if (!m) return null;
+  const part = (s: string): string => {
+    try {
+      return decodeURIComponent(s.replace(/\+/g, " ")).trim();
+    } catch {
+      return s.trim();
+    }
+  };
+  const title = part(m[3]);
+  if (!title) return null;
+  return { title, artists: splitCredits(part(m[1])), album: part(m[2]), durationMs: m[4] ? Number(m[4]) * 1000 : undefined, uri };
+}
+
+/** One item of a data-download playlist: a song, a local file — a podcast episode is none. */
+function fromPlaylistItem(it: any): SpotifyEntry | null {
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const t = it?.track;
+  if (t && typeof t === "object") {
+    const title = str(t.trackName) || str(t.name);
+    if (!title) return null;
+    const addedAt = Date.parse(str(it?.addedDate));
+    return {
+      title,
+      artists: splitCredits(str(t.artistName) || str(t.artist)),
+      album: str(t.albumName) || str(t.album),
+      uri: str(t.trackUri) || str(t.uri) || undefined,
+      addedAt: Number.isFinite(addedAt) ? addedAt : undefined,
+    };
+  }
+  return fromLocalUri(str(it?.localTrack?.uri));
+}
+
+/**
+ * The playlists of an export, each in its own order: every one of Spotify's
+ * data download (Playlist1.json), or the one of an Exportify CSV — named
+ * after its file. A song listed twice under one URI counts once.
+ */
+export function parsePlaylistExport(text: string, fileName: string): SpotifyPlaylist[] {
+  const clean = text.replace(/^\uFEFF/, "");
+  if (/\.json$/i.test(fileName) || /^\s*[[{]/.test(clean)) {
+    let data: any;
+    try {
+      data = JSON.parse(clean);
+    } catch {
+      throw new Error("The file is not valid JSON.");
+    }
+    if (Array.isArray(data?.playlists)) {
+      const lists = data.playlists
+        .slice(0, 10_000)
+        .map((p: any): SpotifyPlaylist => {
+          const seen = new Set<string>();
+          const entries = (Array.isArray(p?.items) ? p.items : [])
+            .slice(0, MAX_ENTRIES)
+            .map(fromPlaylistItem)
+            .filter((e: SpotifyEntry | null): e is SpotifyEntry => !!e && (!e.uri || (!seen.has(e.uri) && !!seen.add(e.uri))));
+          return { name: (typeof p?.name === "string" && p.name.trim()) || "Untitled playlist", entries };
+        })
+        .filter((p: SpotifyPlaylist) => p.entries.length > 0);
+      if (!lists.length) throw new Error("No playlist with songs in this file.");
+      return lists;
+    }
+  }
+  return [{ name: playlistNameOf(fileName), entries: parseSpotifyExport(text, fileName, { keepOrder: true }).entries }];
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * A playlist's songs after an import: what it brings, in Spotify's order,
+ * then the songs added in ByTune, after them — one copy of each song
+ * (`keyOf` gives a song's key across its copies).
+ */
+export function mergeImportedPlaylist(current: Track[], incoming: Track[], keyOf: (id: string) => string): Track[] {
+  const seen = new Set<string>();
+  return [...incoming, ...current].filter((t) => {
+    const key = keyOf(t.id);
+    return !seen.has(key) && !!seen.add(key);
+  });
 }
 
 /* ------------------------------------------------------------- matching */
