@@ -24,7 +24,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-a8324a" alt="License: GPL-3.0"></a>
 </p>
 
-![ByTune Local: an album page with its track list, the library panel with albums and EPs, and the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
+![ByTune Local: an album page with its track list; the library panel with two pinned rows over what played last; the right panel with what's next and the song's tempo and key; the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
 
 ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the open-source YouTube Music desktop app, rebuilt into a player for your own collection. YouTube and the account screens are gone: the app opens in your library, plays from your disk first and streams from your own server only when a file isn't there.
 
@@ -55,7 +55,7 @@ ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the o
 
 ### Your music, arranged like a streaming app
 
-![Home: quick-access tiles, Made for you mixes and recently added albums](docs/screenshots/local/home.jpg)
+![Home: quick-access tiles, Made for you mixes — On Repeat, Rediscover, Calm, Upbeat and one per genre — and recently added albums](docs/screenshots/local/home.jpg)
 
 - **Home**, built only from your library: quick-access tiles, *Made for you* mixes (On Repeat, Rediscover, what you usually play at this time of day, Calm and Upbeat, one per big genre and decade, reshuffled daily), recently added albums, your top artists and recently played songs.
 - **Album and artist pages** with play and shuffle, popular songs ranked by your own plays, the artist's songs you've liked, albums, singles & EPs, "appears on" and the Wikipedia bio.
@@ -64,7 +64,7 @@ ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the o
 - **The library panel** puts what you played last on top. Pinned playlists and albums stay above it, in the order you drag them into; the panel folds down to an icon rail (<kbd>Ctrl</kbd>+<kbd>B</kbd>).
 - **The right panel** shows the playing song — its title opens the album, its artists their pages — what plays next (drag songs in), the song's story and credits from Genius with its tempo and key, and the artist.
 
-![An artist's Discography tab: releases newest first, each with its songs](docs/screenshots/local/discography.jpg)
+![An artist's page: popular songs ranked by your own plays, and the songs of theirs you've liked as a small playlist](docs/screenshots/local/artist.jpg)
 
 ### Fix albums without touching your files
 
@@ -76,6 +76,8 @@ Tags aren't always right. The album editor — the pencil on an album page, or r
 - **merge albums** that show up as several (a "Disc 2", bonus tracks, one song with a different album artist), and separate them again.
 
 Songs whose tags name no album gather under **Songs without an album** in the library panel. *Make an album…* puts them on one — title, artist, year and order — or on an album you already have.
+
+![Make an album: three songs without an album tag, with the album's title taken from their folder, the artist, a year and the order](docs/screenshots/local/make-album.jpg)
 
 ByTune keeps these edits itself; your files and servers stay exactly as they are.
 
