@@ -4,7 +4,7 @@
  * the mixes stand in the list as playlists do.
  */
 import { useNavigation } from "@react-navigation/native";
-import { ArrowUpDown, Heart, Pin, Plus } from "lucide-react-native";
+import { ArrowUpDown, CircleArrowDown, Heart, Pin, Plus } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NameDialog } from "../components/PlaylistSheets";
 import { Chip, Cover, CoverGrid, EqBars } from "../components/ui";
 import { plural, type LibAlbum, type Track } from "../shared";
+import { sizeLine, useDownloads } from "../stores/downloads";
 import { useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { playlistTracks, usePlaylists } from "../stores/playlists";
@@ -21,6 +22,7 @@ type Filter = "playlists" | "albums" | "artists" | null;
 
 type Row =
   | { kind: "liked"; key: string; count: number }
+  | { kind: "downloads"; key: string; line: string }
   | { kind: "playlist"; key: string; title: string; subtitle: string; tracks: Track[]; lastAt: number }
   | { kind: "mix"; key: string; id: string; title: string; subtitle: string; tracks: Track[]; lastAt: number }
   | { kind: "album"; key: string; album: LibAlbum; lastAt: number }
@@ -42,6 +44,8 @@ export function LibraryScreen() {
   const artists = useLibrary((s) => s.artists);
   const mixes = useLibrary((s) => s.mixes);
   const playingAlbum = usePlayer((s) => s.queue[s.index]?.albumId);
+  const kept = useDownloads((s) => s.kept);
+  const loadingCount = useDownloads((s) => Object.values(s.loading).filter((song) => !song.failed).length);
 
   const rows = useMemo<Row[]>(() => {
     const lastOf = (tracks: Track[]): number => Math.max(0, ...tracks.map((t) => data.counts[t.id]?.lastAt ?? 0));
@@ -73,11 +77,24 @@ export function LibraryScreen() {
       for (const a of artists) rest.push({ kind: "artist", key: a.name, name: a.name, thumb: a.thumb, lastAt: artistLast.get(a.name.toLowerCase()) ?? 0 });
     }
     // Stable: what never played keeps its order behind the rest.
-    const lastAt = (r: Row): number => (r.kind === "liked" ? 0 : r.lastAt);
+    const lastAt = (r: Row): number => (r.kind === "liked" || r.kind === "downloads" ? 0 : r.lastAt);
     rest.sort((a, b) => lastAt(b) - lastAt(a));
     const liked: Row[] = filter === "albums" || filter === "artists" ? [] : [{ kind: "liked", key: "liked", count: data.favorites.length }];
-    return [...liked, ...rest];
-  }, [data, albums, artists, mixes, playlists, filter]);
+    const keptSongs = Object.values(kept);
+    const downloads: Row[] =
+      liked.length && (keptSongs.length || loadingCount)
+        ? [
+            {
+              kind: "downloads",
+              key: "downloads",
+              line: loadingCount
+                ? `Downloading ${plural(loadingCount, "song", "songs")}…`
+                : `${plural(keptSongs.length, "song", "songs")} · ${sizeLine(keptSongs.reduce((sum, k) => sum + k.bytes, 0))}`,
+            },
+          ]
+        : [];
+    return [...liked, ...downloads, ...rest];
+  }, [data, albums, artists, mixes, playlists, filter, kept, loadingCount]);
 
   const chip = (label: string, value: Exclude<Filter, null>) => (
     <Chip label={label} active={filter === value} onPress={() => setFilter(filter === value ? null : value)} />
@@ -97,6 +114,18 @@ export function LibraryScreen() {
                 <Pin size={12} color={colors.accent} fill={colors.accent} />
                 <Text style={styles.rowSub}>Playlist · {plural(item.count, "song", "songs")}</Text>
               </View>
+            </View>
+          </Pressable>
+        );
+      case "downloads":
+        return (
+          <Pressable style={styles.row} onPress={() => nav.navigate("Collection", { kind: "downloads" })}>
+            <View style={styles.downloads}>
+              <CircleArrowDown size={26} color={colors.accent} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Downloads</Text>
+              <Text style={styles.rowSub}>{item.line}</Text>
             </View>
           </Pressable>
         );
@@ -209,6 +238,7 @@ const styles = StyleSheet.create({
   sortText: { color: colors.ink, fontSize: 13, fontWeight: "500" },
   row: { flexDirection: "row", alignItems: "center", gap: 12, height: 68, paddingHorizontal: 16 },
   liked: { width: 56, height: 56, borderRadius: 4, alignItems: "center", justifyContent: "center" },
+  downloads: { width: 56, height: 56, borderRadius: 4, alignItems: "center", justifyContent: "center", backgroundColor: colors.panel },
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { color: colors.ink, fontSize: 15, fontWeight: "600" },
   rowSub: { color: colors.dim, fontSize: 13, marginTop: 3 },

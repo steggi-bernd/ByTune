@@ -38,7 +38,7 @@ export {
 } from "../../src/lib/exploreRows";
 export { allMixes, type Mix } from "../../src/lib/mixes";
 export { recordDeletionChanges, type DeletionChange } from "../../src/lib/deletion-sync";
-export { mergePlaylistDocs, songFinder, toPlaylistDoc, toWireTrack, type PlaylistDoc, type WirePlaylist, type WireTrack } from "../../src/lib/playlistSync";
+export { likedInOrder, mergePlaylistDocs, songFinder, toPlaylistDoc, toWireTrack, type PlaylistDoc, type WirePlaylist, type WireTrack } from "../../src/lib/playlistSync";
 export { createSyncEngine, defaultSyncAddress, type PlaybackNote, type QueueDoc, type SyncEngine, type SyncStatus } from "../../src/lib/syncEngine";
 export { playCreditSeconds } from "../../src/lib/favoriteSync";
 export { fmtLength, fmtTime, plural } from "../../src/lib/format";

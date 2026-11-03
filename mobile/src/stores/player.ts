@@ -7,15 +7,19 @@
  * start, and the sync service carries the same note between devices: a phone
  * that isn't playing continues from where another device stopped.
  */
+import { ToastAndroid } from "react-native";
 import { create } from "zustand";
 import Player, { type PlaybackState, type QueueItem, type RepeatMode } from "../../modules/media3-player";
-import { streamUrl } from "../jellyfin";
+import { streamUrl, type Session } from "../jellyfin";
+import { withoutServer } from "../addresses";
 import { chooseStream, ORIGINAL, sameChoice, stepDown, type QualityMode, type StreamChoice } from "../quality";
 import { playCreditSeconds, toWireTrack, type PlaybackNote, type QueueDoc, type Track } from "../shared";
 import { readJson, writeJson } from "../storage";
+import { useConnection } from "./connection";
+import { useDownloads } from "./downloads";
 import { useLibrary } from "./library";
 import { findSong } from "./playlists";
-import { useSession } from "./session";
+import { here, useSession } from "./session";
 
 const FILE = "player.json";
 const QUALITY_FILE = "quality.json";
@@ -52,6 +56,11 @@ interface PlayerState {
   quality: QualityMode;
   /** the copy the playing song comes from */
   stream: StreamChoice;
+  /** what the sound goes through: decoder, output, speed */
+  audio: string;
+  /** 24-bit files keep their resolution up to the system's mixer */
+  keep24Bit: boolean;
+  setKeep24Bit(on: boolean): void;
   setQuality(mode: QualityMode): void;
   playTracks(tracks: Track[], start: number, context: string, shuffle?: boolean): void;
   toggle(): void;
@@ -73,17 +82,23 @@ interface PlayerState {
   clearError(): void;
 }
 
+function urlOf(s: Session | null, t: Track, choice: StreamChoice): string {
+  const kept = useDownloads.getState().kept[t.id];
+  if (kept) return `file://${kept.file}`;
+  return s ? streamUrl(s, t, choice) : "";
+}
+
 function toItem(t: Track): QueueItem {
   const s = useSession.getState().session;
   const choice = choiceFor(t);
   chosen.set(t.id, choice);
   return {
     id: t.id,
-    url: s ? streamUrl(s, t, choice) : "",
+    url: urlOf(s, t, choice),
     title: t.title,
     artist: t.artist,
     album: t.album ?? "",
-    artworkUrl: t.thumb || undefined,
+    artworkUrl: t.thumb ? useDownloads.getState().covers[withoutServer(t.thumb)] ?? here(t.thumb) : undefined,
     gainDb: t.rg?.trackGain,
   };
 }
@@ -115,19 +130,35 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   error: null,
   quality: "auto",
   stream: ORIGINAL,
+  audio: "",
+  keep24Bit: false,
 
   setQuality(mode) {
     capKbps = null;
     jumpedAt = Date.now();
     set({ quality: mode });
-    writeJson(QUALITY_FILE, { mode });
+    writeJson(QUALITY_FILE, { mode, keep24Bit: get().keep24Bit });
     refreshStreams(true);
   },
 
-  playTracks(tracks, start, context, shuffle = get().shuffle) {
-    if (!tracks.length) return;
+  setKeep24Bit(keep24Bit) {
+    set({ keep24Bit });
+    writeJson(QUALITY_FILE, { mode: get().quality, keep24Bit });
+    jumpedAt = Date.now();
+    void Player.setKeep24Bit(keep24Bit, true);
+  },
+
+  playTracks(all, start, context, shuffle = get().shuffle) {
+    // Without a way to the server only what's on the phone can play.
+    const { kept } = useDownloads.getState();
+    const offline = useConnection.getState().reach === "offline";
+    const tracks = offline ? all.filter((t) => kept[t.id]) : all;
+    if (!tracks.length) {
+      if (offline && all.length) ToastAndroid.show("Your server is out of reach, and this isn't downloaded", ToastAndroid.SHORT);
+      return;
+    }
     let queue = tracks;
-    let index = Math.max(0, Math.min(start, tracks.length - 1));
+    let index = offline ? Math.max(0, tracks.indexOf(all[start])) : Math.max(0, Math.min(start, tracks.length - 1));
     if (shuffle) {
       queue = [tracks[index], ...shuffled(tracks.filter((_, i) => i !== index))];
       index = 0;
@@ -258,8 +289,12 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   async restore() {
-    const savedQuality = await readJson<{ mode?: QualityMode }>(QUALITY_FILE);
+    const savedQuality = await readJson<{ mode?: QualityMode; keep24Bit?: boolean }>(QUALITY_FILE);
     if (savedQuality?.mode) set({ quality: savedQuality.mode });
+    if (savedQuality?.keep24Bit) {
+      set({ keep24Bit: true });
+      await Player.setKeep24Bit(true, false);
+    }
     const saved = await readJson<Saved>(FILE);
     activityAt = saved?.at ?? 0;
     queueId = saved?.queueId ?? "";
@@ -323,6 +358,7 @@ function onState(s: PlaybackState): void {
   const prev = usePlayer.getState();
   bandwidthBps = s.bandwidthBps ?? 0;
   watchStalls(s);
+  watchRate(s);
   if (prev.isPlaying !== s.isPlaying || (s.isPlaying && prev.index !== s.index)) activity();
   else if (s.isPlaying) routineActivity();
   usePlayer.setState({
@@ -334,6 +370,7 @@ function onState(s: PlaybackState): void {
     positionMs: s.positionMs,
     durationMs: s.durationMs,
     repeat: s.repeat,
+    audio: s.audio,
   });
   const step = s.positionMs - lastPosition;
   // A new song, or this one over from its start (repeat, or scrubbed back there): a new listen.
@@ -385,8 +422,10 @@ let lastStallAt = 0;
 let jumpedAt = 0;
 
 function choiceFor(t: Track): StreamChoice {
+  const kept = useDownloads.getState().kept[t.id];
+  if (kept) return { kind: "download", compact: kept.compact };
   if (!transcodesWork) return ORIGINAL;
-  return chooseStream(t, usePlayer.getState().quality, bandwidthBps, capKbps);
+  return chooseStream(t, usePlayer.getState().quality, bandwidthBps, capKbps, useConnection.getState().metered);
 }
 
 function showStream(): void {
@@ -411,7 +450,7 @@ function refreshStreams(currentToo: boolean): void {
 function smallerCopy(): void {
   const { quality, queue, index } = usePlayer.getState();
   const current = queue[index];
-  if (quality !== "auto" || !current) return;
+  if (quality !== "auto" || !current || chosen.get(current.id)?.kind === "download") return;
   const cap = stepDown(current, chosen.get(current.id) ?? ORIGINAL);
   if (cap === null) return;
   capKbps = cap;
@@ -419,6 +458,14 @@ function smallerCopy(): void {
   jumpedAt = capSetAt;
   lastStallAt = 0;
   refreshStreams(true);
+}
+
+/** Only when the server still answers where it did: moved or gone says nothing about how much the connection carries. */
+function smallerCopyIfStillThere(): void {
+  const before = useSession.getState().session?.server;
+  void useConnection.getState().check().then((reach) => {
+    if (reach !== "offline" && useSession.getState().session?.server === before) smallerCopy();
+  });
 }
 
 function watchStalls(s: PlaybackState): void {
@@ -434,15 +481,38 @@ function watchStalls(s: PlaybackState): void {
     const now = Date.now();
     // A song under way that ran dry. The first time can be a bump in the road; soon again it isn't.
     if (s.positionMs > 0 && now - jumpedAt > LOADING_AFTER_JUMP_MS) {
-      if (now - lastStallAt < STALLS_AGAIN_WITHIN_MS) smallerCopy();
+      if (now - lastStallAt < STALLS_AGAIN_WITHIN_MS) smallerCopyIfStillThere();
       else lastStallAt = now;
     }
   }
   if (stallTimer) return;
   stallTimer = setTimeout(() => {
     stallTimer = null;
-    smallerCopy();
+    smallerCopyIfStillThere();
   }, STALL_MS);
+}
+
+/* ------------------------------------------------------------- how fast it really runs */
+
+/** A stretch of plain playing against the clock: 1 is right. Goes out with the note, for when something sounds off. */
+const RATE_STRETCH_MS = 10_000;
+let rateFrom: { at: number; position: number; index: number } | null = null;
+let rateOff = "";
+
+function watchRate(s: PlaybackState): void {
+  const now = Date.now();
+  if (!s.isPlaying || s.isBuffering || now - jumpedAt < RATE_STRETCH_MS) {
+    rateFrom = null;
+    return;
+  }
+  if (!rateFrom || rateFrom.index !== s.index) {
+    rateFrom = { at: now, position: s.positionMs, index: s.index };
+    return;
+  }
+  if (now - rateFrom.at < RATE_STRETCH_MS) return;
+  const rate = (s.positionMs - rateFrom.position) / (now - rateFrom.at);
+  rateFrom = { at: now, position: s.positionMs, index: s.index };
+  if (rate > 1.15 || rate < 0.85) rateOff = `ran at ${rate.toFixed(2)}x, ${new Date(now).toISOString()}`;
 }
 
 /* ------------------------------------------------------------- what other devices get to know */
@@ -488,7 +558,7 @@ export function playbackNote(device: PlaybackNote["device"]): { note: PlaybackNo
   if (!queueId) queueId = String(activityAt);
   const id = queueId;
   return {
-    note: { device, at: activityAt, playing: isPlaying, positionMs, track: toWireTrack(track), queueId: id, context },
+    note: { device, at: activityAt, playing: isPlaying, positionMs, track: toWireTrack(track), queueId: id, context, audio: [usePlayer.getState().audio, rateOff].filter(Boolean).join(" · ") },
     queue: () => ({
       id,
       context,
@@ -542,15 +612,42 @@ export function adoptPlayback(note: PlaybackNote, queue: QueueDoc | null): void 
   save(true);
 }
 
+/** A dropped connection: the server may answer at its other address, then the song goes on from there. */
+const RETRY_AFTER_MS = 8000;
+let lastRetryAt = 0;
+
+function afterDroppedConnection(message: string): void {
+  void useConnection.getState().check().then((reach) => {
+    if (reach === "offline" || Date.now() - lastRetryAt < RETRY_AFTER_MS) {
+      usePlayer.setState({ error: reach === "offline" ? "Can't reach your server. Only downloaded music plays." : message });
+      return;
+    }
+    lastRetryAt = Date.now();
+    // Paused it stays paused: the next press of play loads it from where the server answers now.
+    if (usePlayer.getState().playWhenReady) void Player.play();
+  });
+}
+
 /** Listens for the app's lifetime. */
 export function watchPlayer(): void {
   Player.addListener("onState", onState);
+  // A song that just arrived on the phone, or one taken off it, changes what's coming up.
+  useDownloads.subscribe((s, prev) => {
+    if (s.kept !== prev.kept) refreshStreams(false);
+  });
+  useConnection.subscribe((s, prev) => {
+    if (s.metered !== prev.metered) refreshStreams(false);
+  });
   Player.addListener("onError", ({ message, code }) => {
     // A server that can't make the smaller copy: the file itself, for as long as the app runs.
     // A connection that dropped says nothing about the server.
     const { queue, index, positionMs } = usePlayer.getState();
     const current = queue[index];
-    if (current && chosen.get(current.id)?.kind === "transcode" && !/NETWORK|TIMEOUT/.test(code ?? "")) {
+    if (/NETWORK|TIMEOUT/.test(code ?? "")) {
+      afterDroppedConnection(message);
+      return;
+    }
+    if (current && chosen.get(current.id)?.kind === "transcode") {
       transcodesWork = false;
       void Player.replaceCurrent(toItem(current), positionMs);
       void Player.play();

@@ -46,6 +46,18 @@ test("before any measurement the file is tried", () => {
   assert.deepEqual(chooseStream(unknown, "auto", 0, null), ORIGINAL);
 });
 
+test("over mobile data Automatic stops at 320 kbps, whatever the connection carries", () => {
+  assert.deepEqual(chooseStream(flac, "auto", mbit(50), null, true), { kind: "transcode", kbps: 320 });
+  assert.deepEqual(chooseStream(flac, "auto", 0, null, true), { kind: "transcode", kbps: 320 });
+  assert.deepEqual(chooseStream(flac, "auto", 250_000, null, true), { kind: "transcode", kbps: 128 });
+  assert.deepEqual(chooseStream(smallMp3, "auto", mbit(50), null, true), ORIGINAL);
+  assert.deepEqual(chooseStream(mp3, "auto", mbit(50), null, true), ORIGINAL);
+});
+
+test("over mobile data Original still means the file", () => {
+  assert.deepEqual(chooseStream(flac, "original", mbit(50), null, true), ORIGINAL);
+});
+
 test("a song without a bitrate counts as a big file", () => {
   assert.deepEqual(chooseStream(unknown, "auto", mbit(1), null), { kind: "transcode", kbps: 320 });
 });

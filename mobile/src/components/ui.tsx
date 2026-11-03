@@ -1,20 +1,29 @@
 /** The small parts every screen is built from: covers, chips, shelves, song rows. */
 import { Image } from "expo-image";
-import { Heart, Music2 } from "lucide-react-native";
-import { useState, type ReactNode } from "react";
+import { CircleArrowDown, Heart, Music2 } from "lucide-react-native";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PixelRatio, Pressable, ScrollView, StyleSheet, Text, View, type ImageStyle, type ViewStyle } from "react-native";
+import { withoutServer } from "../addresses";
 import type { Track } from "../shared";
+import { readJson, writeJson } from "../storage";
+import { useConnection } from "../stores/connection";
+import { downloadOf, useDownloads } from "../stores/downloads";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
-import { usePlaylists } from "../stores/playlists";
+import { here, useSession } from "../stores/session";
 import { colors } from "../theme";
+import { useSongMenu } from "./SongMenu";
 
 /** Jellyfin scales pictures to order: a row's 48 points don't need the player's 800 pixels. */
 const PICTURE_WIDTHS = [200, 480];
+const SMALL_PICTURE = 48;
 function sized(uri: string, size: number): string {
   const width = PICTURE_WIDTHS.find((w) => w >= size * PixelRatio.get());
   return width ? uri.replace(/([?&]maxWidth=)[0-9]+/, `$1${width}`) : uri;
 }
+
+/** Where to load a picture from now, remembered by what it is: seen at home it's there on the road too. */
+export const picture = (uri: string): { uri: string; cacheKey: string } => ({ uri: here(uri), cacheKey: withoutServer(uri) });
 
 /** A cover or photo; `fallback` stands in when the server has no such picture. */
 export function Cover({
@@ -31,8 +40,13 @@ export function Cover({
   style?: ImageStyle;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  // Without a connection the big one may never have been seen, the small one in a list mostly has.
+  const [noBig, setNoBig] = useState<string | null>(null);
   const box = { width: size, height: size, borderRadius: radius };
   const shown = uri && uri !== failed ? uri : fallback;
+  // The same pictures from wherever the server answers now.
+  useSession((s) => s.session?.server);
+  const kept = useDownloads((s) => (shown ? s.covers[withoutServer(shown)] : undefined));
   if (!shown) {
     return (
       <View style={[box, styles.noCover, style as ViewStyle]}>
@@ -42,15 +56,46 @@ export function Cover({
   }
   return (
     <Image
-      source={{ uri: sized(shown, size) }}
+      source={kept ? { uri: kept } : picture(sized(shown, noBig === shown ? SMALL_PICTURE : size))}
       style={[box, style]}
       contentFit="cover"
       cachePolicy="disk"
       recyclingKey={shown}
       transition={100}
-      onError={() => shown === uri && setFailed(uri)}
+      onError={() => {
+        if (noBig !== shown && sized(shown, size) !== sized(shown, SMALL_PICTURE)) setNoBig(shown);
+        else if (shown === uri) setFailed(uri);
+      }}
     />
   );
+}
+
+const KEPT_COVERS_FILE = "covers-seen.json";
+
+/**
+ * On Wi-Fi the small cover of every album comes to the phone, one at a time, so
+ * lists keep their pictures without a connection. Draws nothing you can see.
+ */
+export function CoverKeeper() {
+  const tracks = useLibrary((s) => s.data.tracks);
+  const free = useConnection((s) => s.reach !== "offline" && !s.metered);
+  const [seen, setSeen] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    void readJson<string[]>(KEPT_COVERS_FILE).then((saved) => setSeen(new Set(saved ?? [])));
+  }, []);
+  const next = useMemo(() => {
+    if (!seen) return null;
+    for (const t of tracks) if (t.thumb && !seen.has(withoutServer(t.thumb))) return t.thumb;
+    return null;
+  }, [tracks, seen]);
+  if (!next || !free) return null;
+  const done = (): void => {
+    const all = new Set(seen).add(withoutServer(next));
+    setSeen(all);
+    // Not after every picture: a few lost ones are only asked for again.
+    if (all.size % 20 === 0) writeJson(KEPT_COVERS_FILE, [...all]);
+  };
+  return <Image source={picture(sized(next, SMALL_PICTURE))} style={styles.keeper} cachePolicy="disk" onLoad={done} onError={done} />;
 }
 
 /** Four covers of a mix or playlist, or the one it has. */
@@ -166,12 +211,15 @@ export function TrackRow({
 }) {
   const current = usePlayer((s) => s.queue[s.index]?.id === track.id);
   const playing = usePlayer((s) => s.isPlaying);
+  const download = useDownloads((s) => downloadOf(s, track.id));
+  // Without a way to the server only what's on the phone can play.
+  const outOfReach = useConnection((s) => s.reach === "offline") && download !== "kept";
   return (
     <Pressable
       disabled={missing && !onLongPress}
-      onPress={missing ? undefined : onPress}
-      onLongPress={onLongPress ?? (() => usePlaylists.getState().setPicking(track))}
-      style={[styles.row, !showCover && styles.rowPlain, missing && styles.rowMissing]}
+      onPress={missing || outOfReach ? undefined : onPress}
+      onLongPress={onLongPress ?? (() => useSongMenu.getState().open(track))}
+      style={[styles.row, !showCover && styles.rowPlain, (missing || outOfReach) && styles.rowMissing]}
     >
       {number !== undefined && (
         <View style={styles.rowNumber}>
@@ -183,9 +231,14 @@ export function TrackRow({
         <Text numberOfLines={1} style={[styles.rowTitle, current && { color: colors.accent }]}>
           {track.title}
         </Text>
-        <Text numberOfLines={1} style={styles.rowSubtitle}>
-          {missing ? "Not on this server" : subtitle ?? track.artist}
-        </Text>
+        <View style={styles.rowSubline}>
+          {(download === "kept" || download === "loading") && (
+            <CircleArrowDown size={13} color={download === "kept" ? colors.onAccent : colors.dim} fill={download === "kept" ? colors.accent : "transparent"} accessibilityLabel={download === "kept" ? "Downloaded" : "Downloading"} />
+          )}
+          <Text numberOfLines={1} style={styles.rowSubtitle}>
+            {missing ? "Not on this server" : subtitle ?? track.artist}
+          </Text>
+        </View>
       </View>
       {!missing && <LikeButton track={track} />}
     </Pressable>
@@ -194,6 +247,7 @@ export function TrackRow({
 
 const styles = StyleSheet.create({
   noCover: { backgroundColor: colors.panel, alignItems: "center", justifyContent: "center" },
+  keeper: { position: "absolute", width: 1, height: 1, opacity: 0 },
   chip: { height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.chip, justifyContent: "center" },
   chipActive: { backgroundColor: colors.ink },
   chipText: { color: colors.ink, fontSize: 13, fontWeight: "500" },
@@ -212,5 +266,6 @@ const styles = StyleSheet.create({
   rowNumberText: { color: colors.dim, fontSize: 13 },
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { color: colors.ink, fontSize: 15, fontWeight: "500" },
-  rowSubtitle: { color: colors.dim, fontSize: 13, marginTop: 3 },
+  rowSubline: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  rowSubtitle: { flexShrink: 1, color: colors.dim, fontSize: 13 },
 });

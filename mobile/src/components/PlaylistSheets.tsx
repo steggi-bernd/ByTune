@@ -16,6 +16,7 @@ export function NameDialog({
   initial = "",
   action,
   allowEmpty,
+  address,
   onDone,
   onCancel,
 }: {
@@ -25,6 +26,8 @@ export function NameDialog({
   initial?: string;
   action: string;
   allowEmpty?: boolean;
+  /** a web address, not a name */
+  address?: boolean;
   onDone: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -46,6 +49,8 @@ export function NameDialog({
             placeholder={placeholder}
             placeholderTextColor={colors.dim}
             autoCorrect={false}
+            autoCapitalize={address ? "none" : "sentences"}
+            keyboardType={address ? "url" : "default"}
             onSubmitEditing={() => ready && onDone(value.trim())}
             style={styles.input}
           />

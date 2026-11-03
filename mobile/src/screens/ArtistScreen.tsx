@@ -9,7 +9,7 @@ import { ChevronLeft, ChevronRight, Heart, Pause, Play, Shuffle } from "lucide-r
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Card, CARD_SIZE, Cover, Shelf, TrackRow } from "../components/ui";
+import { Card, CARD_SIZE, Cover, Shelf, TrackRow, picture } from "../components/ui";
 import { artistAlbums, artistTracks, byPlays, likedAmong, plural, RELEASE_LABEL, type LibAlbum, type Track } from "../shared";
 import { useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
@@ -63,7 +63,7 @@ export function ArtistScreen() {
       <View style={styles.banner}>
         {!!banner && (
           <Image
-            source={{ uri: banner }}
+            source={picture(banner)}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             contentPosition="top center"

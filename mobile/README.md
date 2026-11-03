@@ -3,12 +3,15 @@
 Android first, built with Expo and React Native. It connects to your Jellyfin server; the music stays there.
 
 - `src/`: the screens and stores. What albums, artists and mixes are comes from the desktop app's own code (`../src/lib`, `src/shared.ts` names what is used), so both apps agree.
-- `modules/media3-player/`: the audio engine, a small native module around Google's Media3: background playback, lock screen and headset controls, songs in a row without a gap, 24-bit decoding.
+- `modules/media3-player/`: the audio engine, a small native module around Google's Media3: background playback, lock screen and headset controls, songs in a row without a gap.
 
 ## What it does beyond playing
 
-- **Sync:** playlists and where you stopped stay the same as on the desktop, through the [sync service](../sync-server/README.md) on your server. Without the service the app works as before; playlists then stay on the phone.
-- **Quality** (tap the format line in the player): *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries. Smaller copies are AAC over HLS, made by Jellyfin; if it can't make them, the app plays the file.
+- **Sync:** playlists, where you stopped and the order of Liked Songs stay the same as on the desktop, through the [sync service](../sync-server/README.md).
+- **Quality** (tap the format line in the player): *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, measured while data flows, and over mobile data up to 320 kbps. The line at the bottom of that sheet says what the sound goes through: decoder, output, speed. *24-bit output* in the settings keeps the full resolution of 24-bit files up to the phone's mixer; it is off by default, because one phone played songs far too fast and this may be why.
+- **Away from home** (Settings): a second address for your server, say a tunnel or proxy. The app asks both when the network changes and takes the direct way when it can; songs under way go on from the other address.
+- **Downloads:** hold a song, or use the arrow on an album or playlist. Android's download service fetches them, also with the app closed; a kept song brings its cover and lyrics. Settings choose the file itself or a 192 kbps MP3, and whether mobile data may be used.
+- **Without a connection** the app opens from what it remembers: the library, playlists, the small covers it fetched on Wi-Fi, lyrics it has shown. Downloaded songs play, the rest is greyed out.
 
 ## Running it
 

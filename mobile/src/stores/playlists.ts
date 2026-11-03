@@ -46,6 +46,8 @@ interface PlaylistsState extends PlaylistDoc {
 
 const EMPTY = toPlaylistDoc(null);
 
+let restored: Promise<void> | null = null;
+
 const uid = (): string => `pl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 export const usePlaylists = create<PlaylistsState>((set, get) => {
@@ -65,9 +67,11 @@ export const usePlaylists = create<PlaylistsState>((set, get) => {
     picking: null,
     setPicking: (picking) => set({ picking }),
 
-    async restore() {
-      const saved = await readJson<PlaylistDoc>(FILE);
-      if (saved) set(toPlaylistDoc(saved));
+    restore() {
+      restored ??= readJson<PlaylistDoc>(FILE).then((saved) => {
+        if (saved) set(toPlaylistDoc(saved));
+      });
+      return restored;
     },
 
     create(name) {
@@ -106,6 +110,7 @@ export const usePlaylists = create<PlaylistsState>((set, get) => {
 
     clear() {
       removeJson(FILE);
+      restored = null;
       set({ ...EMPTY, picking: null });
     },
   };

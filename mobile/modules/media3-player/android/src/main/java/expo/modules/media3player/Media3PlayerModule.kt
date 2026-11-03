@@ -1,6 +1,10 @@
 package expo.modules.media3player
 
 import android.content.ComponentName
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -11,7 +15,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -44,6 +47,9 @@ private const val TICK_MS = 500L
 class Media3PlayerModule : Module() {
   private var controllerFuture: ListenableFuture<MediaController>? = null
   private val main = Handler(Looper.getMainLooper())
+  private var networkWatch: ConnectivityManager.NetworkCallback? = null
+  private var lastNetwork: Network? = null
+  private var lastNetworkState: Map<String, Boolean>? = null
 
   private val tick = object : Runnable {
     override fun run() {
@@ -74,8 +80,8 @@ class Media3PlayerModule : Module() {
     "count" to player.mediaItemCount,
     "positionMs" to player.currentPosition.coerceAtLeast(0).toDouble(),
     "durationMs" to (if (player.duration == C.TIME_UNSET) 0.0 else player.duration.toDouble()),
-    // What the player itself measures of the connection; the service's player uses this same meter.
-    "bandwidthBps" to (appContext.reactContext?.let { DefaultBandwidthMeter.getSingletonInstance(it).bitrateEstimate.toDouble() } ?: 0.0),
+    "bandwidthBps" to Throughput.bitsPerSecond().toDouble(),
+    "audio" to listOf(AudioInfo.decoder, AudioInfo.output, "speed ${player.playbackParameters.speed}").filter { it.isNotEmpty() }.joinToString(" · "),
     "repeat" to when (player.repeatMode) {
       Player.REPEAT_MODE_ALL -> "all"
       Player.REPEAT_MODE_ONE -> "one"
@@ -103,6 +109,38 @@ class Media3PlayerModule : Module() {
         .onFailure { sendEvent("onError", mapOf("message" to (it.message ?: "The player did not start"))) }
     }, ContextMainExecutor(main))
   }
+
+  private fun networkState(caps: NetworkCapabilities?): Map<String, Boolean> = mapOf(
+    "connected" to (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true),
+    "metered" to (caps != null && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED))
+  )
+
+  /** Signal strength comes through here too: only a real change goes on. */
+  private fun networkReport(network: Network?, caps: NetworkCapabilities?) {
+    val state = networkState(caps)
+    if (network != lastNetwork) Throughput.forget()
+    if (network == lastNetwork && state == lastNetworkState) return
+    lastNetwork = network
+    lastNetworkState = state
+    sendEvent("onNetwork", state)
+  }
+
+  private fun watchNetwork() {
+    val context = appContext.reactContext ?: return
+    val watch = object : ConnectivityManager.NetworkCallback() {
+      override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+        networkReport(network, networkCapabilities)
+      }
+
+      override fun onLost(network: Network) {
+        networkReport(null, null)
+      }
+    }
+    context.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(watch)
+    networkWatch = watch
+  }
+
+  private fun downloads(): SongDownloads = SongDownloads(appContext.reactContext as Context)
 
   /** After a failed stream the player stands idle, and seeking alone would not start it again. */
   private fun prepareIfIdle(player: Player) {
@@ -132,17 +170,68 @@ class Media3PlayerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Media3Player")
 
-    Events("onState", "onError")
+    Events("onState", "onError", "onNetwork")
+
+    OnCreate {
+      watchNetwork()
+    }
 
     OnDestroy {
       main.removeCallbacks(tick)
       controllerFuture?.let { MediaController.releaseFuture(it) }
       controllerFuture = null
+      networkWatch?.let { watch ->
+        appContext.reactContext?.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(watch)
+      }
+      networkWatch = null
     }
 
-    AsyncFunction("setAuth") { server: String, headers: Map<String, String> ->
+    AsyncFunction("setAuth") { server: String, headers: Map<String, String>, addresses: List<String> ->
       PlaybackAuth.server = server
+      PlaybackAuth.addresses = addresses
       PlaybackAuth.headers = headers
+    }
+
+    /** `restart`: the decoder hears of it when it starts anew, so the song under way starts it anew. */
+    AsyncFunction("setKeep24Bit") { on: Boolean, restart: Boolean ->
+      AudioInfo.keep24Bit = on
+      if (restart) {
+        withPlayer { player ->
+          if (player.mediaItemCount > 0) {
+            player.stop()
+            player.prepare()
+          }
+        }
+      }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("getNetwork") {
+      val manager = (appContext.reactContext as Context).getSystemService(ConnectivityManager::class.java)
+      networkState(manager.getNetworkCapabilities(manager.activeNetwork))
+    }
+
+    AsyncFunction("downloadStart") { url: String, headers: Map<String, String>, fileName: String, title: String, artist: String, wifiOnly: Boolean ->
+      downloads().start(url, headers, fileName, title, artist, wifiOnly).toDouble()
+    }
+
+    AsyncFunction("downloadQuery") { jobs: List<Double> ->
+      downloads().query(jobs.map { it.toLong() })
+    }
+
+    AsyncFunction("downloadFinish") { job: Double, fileName: String ->
+      downloads().finish(job.toLong(), fileName)
+    }
+
+    AsyncFunction("downloadCancel") { job: Double ->
+      downloads().cancel(job.toLong())
+    }
+
+    AsyncFunction("downloadDelete") { path: String ->
+      downloads().delete(path)
+    }
+
+    AsyncFunction("downloadExisting") { paths: List<String> ->
+      downloads().existing(paths)
     }
 
     AsyncFunction("setQueue") { items: List<QueueItem>, startIndex: Int, startMs: Double, play: Boolean ->
@@ -166,6 +255,8 @@ class Media3PlayerModule : Module() {
     AsyncFunction("replaceCurrent") { item: QueueItem, positionMs: Double ->
       withPlayer { player ->
         val index = player.currentMediaItemIndex
+        // A queue that had ended stays over: another copy of its last song is no reason to start again.
+        if (player.playbackState == Player.STATE_ENDED) player.playWhenReady = false
         player.replaceMediaItem(index, item.toMediaItem())
         player.seekTo(index, positionMs.toLong())
         prepareIfIdle(player)

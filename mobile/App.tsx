@@ -4,15 +4,21 @@ import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToPlaylistSheet } from "./src/components/PlaylistSheets";
+import { SongMenu } from "./src/components/SongMenu";
+import { CoverKeeper } from "./src/components/ui";
 import { AppNavigation } from "./src/navigation";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
+import { watchConnection } from "./src/stores/connection";
+import { useDownloads } from "./src/stores/downloads";
 import { useLibrary } from "./src/stores/library";
 import { usePlayer, watchPlayer } from "./src/stores/player";
+import { usePlaylists } from "./src/stores/playlists";
 import { useSession } from "./src/stores/session";
 import { startSync, stopSync } from "./src/sync";
 import { colors } from "./src/theme";
 
 watchPlayer();
+watchConnection();
 
 /** Keeps the clock and icons readable while a page scrolls under them. */
 function StatusScrim() {
@@ -28,7 +34,8 @@ function StatusScrim() {
 
 export default function App() {
   const ready = useSession((s) => s.ready);
-  const session = useSession((s) => s.session);
+  // Who, not where: the address can move while the same person listens on.
+  const signedIn = useSession((s) => s.session?.token ?? null);
   const loaded = useLibrary((s) => s.loaded);
   const queueRestored = useRef(false);
 
@@ -36,29 +43,36 @@ export default function App() {
     void useSession.getState().restore();
   }, []);
 
+  // Everything the phone remembers comes first; the server tells what's new when it can.
   useEffect(() => {
-    if (session) void useLibrary.getState().restore();
+    if (signedIn) {
+      void useLibrary.getState().restore();
+      void usePlaylists.getState().restore();
+      void useDownloads.getState().restore();
+    }
     queueRestored.current = false;
-  }, [session]);
+  }, [signedIn]);
 
   // Where playback stopped comes back once the library can say what the songs are.
   useEffect(() => {
-    if (!session || !loaded || queueRestored.current) return;
+    if (!signedIn || !loaded || queueRestored.current) return;
     queueRestored.current = true;
     // The sync comes after: it decides from what the phone remembers whether another device is newer.
     void usePlayer.getState().restore().then(startSync);
-  }, [session, loaded]);
+  }, [signedIn, loaded]);
 
   useEffect(() => {
-    if (!session) stopSync();
-  }, [session]);
+    if (!signedIn) stopSync();
+  }, [signedIn]);
 
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
       <View style={styles.root}>
-        {ready && (session ? <AppNavigation /> : <ConnectScreen />)}
+        {ready && (signedIn ? <AppNavigation /> : <ConnectScreen />)}
         <AddToPlaylistSheet />
+        <SongMenu />
+        {!!signedIn && <CoverKeeper />}
         <StatusScrim />
       </View>
     </SafeAreaProvider>

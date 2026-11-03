@@ -1,10 +1,35 @@
-/** The playing song's lyrics from the server, remembered for the app's lifetime. */
+/** The playing song's lyrics from the server, remembered: what was found once is there without a connection. */
 import { useEffect, useState } from "react";
 import { fetchLyrics, type LyricLine } from "./jellyfin";
 import type { Track } from "./shared";
+import { readJson, writeJson } from "./storage";
 import { useSession } from "./stores/session";
 
 const known = new Map<string, LyricLine[]>();
+
+const fileOf = (id: string): string => `lyrics-${id.replace(/[^a-zA-Z0-9]/g, "_")}.json`;
+
+async function load(track: Track): Promise<LyricLine[]> {
+  const seen = known.get(track.id) ?? (await readJson<LyricLine[]>(fileOf(track.id)));
+  if (seen) {
+    known.set(track.id, seen);
+    return seen;
+  }
+  const session = useSession.getState().session;
+  if (!session) return [];
+  const got = await fetchLyrics(session, track);
+  // None today can be some tomorrow: only what was found stays.
+  if (got.length) {
+    known.set(track.id, got);
+    writeJson(fileOf(track.id), got);
+  }
+  return got;
+}
+
+/** A song kept on the phone keeps its lyrics too. */
+export function keepLyrics(track: Track): void {
+  void load(track);
+}
 
 export function useLyrics(track: Track | undefined): LyricLine[] {
   const session = useSession((s) => s.session);
@@ -22,8 +47,7 @@ export function useLyrics(track: Track | undefined): LyricLine[] {
       return;
     }
     setLines([]);
-    void fetchLyrics(session, track).then((got) => {
-      known.set(id, got);
+    void load(track).then((got) => {
       if (alive) setLines(got);
     });
     return () => {

@@ -8,6 +8,8 @@ import { create } from "zustand";
 import { authHeader } from "./jellyfin";
 import { createSyncEngine, defaultSyncAddress, toPlaylistDoc, type SyncEngine, type SyncStatus } from "./shared";
 import { readJson, writeJson } from "./storage";
+import { useConnection } from "./stores/connection";
+import { useLibrary } from "./stores/library";
 import { adoptPlayback, onPlaybackActivity, playbackNote, wantsPlayback } from "./stores/player";
 import { usePlaylists } from "./stores/playlists";
 import { useSession } from "./stores/session";
@@ -43,6 +45,7 @@ export function syncAddress(): string | null {
 let engine: SyncEngine | null = null;
 let appState: NativeEventSubscription | null = null;
 let offPlaylists: (() => void) | null = null;
+let offReach: (() => void) | null = null;
 let applying = false;
 
 export async function startSync(): Promise<void> {
@@ -89,6 +92,7 @@ export async function startSync(): Promise<void> {
     readPlayback: () => playbackNote(device),
     wantsPlayback,
     adoptPlayback,
+    applyLikes: (tracks) => useLibrary.getState().setLikedOrder(tracks),
     onStatus: (status) => useSync.setState({ status }),
   });
   engine = created;
@@ -97,6 +101,10 @@ export async function startSync(): Promise<void> {
     if (!applying && (s.playlists !== prev.playlists || s.folders !== prev.folders)) created.playlistsChanged();
   });
   onPlaybackActivity((routine) => created.playbackChanged(routine));
+  // The server moved or came back: the service is worth looking for at once.
+  offReach = useConnection.subscribe((s, prev) => {
+    if (s.reach !== prev.reach) created.retryNow();
+  });
   appState = AppState.addEventListener("change", (state) => {
     if (state === "active") created.start();
     else if (state === "background") {
@@ -108,6 +116,8 @@ export async function startSync(): Promise<void> {
 }
 
 export function stopSync(): void {
+  offReach?.();
+  offReach = null;
   engine?.stop();
   engine = null;
   appState?.remove();

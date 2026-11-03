@@ -20,6 +20,7 @@ import { usePlayer } from "../stores/player";
 import { usePlaylists } from "../stores/playlists";
 import { colors, MINI_PLAYER_HEIGHT, TAB_BAR_HEIGHT } from "../theme";
 import { PlayerPage } from "./PlayerPage";
+import { useDownloadAction } from "./SongMenu";
 import { TrackStrip, useTrackSwipe } from "./TrackStrip";
 import { Cover } from "./ui";
 
@@ -37,7 +38,7 @@ const COVER_RADIUS = 8;
 const MINI_RADIUS = 4;
 
 const QUALITIES: { mode: QualityMode; title: string; line: string }[] = [
-  { mode: "auto", title: "Automatic", line: "The best your connection carries right now" },
+  { mode: "auto", title: "Automatic", line: "The best your connection carries, on mobile data up to 320 kbps" },
   { mode: "original", title: "Original", line: "Always the file itself, nothing converted" },
   { mode: "compact", title: "Compact", line: "A small copy (128 kbps) that saves data" },
 ];
@@ -114,6 +115,8 @@ export function PlayerSheet({
   const [qualityOpen, setQualityOpen] = useState(false);
   const quality = usePlayer((s) => s.quality);
   const setQuality = usePlayer((s) => s.setQuality);
+  const audio = usePlayer((s) => s.audio);
+  const download = useDownloadAction(track);
 
   const collapsedY = height - TAB_BAR_HEIGHT - insets.bottom - MINI_PLAYER_HEIGHT;
   const geometry = useRef({ collapsedY, pageMax: 0 });
@@ -330,6 +333,17 @@ export function PlayerSheet({
             >
               <Text style={styles.menuText}>Add to playlist</Text>
             </Pressable>
+            {!!download && (
+              <Pressable
+                style={styles.menuRow}
+                onPress={() => {
+                  setMenu(false);
+                  download.run();
+                }}
+              >
+                <Text style={styles.menuText}>{download.label}</Text>
+              </Pressable>
+            )}
             <Pressable
               style={styles.menuRow}
               onPress={() => {
@@ -372,6 +386,7 @@ export function PlayerSheet({
                 {quality === q.mode && <Check size={20} color={colors.accent} />}
               </Pressable>
             ))}
+            {!!audio && <Text style={styles.audioLine}>{audio}</Text>}
           </View>
         </Pressable>
       </Modal>
@@ -403,4 +418,5 @@ const styles = StyleSheet.create({
   qualityRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 62, paddingHorizontal: 20 },
   qualityText: { flex: 1, minWidth: 0 },
   qualityLine: { color: colors.dim, fontSize: 13, marginTop: 2 },
+  audioLine: { color: colors.dim, fontSize: 11, paddingHorizontal: 20, paddingTop: 8 },
 });

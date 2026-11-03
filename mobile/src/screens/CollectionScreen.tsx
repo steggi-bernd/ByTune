@@ -12,15 +12,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NameDialog } from "../components/PlaylistSheets";
-import { TrackRow } from "../components/ui";
+import { DownloadButton, useSongMenu } from "../components/SongMenu";
+import { picture as pictureSource, TrackRow } from "../components/ui";
 import { artistTracks, fmtTime, plural, type Track } from "../shared";
+import { sizeLine, useDownloads } from "../stores/downloads";
 import { useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { playlistTracks, usePlaylists, type PlaylistTrack } from "../stores/playlists";
 import { colors, PAGE_END } from "../theme";
 import { useLiked } from "./ArtistScreen";
 
-type Params = { kind: "playlist"; id: string } | { kind: "liked" } | { kind: "mix"; id: string } | { kind: "genre"; key: string } | { kind: "artistLiked"; name: string };
+type Params = { kind: "playlist"; id: string } | { kind: "liked" } | { kind: "downloads" } | { kind: "mix"; id: string } | { kind: "genre"; key: string } | { kind: "artistLiked"; name: string };
 
 export function CollectionScreen() {
   const nav = useNavigation<any>();
@@ -38,7 +40,7 @@ export function CollectionScreen() {
   const playlist = usePlaylists((s) => (playlistId ? s.playlists.find((p) => p.id === playlistId) : undefined));
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [held, setHeld] = useState<PlaylistTrack | null>(null);
+  const kept = useDownloads((s) => s.kept);
   // Deleted here or on another device: nothing left to show.
   useEffect(() => {
     if (playlistId && !playlist && nav.canGoBack()) nav.goBack();
@@ -55,6 +57,8 @@ export function CollectionScreen() {
         return { title: playlist?.name ?? "Playlist", tracks: playlist ? playlistTracks(playlist) : [] };
       case "liked":
         return { title: "Liked Songs", tracks: data.favorites.map((id) => byId.get(id)).filter((t): t is Track => !!t) };
+      case "downloads":
+        return { title: "Downloads", tracks: Object.keys(kept).map((id) => byId.get(id)).filter((t): t is Track => !!t) };
       case "mix": {
         const mix = mixes.find((m) => m.id === params.id);
         return { title: mix?.title ?? "Mix", tracks: mix?.tracks ?? [] };
@@ -66,7 +70,7 @@ export function CollectionScreen() {
       case "artistLiked":
         return { title: `Liked songs by ${params.name}`, tracks: artistLiked };
     }
-  }, [params, playlist, data.tracks, data.favorites, byId, mixes, genres, artistLiked]);
+  }, [params, playlist, data.tracks, data.favorites, byId, mixes, genres, artistLiked, kept]);
   // What can play: a playlist's song this library doesn't have stays in the list only.
   const tracks = useMemo(() => shown.filter((t) => !t.missing), [shown]);
 
@@ -74,7 +78,8 @@ export function CollectionScreen() {
   const playingHere = usePlayer((s) => s.context === title && tracks.some((t) => t.id === s.queue[s.index]?.id));
   const pause = playingHere && playWhenReady;
   const seconds = tracks.reduce((sum, t) => sum + t.duration, 0);
-  const meta = ["Playlist", shown.length ? plural(shown.length, "song", "songs") : "", seconds > 0 ? `about ${fmtTime(seconds)}` : ""]
+  const keptBytes = params.kind === "downloads" ? Object.values(kept).reduce((sum, k) => sum + k.bytes, 0) : 0;
+  const meta = [params.kind === "downloads" ? "On this phone" : "Playlist", shown.length ? plural(shown.length, "song", "songs") : "", keptBytes ? sizeLine(keptBytes) : seconds > 0 ? `about ${fmtTime(seconds)}` : ""]
     .filter(Boolean)
     .join(" • ")
     .toUpperCase();
@@ -90,7 +95,7 @@ export function CollectionScreen() {
         contentContainerStyle={{ paddingBottom: PAGE_END + insets.bottom }}
         ListHeaderComponent={
           <View style={styles.hero}>
-            {!!picture && <Image source={{ uri: picture }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="disk" transition={200} />}
+            {!!picture && <Image source={pictureSource(picture)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="disk" transition={200} />}
             <LinearGradient
               colors={["rgba(0,0,0,0.2)", "rgba(0,0,0,0.45)", "rgba(0,0,0,0.9)", colors.base]}
               locations={[0, 0.5, 0.8, 1]}
@@ -109,6 +114,7 @@ export function CollectionScreen() {
             </Text>
             <Text style={styles.meta}>{meta}</Text>
             <View style={styles.controls}>
+              {params.kind !== "downloads" && <DownloadButton tracks={tracks} size={20} style={styles.roundWide} />}
               <Pressable
                 accessibilityLabel="Shuffle"
                 onPress={() => tracks.length && playTracks(tracks, Math.floor(Math.random() * tracks.length), title, true)}
@@ -129,7 +135,15 @@ export function CollectionScreen() {
             track={item}
             number={index + 1}
             missing={item.missing}
-            onLongPress={playlist ? () => setHeld(item) : undefined}
+            onLongPress={
+              playlist
+                ? () =>
+                    useSongMenu.getState().open(item, {
+                      plain: item.missing,
+                      extras: [{ label: "Remove from this playlist", run: () => usePlaylists.getState().removeTrack(playlist.id, item.entryId ?? item.id) }],
+                    })
+                : undefined
+            }
             onPress={() => playTracks(tracks, Math.max(0, tracks.indexOf(item)), title, false)}
           />
         )}
@@ -159,33 +173,6 @@ export function CollectionScreen() {
                 }}
               >
                 <Text style={[styles.menuText, styles.menuDanger]}>Delete</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
-        <Modal visible={!!held} transparent animationType="fade" onRequestClose={() => setHeld(null)}>
-          <Pressable style={styles.menuBack} onPress={() => setHeld(null)}>
-            <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 10 }]}>
-              {!held?.missing && (
-                <Pressable
-                  style={styles.menuRow}
-                  onPress={() => {
-                    const song = held;
-                    setHeld(null);
-                    if (song) usePlaylists.getState().setPicking(song);
-                  }}
-                >
-                  <Text style={styles.menuText}>Add to playlist</Text>
-                </Pressable>
-              )}
-              <Pressable
-                style={styles.menuRow}
-                onPress={() => {
-                  if (held) usePlaylists.getState().removeTrack(playlist.id, held.entryId ?? held.id);
-                  setHeld(null);
-                }}
-              >
-                <Text style={styles.menuText}>Remove from this playlist</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -230,6 +217,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  roundWide: {
+    minWidth: 44,
+    height: 44,
+    borderRadius: 22,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
   pill: {
     flexDirection: "row",

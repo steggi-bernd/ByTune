@@ -6,11 +6,13 @@
 import { create } from "zustand";
 import { blurhashColor, type Rgb } from "../color";
 import { artistPhotoUrl, fetchLibrary, markPlayed, setFavorite, type ServerLibrary, type Session } from "../jellyfin";
-import { allMixes, buildAlbums, buildArtists, buildGenres, type LibAlbum, type LibArtist, type LibGenre, type Mix, type Track } from "../shared";
+import { allMixes, buildAlbums, buildArtists, buildGenres, likedInOrder, songFinder, type LibAlbum, type LibArtist, type LibGenre, type Mix, type Track, type WireTrack } from "../shared";
 import { readJson, removeJson, writeJson } from "../storage";
+import { useConnection } from "./connection";
 import { useSession } from "./session";
 
 const FILE = "library.json";
+const LIKED_ORDER_FILE = "liked-order.json";
 
 interface LibraryState {
   loaded: boolean;
@@ -23,8 +25,11 @@ interface LibraryState {
   genres: LibGenre[];
   mixes: Mix[];
   favorites: Set<string>;
+  /** Liked Songs as the computer arranged them; the server's favorites have no order */
+  likedOrder: WireTrack[];
   restore(): Promise<void>;
   refresh(): Promise<void>;
+  setLikedOrder(order: WireTrack[]): void;
   toggleFavorite(track: Track): void;
   notePlayed(track: Track): void;
   clear(): void;
@@ -48,29 +53,56 @@ function derive(data: ServerLibrary) {
 
 const session = (): Session | null => useSession.getState().session;
 
+/** The server lists its favorites by artist and album: what stood here keeps its place, what's new comes on top. */
+function keepPlaces(before: string[], listed: string[]): string[] {
+  const known = new Set(before);
+  const still = new Set(listed);
+  return [...listed.filter((id) => !known.has(id)), ...before.filter((id) => still.has(id))];
+}
+
+function arranged(data: ServerLibrary, order: WireTrack[]): ServerLibrary {
+  return order.length ? { ...data, favorites: likedInOrder(data.favorites, order, songFinder(data.tracks)) } : data;
+}
+
 export const useLibrary = create<LibraryState>((set, get) => ({
   loaded: false,
   refreshing: false,
   error: null,
+  likedOrder: [],
   ...derive(EMPTY),
 
   async restore() {
-    const saved = await readJson<ServerLibrary>(FILE);
+    const [saved, likedOrder] = await Promise.all([readJson<ServerLibrary>(FILE), readJson<WireTrack[]>(LIKED_ORDER_FILE)]);
+    if (likedOrder) set({ likedOrder });
     if (saved?.tracks) set({ ...derive(saved), loaded: true });
     void get().refresh();
   },
 
   async refresh() {
-    const s = session();
-    if (!s || get().refreshing) return;
+    if (!session() || get().refreshing) return;
     set({ refreshing: true, error: null });
     try {
-      const data = await fetchLibrary(s);
+      // The address may have moved, or there may be no way to the server at all.
+      const reach = await useConnection.getState().check();
+      const s = session();
+      if (!s || reach === "offline") {
+        set({ refreshing: false, loaded: true, error: "Can't reach your server" });
+        return;
+      }
+      const listed = await fetchLibrary(s);
+      const data = arranged({ ...listed, favorites: keepPlaces(get().data.favorites, listed.favorites) }, get().likedOrder);
       writeJson(FILE, data);
       set({ ...derive(data), loaded: true, refreshing: false });
     } catch (err) {
       set({ refreshing: false, loaded: true, error: err instanceof Error ? err.message : "The library did not load" });
     }
+  },
+
+  setLikedOrder(likedOrder) {
+    writeJson(LIKED_ORDER_FILE, likedOrder);
+    const data = arranged(get().data, likedOrder);
+    writeJson(FILE, data);
+    set({ likedOrder, data });
   },
 
   toggleFavorite(track) {
@@ -105,9 +137,15 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
   clear() {
     removeJson(FILE);
-    set({ ...derive(EMPTY), loaded: false, error: null });
+    removeJson(LIKED_ORDER_FILE);
+    set({ ...derive(EMPTY), likedOrder: [], loaded: false, error: null });
   },
 }));
+
+// Back within reach: what changed in the meantime.
+useConnection.subscribe((s, prev) => {
+  if (prev.reach === "offline" && s.reach !== "offline") void useLibrary.getState().refresh();
+});
 
 /** The cover's colour for tints, when the server listed one. */
 export function useCoverColor(thumb: string | undefined): Rgb | null {

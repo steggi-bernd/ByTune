@@ -5,7 +5,7 @@
  */
 export type QualityMode = "auto" | "original" | "compact";
 
-export type StreamChoice = { kind: "original" } | { kind: "transcode"; kbps: number };
+export type StreamChoice = { kind: "original" } | { kind: "transcode"; kbps: number } | { kind: "download"; compact: boolean };
 
 export const ORIGINAL: StreamChoice = { kind: "original" };
 export const COMPACT_KBPS = 128;
@@ -13,6 +13,8 @@ export const COMPACT_KBPS = 128;
 const AUTO_KBPS = [320, 192, 128, 64];
 /** A connection's estimate comes from bursts; music has to keep flowing through its dips. */
 const HEADROOM = 1.5;
+/** Over mobile data the file itself would buy nothing you can hear, at five times the data. */
+const MOBILE_DATA_KBPS = 320;
 /** Songs listed without a bitrate: roughly what a FLAC needs. */
 const UNKNOWN_BITRATE_KBPS = 1500;
 
@@ -24,12 +26,14 @@ const transcodeOr = (track: { bitrate?: number }, kbps: number): StreamChoice =>
 /**
  * `bandwidthBps` is the player's estimate (0 before it has one). `capKbps` is
  * what a connection recently failed to carry, whatever its estimate says.
+ * `metered`: the network costs by the byte.
  */
-export function chooseStream(track: { bitrate?: number }, mode: QualityMode, bandwidthBps: number, capKbps: number | null): StreamChoice {
+export function chooseStream(track: { bitrate?: number }, mode: QualityMode, bandwidthBps: number, capKbps: number | null, metered = false): StreamChoice {
   if (mode === "original") return ORIGINAL;
   if (mode === "compact") return transcodeOr(track, COMPACT_KBPS);
-  const usable = bandwidthBps > 0 ? bandwidthBps / 1000 / HEADROOM : Infinity;
-  const limit = capKbps === null ? usable : Math.min(usable, capKbps);
+  let limit = bandwidthBps > 0 ? bandwidthBps / 1000 / HEADROOM : Infinity;
+  if (capKbps !== null) limit = Math.min(limit, capKbps);
+  if (metered) limit = Math.min(limit, MOBILE_DATA_KBPS);
   if (ownKbps(track) <= limit) return ORIGINAL;
   return transcodeOr(track, AUTO_KBPS.find((kbps) => kbps <= limit) ?? AUTO_KBPS[AUTO_KBPS.length - 1]);
 }

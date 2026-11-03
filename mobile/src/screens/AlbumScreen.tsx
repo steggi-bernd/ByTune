@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { tinted } from "../color";
+import { DownloadButton } from "../components/SongMenu";
 import { Cover, TrackRow } from "../components/ui";
 import { describePlayback, formatLine, fmtLength, plural, RELEASE_LABEL } from "../shared";
 import { useArtistPhoto, useCoverColor, useLibrary } from "../stores/library";
@@ -76,6 +77,7 @@ export function AlbumScreen() {
             )}
           </View>
           <View style={styles.actions}>
+            <DownloadButton tracks={album.tracks} style={styles.download} />
             <Pressable
               accessibilityLabel="Shuffle"
               onPress={() => playTracks(album.tracks, Math.floor(Math.random() * album.tracks.length), album.title, true)}
@@ -115,6 +117,7 @@ const styles = StyleSheet.create({
   badge: { backgroundColor: colors.hiRes, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1 },
   badgeText: { color: colors.onHiRes, fontSize: 10.5, fontWeight: "700", letterSpacing: 0.4 },
   actions: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, paddingHorizontal: 16, paddingTop: 2, paddingBottom: 8 },
+  download: { marginRight: "auto", marginLeft: -10 },
   shuffle: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   play: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
 });

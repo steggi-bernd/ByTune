@@ -218,8 +218,8 @@ export function PlayerPage({
             <Pressable onPress={onQuality} accessibilityLabel="Quality" style={styles.device}>
               <Smartphone size={20} color={colors.ink} />
               <Text numberOfLines={1} style={styles.format}>
-                {quality === "auto" ? "Auto · " : quality === "compact" ? "Compact · " : ""}
-                {stream.kind === "transcode" ? `AAC ${stream.kbps} kbps` : !format ? "" : `${format.hiRes ? "Hi-Res · " : format.lossless ? "Lossless · " : ""}${formatLine(format)}`}
+                {stream.kind === "download" ? "Downloaded · " : quality === "auto" ? "Auto · " : quality === "compact" ? "Compact · " : ""}
+                {stream.kind === "download" && stream.compact ? "MP3 192 kbps" : stream.kind === "transcode" ? `AAC ${stream.kbps} kbps` : !format ? "" : `${format.hiRes ? "Hi-Res · " : format.lossless ? "Lossless · " : ""}${formatLine(format)}`}
               </Text>
             </Pressable>
             <Pressable

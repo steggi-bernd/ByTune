@@ -5,13 +5,14 @@
  */
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Settings } from "lucide-react-native";
+import { CloudOff, Settings } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { tinted } from "../color";
 import { Card, CARD_SIZE, Chip, Cover, CoverGrid, Shelf } from "../components/ui";
 import { splitCredits, type LibAlbum, type Track } from "../shared";
+import { useConnection } from "../stores/connection";
 import { useArtistPhoto, useCoverColor, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors, PAGE_END } from "../theme";
@@ -57,6 +58,7 @@ export function HomeScreen() {
   const refreshing = useLibrary((s) => s.refreshing);
   const refresh = useLibrary((s) => s.refresh);
   const error = useLibrary((s) => s.error);
+  const offline = useConnection((s) => s.reach === "offline");
   const data = useLibrary((s) => s.data);
   const albums = useLibrary((s) => s.albums);
   const artists = useLibrary((s) => s.artists);
@@ -151,6 +153,12 @@ export function HomeScreen() {
         <Chip label="Albums" active={filter === "albums"} onPress={() => setFilter("albums")} />
       </ScrollView>
 
+      {offline && (
+        <Pressable onPress={() => nav.navigate("Collection", { kind: "downloads" })} style={styles.offline}>
+          <CloudOff size={16} color={colors.dim} />
+          <Text style={styles.offlineText}>Your server is out of reach. Downloaded music plays.</Text>
+        </Pressable>
+      )}
       {!!error && !data.tracks.length && <Text style={styles.error}>{error}</Text>}
       {!error && !data.tracks.length && <Text style={styles.empty}>No music on the server yet.</Text>}
 
@@ -213,6 +221,8 @@ const styles = StyleSheet.create({
   headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   chips: { gap: 8, paddingHorizontal: 16, paddingBottom: 14 },
   error: { color: "#FF9D9D", fontSize: 14, marginHorizontal: 16, marginTop: 12 },
+  offline: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginTop: 12 },
+  offlineText: { flexShrink: 1, color: colors.dim, fontSize: 13 },
   empty: { color: colors.dim, fontSize: 14, marginHorizontal: 16, marginTop: 12 },
   tiles: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16 },
   tile: {

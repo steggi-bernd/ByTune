@@ -11,7 +11,12 @@ import { ORIGINAL, type StreamChoice } from "./quality";
 import { jellyfinItemToTrack, jellyfinStreamPlan, jellyfinToTrack, type PlayCounts, type Track } from "./shared";
 
 export interface Session {
+  /** where the server answers right now: its address at home or the one away from home */
   server: string;
+  home: string;
+  away?: string;
+  /** what the server calls itself: how another address proves it leads to the same one */
+  serverId?: string;
   token: string;
   userId: string;
   userName: string;
@@ -31,11 +36,11 @@ export function authHeader(deviceId: string, token?: string): string {
   return `MediaBrowser ${parts.join(", ")}`;
 }
 
-/** "nas:8096" → "http://nas:8096"; anything that is not http(s) is refused. */
-export function normalizeServer(input: string): string {
+/** "nas:8096" → "http://nas:8096"; anything that is not http(s) is refused. `secure`: an address on the open internet. */
+export function normalizeServer(input: string, secure = false): string {
   let s = input.trim();
   if (!s) throw new Error("Enter your server's address");
-  if (!/^[a-z]+:\/\//i.test(s)) s = `http://${s}`;
+  if (!/^[a-z]+:\/\//i.test(s)) s = `${secure ? "https" : "http"}://${s}`;
   if (!/^https?:\/\//i.test(s)) throw new Error("The address must start with http:// or https://");
   return s.replace(/\/+$/, "");
 }
@@ -88,8 +93,31 @@ export async function signIn(serverInput: string, username: string, password: st
     body: { Username: username.trim(), Pw: password },
   });
   if (!auth?.AccessToken || !auth?.User?.Id) throw new Error("The server did not accept the login");
-  return { server, token: auth.AccessToken, userId: auth.User.Id, userName: auth.User.Name ?? username.trim(), deviceId };
+  return { server, home: server, serverId: info.Id, token: auth.AccessToken, userId: auth.User.Id, userName: auth.User.Name ?? username.trim(), deviceId };
 }
+
+/** What the server at this address calls itself; null when nothing answers in time. Asks without the login. */
+export async function serverIdAt(address: string, timeoutMs: number): Promise<string | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${address}/System/Info/Public`, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    const info = await res.json();
+    return typeof info?.Id === "string" ? info.Id : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Whether the server at this address knows this login: for an address typed in by hand. */
+export const acceptsLogin = (address: string, s: Session): Promise<boolean> =>
+  request(address, "/Users/Me", s.deviceId, { token: s.token }).then(
+    () => true,
+    () => false
+  );
 
 export const signOut = (s: Session): Promise<void> =>
   request(s.server, "/Sessions/Logout", s.deviceId, { method: "POST", token: s.token }).catch(() => undefined);
@@ -103,6 +131,9 @@ const coverUrl = (server: string, itemId: string, tag: string): string =>
 export const artistPhotoUrl = (s: Session, artistItemId: string): string =>
   `${s.server}/Items/${artistItemId}/Images/Primary?${query({ maxWidth: 1200, quality: 90, format: "Jpg" })}`;
 
+/** Past 48 kHz a smaller copy is asked for at a rate every phone's decoder knows. */
+const commonRate = (t: Track): number | undefined => (!t.sampleRate || t.sampleRate <= 48000 ? undefined : t.sampleRate % 44100 === 0 ? 44100 : 48000);
+
 export function streamUrl(s: Session, t: Track, choice: StreamChoice = ORIGINAL): string {
   const id = itemIdOf(t);
   const common = { mediaSourceId: id, deviceId: s.deviceId };
@@ -113,6 +144,7 @@ export function streamUrl(s: Session, t: Track, choice: StreamChoice = ORIGINAL)
       playSessionId: `${s.deviceId}-${id}-${choice.kbps}`,
       audioCodec: "aac",
       audioBitRate: bitrate,
+      audioSampleRate: commonRate(t),
       maxStreamingBitrate: bitrate,
       segmentContainer: "ts",
       transcodingMaxAudioChannels: 2,
@@ -122,6 +154,28 @@ export function streamUrl(s: Session, t: Track, choice: StreamChoice = ORIGINAL)
   if (plan === "static") return `${s.server}/Audio/${id}/stream?${query({ ...common, static: "true" })}`;
   if (plan === "flac") return `${s.server}/Audio/${id}/stream.flac?${query({ ...common, audioCodec: "flac" })}`;
   return `${s.server}/Audio/${id}/stream.mp3?${query({ ...common, audioCodec: "mp3", audioBitRate: 320000 })}`;
+}
+
+export type DownloadQuality = "original" | "compact";
+const COMPACT_DOWNLOAD_KBPS = 192;
+
+/** A song to keep: the file itself, or a small MP3, unless the file is small already. */
+export function downloadPlan(s: Session, t: Track, quality: DownloadQuality): { url: string; fileName: string; compact: boolean } {
+  const id = itemIdOf(t);
+  if (quality === "compact" && (!t.bitrate || t.bitrate > COMPACT_DOWNLOAD_KBPS * 1000)) {
+    const params = query({
+      mediaSourceId: id,
+      deviceId: s.deviceId,
+      playSessionId: `${s.deviceId}-keep-${id}`,
+      audioCodec: "mp3",
+      audioBitRate: COMPACT_DOWNLOAD_KBPS * 1000,
+      audioSampleRate: commonRate(t),
+    });
+    return { url: `${s.server}/Audio/${id}/stream.mp3?${params}`, fileName: `${id}.mp3`, compact: true };
+  }
+  const plan = jellyfinStreamPlan(t);
+  const container = plan === "static" ? (t.container ?? "").split(",")[0].trim().toLowerCase().replace(/[^a-z0-9]/g, "") : plan;
+  return { url: streamUrl(s, t, ORIGINAL), fileName: `${id}.${container || "audio"}`, compact: false };
 }
 
 export interface ServerLibrary {
