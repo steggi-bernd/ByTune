@@ -12,7 +12,7 @@ const known = new Map<string, LyricLine[]>();
 
 const fileOf = (id: string): string => `lyrics-${id.replace(/[^a-zA-Z0-9]/g, "_")}.json`;
 
-const LRCLIB_AGENT = "Songsta (https://github.com/steggi-bernd/ByTune)";
+const LRCLIB_AGENT = "Songsta (https://github.com/steggi-bernd/Songsta)";
 const LRCLIB_MS = 7000;
 
 /** Its answer; null for nothing there. No answer at all throws. */

@@ -154,7 +154,7 @@ Pull a song right on the phone, or choose *Mute song* in its menu on either app,
 
 ## Install
 
-**Windows 10 / 11 (64-bit).** Get `Songsta-Setup.exe` from the [Releases page](https://github.com/steggi-bernd/ByTune/releases) or [build it yourself](#build-from-source). The installer isn't code-signed, so SmartScreen asks once: *More info → Run anyway*.
+**Windows 10 / 11 (64-bit).** Get `Songsta-Setup.exe` from the [Releases page](https://github.com/steggi-bernd/Songsta/releases) or [build it yourself](#build-from-source). The installer isn't code-signed, so SmartScreen asks once: *More info → Run anyway*.
 
 - It installs as **Songsta** and replaces an older ByTune Local (the app's name until November 2026; `com.bytune.local` stays its app id for that). It never replaces an installed original ByTune or shares its data.
 - Your data lives in `%APPDATA%\Songsta`; an older `ByTune Local` folder moves there at the first start. **Settings → Your data** exports and imports backups.
@@ -187,8 +187,8 @@ The Linux packages are built by GitHub Actions for every release; this edition i
 You need [Node.js](https://nodejs.org/) (LTS) and Git.
 
 ```bash
-git clone https://github.com/steggi-bernd/ByTune.git
-cd ByTune
+git clone https://github.com/steggi-bernd/Songsta.git
+cd Songsta
 npm install
 npm run dev        # Vite + Electron with hot reload
 ```

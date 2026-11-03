@@ -47,7 +47,7 @@ export interface ProviderResult {
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-const LYRICS_AGENT = "Songsta (https://github.com/steggi-bernd/ByTune)";
+const LYRICS_AGENT = "Songsta (https://github.com/steggi-bernd/Songsta)";
 
 export async function getText(url: string, timeoutMs = 6000, headers: Record<string, string> = {}): Promise<string | null> {
   const ctrl = new AbortController();

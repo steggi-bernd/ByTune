@@ -8,7 +8,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** MusicBrainz asks every client to say who it is. */
-export const OPEN_DATA_AGENT = "Songsta/1.0 (https://github.com/steggi-bernd/ByTune)";
+export const OPEN_DATA_AGENT = "Songsta/1.0 (https://github.com/steggi-bernd/Songsta)";
 
 export interface ArtistMeta {
   /** MusicBrainz artist id */

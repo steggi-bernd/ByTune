@@ -12,8 +12,8 @@ Prerequisites:
 - **Git**
 
 ```bash
-git clone https://github.com/steggi-bernd/ByTune.git
-cd ByTune
+git clone https://github.com/steggi-bernd/Songsta.git
+cd Songsta
 npm install
 npm run dev
 ```
@@ -38,7 +38,7 @@ The Windows and macOS editions share one codebase: platform-specific behavior li
 
 ## Reporting bugs
 
-Open a [GitHub issue](https://github.com/steggi-bernd/ByTune/issues) and include:
+Open a [GitHub issue](https://github.com/steggi-bernd/Songsta/issues) and include:
 
 - What you did and what happened
 - The Songsta version (Settings → About, or the release tag)
