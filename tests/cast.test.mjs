@@ -14,7 +14,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bytune-cast-"));
 const songFile = path.join(tmp, "song.flac");
 fs.writeFileSync(songFile, Buffer.from("fLaC" + "0123456789".repeat(100)));
 
-globalThis.__ssdp = { sent: [], replies: [] };
+globalThis.__ssdp = { sent: [], replies: [], through: [] };
 globalThis.__streams = [];
 globalThis.__songFile = songFile;
 
@@ -31,6 +31,7 @@ const stubs = {
           export function createSocket() {
             const s = new EventEmitter();
             s.bind = (_port, cb) => setTimeout(cb, 0);
+            s.setMulticastInterface = (address) => globalThis.__ssdp.through.push(address);
             s.send = (buf, port, address) => {
               globalThis.__ssdp.sent.push({ text: buf.toString(), port, address });
               for (const reply of globalThis.__ssdp.replies) setTimeout(() => s.emit("message", Buffer.from(reply)), 5);
@@ -320,9 +321,15 @@ test("a whole session: find, connect, play a file and a server song, steer, the 
   ];
   const devices = await cast.findDevices();
   assert.deepEqual(devices, [{ id: UDN, name: "Living Room & Kitchen", model: "Acme Streamer 2", kind: "upnp" }]);
-  assert.match(globalThis.__ssdp.sent[0].text, /^M-SEARCH \* HTTP\/1\.1\r\n/);
-  assert.equal(globalThis.__ssdp.sent[0].address, "239.255.255.250");
-  assert.equal(globalThis.__ssdp.sent[0].port, 1900);
+  // Through each network this computer is on, not just the one with the best route: that may be a VPN's.
+  const { lanAddresses } = await load("net-lan");
+  const networks = lanAddresses();
+  assert.deepEqual(new Set(globalThis.__ssdp.through), new Set(networks));
+  const searches = globalThis.__ssdp.sent.filter((m) => m.text.startsWith("M-SEARCH"));
+  assert.equal(searches.length, 2 * Math.max(1, networks.length), "and through each of them twice");
+  assert.match(searches[0].text, /^M-SEARCH \* HTTP\/1\.1\r\n/);
+  assert.equal(searches[0].address, "239.255.255.250");
+  assert.equal(searches[0].port, 1900);
 
   await assert.rejects(cast.start("uuid:nobody", () => undefined), /isn't on the network anymore/);
   const statuses = [];
@@ -428,4 +435,20 @@ test("a whole session: find, connect, play a file and a server song, steer, the 
   await assert.rejects(fetch(realUri), /fetch failed/);
   await assert.rejects(cast.load(cast.songFrom({ id: "local:0123456789abcdef", title: "x", duration: 1 }), 0, true), /Not casting/);
   await assert.rejects(cast.control("play", 0), /Not casting/);
+});
+
+test("the computer's own addresses on its networks: not its loopback, not IPv6", async () => {
+  const { lanAddresses } = await load("net-lan");
+  assert.deepEqual(
+    lanAddresses({
+      Loopback: [{ family: "IPv4", address: "127.0.0.1", internal: true }],
+      Ethernet: [
+        { family: "IPv6", address: "fe80::1", internal: false },
+        { family: "IPv4", address: "192.168.1.20", internal: false },
+      ],
+      VPN: [{ family: "IPv4", address: "10.8.0.2", internal: false }],
+      Unplugged: undefined,
+    }),
+    ["192.168.1.20", "10.8.0.2"]
+  );
 });
