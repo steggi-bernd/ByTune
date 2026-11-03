@@ -5,13 +5,14 @@
 <h1 align="center">Songsta</h1>
 
 <p align="center">
-  <b>A local music player for the music you own — Windows and Linux.</b><br>
+  <b>A local music player for the music you own — Windows and Linux, with an app for your Android phone.</b><br>
   Local folders, Jellyfin and Navidrome in one library — Hi-Res playback, synced lyrics and a home page built from your own listening. No account, no ads.
 </p>
 
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#features">Features</a> ·
+  <a href="#on-your-phone">Phone app</a> ·
   <a href="#spotify-import">Spotify import</a> ·
   <a href="#discord-status-optional">Discord</a> ·
   <a href="#build-from-source">Build</a> ·
@@ -116,9 +117,20 @@ Show what you're listening to on Discord: title, artist and a progress bar, as *
 
 The Discord desktop app has to be running; Songsta connects as soon as it starts and clears the status when you pause. Only the Discord app on your computer receives the title and artist — no covers.
 
+## On your phone
+
+The Android app in [`mobile/`](mobile/README.md) plays the music on your Jellyfin server, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work.
+
+- **Away from home:** give your server a second address, a tunnel or proxy, in the app's settings. The app takes the direct way at home and the other one anywhere else, and a song under way goes on from there.
+- **Downloads:** hold a song, or use the arrow on an album or playlist. Android's download service fetches them, also with the app closed, as the file itself or as a 192 kbps MP3; over mobile data only if you allow it.
+- **Without a connection** the app opens from what it remembers: the library, playlists, covers and the lyrics it has shown. Downloaded songs play, the rest is greyed out.
+- **Quality:** tap the format line in the player. *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, over mobile data up to 320 kbps.
+
+The app is young and has run in an emulator far more than on real phones. There is no APK on the Releases page yet; [mobile/README.md](mobile/README.md) says how to build one.
+
 ## The same on all your devices
 
-Liked songs and plays go through your server's own favorites and play counts (**Settings → Server sync**). Playlists and where you stopped need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login. With it running, a playlist made on one device arrives on the others within moments, and a device that isn't playing picks up where another one stopped, paused until you press play.
+Which songs you like and how often they played go through your server's own favorites and play counts (**Settings → Server sync**). Playlists, where you stopped and the order of Liked Songs need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login. With it running, a playlist made on one device arrives on the others within moments, the phone lists Liked Songs in the order you have them on the computer, and a device that isn't playing picks up where another one stopped, paused until you press play.
 
 ## Install
 
@@ -148,6 +160,8 @@ chmod +x Songsta-x86_64.AppImage
 
 The Linux packages are built by GitHub Actions for every release; this edition is developed and tested on Windows. The macOS build targets from upstream are still in the project, but untested.
 
+**Android:** see [On your phone](#on-your-phone).
+
 ## Build from source
 
 You need [Node.js](https://nodejs.org/) (LTS) and Git.
@@ -166,7 +180,7 @@ npm run dist:win   # installer: release/Songsta-Setup.exe
 npm run dist:linux # on Linux: release/Songsta-x86_64.AppImage and -amd64.deb
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project's conventions.
+The phone app has its own instructions in [mobile/README.md](mobile/README.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the project's conventions.
 
 ## Keyboard shortcuts
 
@@ -186,7 +200,7 @@ Shortcuts never fire while you're typing in a text field.
 
 ## Privacy
 
-- **No account, no sign-in, no ads, no analytics.** Your library, likes, playlists and listening history stay on this computer.
+- **No account, no sign-in, no ads, no analytics.** Your library, likes, playlists and listening history stay on your own devices, and on your own server if you run the sync service.
 - **Passwords aren't stored:** Jellyfin keeps a session token (or your API key), Navidrome a salt/token pair — sealed by Windows (on Linux, your desktop's keyring) through Electron's safeStorage.
 - **What goes online:** your own servers; the open-database lookups above, paced to MusicBrainz's one request per second and cached; lyrics providers for songs without lyrics of their own; the AutoEQ index when you search for headphones; and, only if you switch it on, the animated canvas behind the player (a community index and TIDAL's public search).
 - **Discord status** talks to the Discord app on your computer, not to the internet.
