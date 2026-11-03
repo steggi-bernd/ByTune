@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Songsta",
+    "slug": "songsta-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#000000",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.bytune.mobile"
+    },
+    "android": {
+      "package": "com.bytune.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#2A2B2C",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "./plugins/with-short-object-paths",
+      "./plugins/with-dark-start",
+      "expo-image",
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ]
+  }
+}

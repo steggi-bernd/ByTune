@@ -1,0 +1,97 @@
+/** The lyrics over the cover's colour: the sung line bright, a tap on a line jumps there. */
+import { useNavigation } from "@react-navigation/native";
+import { ChevronDown, Pause, Play } from "lucide-react-native";
+import { useEffect, useRef } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { tinted } from "../color";
+import { currentLine, useLyrics } from "../lyrics";
+import { fmtTime } from "../shared";
+import { useCoverColor } from "../stores/library";
+import { usePlayer } from "../stores/player";
+import { colors } from "../theme";
+
+export function LyricsScreen() {
+  const nav = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const track = usePlayer((s) => s.queue[s.index]);
+  const position = usePlayer((s) => s.positionMs);
+  const duration = usePlayer((s) => s.durationMs);
+  const playWhenReady = usePlayer((s) => s.playWhenReady);
+  const { toggle, seek } = usePlayer.getState();
+  const lines = useLyrics(track);
+  const color = useCoverColor(track?.thumb);
+  const list = useRef<FlatList>(null);
+  const at = currentLine(lines, position);
+  const timed = lines.length > 0 && lines[0].at !== undefined;
+
+  useEffect(() => {
+    if (at >= 0) list.current?.scrollToIndex({ index: at, viewPosition: 0.3, animated: true });
+  }, [at]);
+
+  const background = tinted(color, 0.26);
+  const part = duration > 0 ? Math.min(1, position / duration) : 0;
+
+  return (
+    <View style={[styles.root, { backgroundColor: background }]}>
+      <View style={[styles.top, { paddingTop: insets.top + 2 }]}>
+        <Pressable onPress={() => nav.goBack()} accessibilityLabel="Close the lyrics" style={styles.close}>
+          <ChevronDown size={28} color={colors.ink} />
+        </Pressable>
+        <View style={styles.topText}>
+          <Text numberOfLines={1} style={styles.title}>
+            {track?.title}
+          </Text>
+          <Text numberOfLines={1} style={styles.artist}>
+            {track?.artist}
+          </Text>
+        </View>
+      </View>
+
+      <FlatList
+        ref={list}
+        data={lines}
+        keyExtractor={(_, i) => String(i)}
+        contentContainerStyle={styles.lines}
+        onScrollToIndexFailed={() => undefined}
+        renderItem={({ item, index }) => (
+          <Pressable disabled={item.at === undefined} onPress={() => item.at !== undefined && seek(item.at)}>
+            <Text style={[styles.line, timed && index !== at && (index < at ? styles.linePast : styles.lineNext)]}>{item.text || "♪"}</Text>
+          </Pressable>
+        )}
+      />
+
+      <View style={[styles.bottom, { backgroundColor: background, paddingBottom: insets.bottom + 14 }]}>
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: `${part * 100}%` }]} />
+        </View>
+        <View style={styles.times}>
+          <Text style={styles.time}>{fmtTime(position / 1000)}</Text>
+          <Text style={styles.time}>{fmtTime(duration / 1000)}</Text>
+        </View>
+        <Pressable onPress={toggle} accessibilityLabel={playWhenReady ? "Pause" : "Play"} style={styles.play}>
+          {playWhenReady ? <Pause size={26} color={colors.base} fill={colors.base} /> : <Play size={26} color={colors.base} fill={colors.base} />}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  top: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, paddingBottom: 10 },
+  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  topText: { flex: 1, minWidth: 0 },
+  title: { color: colors.ink, fontSize: 14, fontWeight: "700" },
+  artist: { color: "rgba(255,255,255,0.78)", fontSize: 13, marginTop: 2 },
+  lines: { paddingHorizontal: 24, paddingVertical: 12, gap: 18 },
+  line: { color: colors.ink, fontSize: 27, fontWeight: "800", lineHeight: 33, letterSpacing: -0.6 },
+  linePast: { color: "rgba(255,255,255,0.48)" },
+  lineNext: { color: "rgba(255,255,255,0.62)" },
+  bottom: { paddingHorizontal: 24, paddingTop: 12 },
+  track: { height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.26)" },
+  fill: { height: 4, borderRadius: 2, backgroundColor: colors.ink },
+  times: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
+  time: { color: "rgba(255,255,255,0.78)", fontSize: 12 },
+  play: { alignSelf: "center", width: 60, height: 60, marginTop: 6, borderRadius: 30, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
+});
