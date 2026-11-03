@@ -1,6 +1,6 @@
 /**
- * Generates the ByTune app icons from src/assets/brand/bytune-icon.svg
- * (full badge design — rounded gradient tile with the white mark, on
+ * Generates the Songsta app icons from src/assets/brand/songsta-icon.svg
+ * (full badge design — rounded dark tile with the white mark, on
  * transparent):
  *   build/icon.png  — 512x512 master used for the runtime window/Dock icon
  *   build/icon.ico  — Windows size ladder 16-256: BMP entries up to 128,
@@ -24,7 +24,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const buildDir = join(root, "build");
 mkdirSync(buildDir, { recursive: true });
 
-const svg = readFileSync(join(root, "src", "assets", "brand", "bytune-icon.svg"), "utf8");
+const svg = readFileSync(join(root, "src", "assets", "brand", "songsta-icon.svg"), "utf8");
 
 /* ---------- render the badge artwork ---------- */
 

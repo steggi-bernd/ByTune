@@ -14,9 +14,11 @@ import {
   Download,
   Droplets,
   ExternalLink,
+  FileAudio,
   FileDown,
   FileUp,
   FolderOpen,
+  FolderSync,
   Gauge,
   HardDrive,
   Heart,
@@ -24,6 +26,7 @@ import {
   Infinity as InfinityIcon,
   KeyRound,
   Languages,
+  Link2,
   ListChecks,
   ListMusic,
   Maximize2,
@@ -31,14 +34,12 @@ import {
   Palette,
   Radio,
   RefreshCw,
+  Server,
   ShoppingBag,
   SlidersHorizontal,
-  FileAudio,
-  FolderSync,
-  Server,
   SlidersVertical,
-  Speaker,
   Sparkles,
+  Speaker,
   Squircle,
   Trash2,
   User,
@@ -66,7 +67,9 @@ import type { DiscordStatus } from "../../electron/discord";
 import type { JellyfinStatus } from "../../electron/jellyfin";
 import type { SubsonicStatus } from "../../electron/subsonic";
 import type { SoundStatus } from "../../electron/sound-library";
+import { refreshHomeSync, useHomeSync } from "../lib/homeSync";
 import { syncFavorites } from "../lib/serverSync";
+import type { SyncStatus } from "../lib/syncEngine";
 
 /* ============================================================ settings chrome
    Settings are inset cards of rows: an uppercase group header, a
@@ -89,13 +92,13 @@ function SettingsGroup({
   return (
     <section className="animate-slide-up">
       {header && (
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-dim px-5 pt-7 pb-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-dim px-1 pt-7 pb-2">
           {header}
         </h2>
       )}
       {!header && <div className="pt-7" />}
-      <div className={`mx-4 rounded-[calc(14px*var(--radius-scale))] bg-panel overflow-hidden ${GROUP_INSET}`}>{children}</div>
-      {footer && <p className="text-[12.5px] text-ink-dim px-5 pt-2 leading-relaxed">{footer}</p>}
+      <div className={`rounded-[calc(14px*var(--radius-scale))] bg-panel overflow-hidden ${GROUP_INSET}`}>{children}</div>
+      {footer && <p className="text-[12.5px] text-ink-dim px-1 pt-2 leading-relaxed">{footer}</p>}
     </section>
   );
 }
@@ -274,7 +277,7 @@ function DiscordGroup() {
   return (
     <SettingsGroup
       header="Discord"
-      footer="Discord shows your application's name in “Listening to …”, so call it ByTune, for example. Only the Discord app on this computer gets the song title and artist; covers stay here."
+      footer="Discord shows your application's name in “Listening to …”, so call it Songsta, for example. Only the Discord app on this computer gets the song title and artist; covers stay here."
     >
       <SettingsRow
         icon={Radio}
@@ -317,6 +320,14 @@ function DiscordGroup() {
   );
 }
 
+const SYNC_LINE: Record<SyncStatus, string> = {
+  off: "The same playlists on all your devices, and pick up where you stopped",
+  connecting: "Looking for the sync service…",
+  connected: "Connected: playlists and where you stopped stay the same on all your devices",
+  unreachable: "The sync service isn't answering. Is it running on your server?",
+  rejected: "The sync service refused this login",
+};
+
 /** Server sync — Liked Songs ↔ the servers' favorites, plays counted there
     too (lib/serverSync.ts). Shown with a server connected. An API-key login
     to Jellyfin belongs to no user, so it picks whose favorites and plays
@@ -326,6 +337,13 @@ function ServerSyncGroup() {
   const plays = useSettings((st) => st.serverPlays);
   const setSync = useSettings((st) => st.setServerSync);
   const setPlays = useSettings((st) => st.setServerPlays);
+  const syncPlaylists = useSettings((st) => st.syncPlaylists);
+  const setSyncPlaylists = useSettings((st) => st.setSyncPlaylists);
+  const syncStatus = useHomeSync((st) => st.status);
+  const syncAddress = useHomeSync((st) => st.address);
+  const customAddress = useHomeSync((st) => st.customAddress);
+  const syncNeedsUser = useHomeSync((st) => st.needsUser);
+  const openDialog = useUI((st) => st.openDialog);
   const toast = useUI((st) => st.toast);
   const [jf, setJf] = useState<JellyfinStatus | null>(null);
   const [navidrome, setNavidrome] = useState<SubsonicStatus | null>(null);
@@ -367,6 +385,10 @@ function ServerSyncGroup() {
           action: () => {
             void bridge
               .jellyfinSetSyncUser(u.id)
+              .then((status) => {
+                refreshHomeSync();
+                return status;
+              })
               .then((s) => {
                 setJf(s);
                 void syncFavorites().catch(() => undefined);
@@ -377,6 +399,21 @@ function ServerSyncGroup() {
         ui.openContextMenu(rect.right, rect.bottom + 6, items, { alignRight: true });
       })
       .catch((err) => toast(err instanceof Error ? err.message : "Couldn't list the Jellyfin users", "error"));
+  };
+
+  const editSyncAddress = (): void => {
+    openDialog({
+      title: "Sync service address",
+      body: "Empty: on the same machine as your Jellyfin server, port 8196.",
+      initialValue: customAddress,
+      confirmLabel: "Save",
+      onConfirm: (value) => {
+        void window.bytune
+          ?.homeSyncSetAddress(value)
+          .then(() => refreshHomeSync())
+          .catch((err) => toast(err instanceof Error ? err.message : "That address doesn't work", "error"));
+      },
+    });
   };
 
   return (
@@ -399,6 +436,30 @@ function ServerSyncGroup() {
         trailing={<Switch checked={plays} onChange={setPlays} />}
         onClick={() => setPlays(!plays)}
       />
+      {jf?.connected && (
+        <>
+          <Divider />
+          <SettingsRow
+            icon={ListMusic}
+            title="Playlists and where you stopped"
+            subtitle={syncNeedsUser ? "Waits for a user, chosen below" : syncPlaylists ? SYNC_LINE[syncStatus] : SYNC_LINE.off}
+            trailing={<Switch checked={syncPlaylists} onChange={setSyncPlaylists} />}
+            onClick={() => setSyncPlaylists(!syncPlaylists)}
+          />
+          {syncPlaylists && (
+            <>
+              <Divider />
+              <SettingsRow
+                icon={Link2}
+                title="Sync service address"
+                subtitle={customAddress ? "Entered by you" : "On your Jellyfin server"}
+                value={syncAddress ?? "—"}
+                onClick={editSyncAddress}
+              />
+            </>
+          )}
+        </>
+      )}
       {jf?.connected && jf.apiKey && (
         <>
           <Divider />
@@ -862,7 +923,7 @@ function CloudAccountGroup() {
 
   const signOutWithConfirm = (): void => {
     openDialog({
-      title: "Sign out of ByTune?",
+      title: "Sign out of Songsta?",
       body: "Your account data is safely backed up to the cloud. You can sign in again any time to restore it.",
       confirmLabel: "Sign out",
       cancelLabel: "Cancel",
@@ -906,7 +967,7 @@ function CloudAccountGroup() {
 
   return (
     <SettingsGroup
-      header="ByTune account"
+      header="Songsta account"
       footer={
         signedIn
           ? "Backup runs automatically. Changes upload within seconds. Restore replaces this device's copy with the cloud version (a local backup is kept first)."
@@ -1091,7 +1152,7 @@ export function SettingsView() {
 
   return (
     <div className="max-w-2xl pb-14">
-      <h1 className="font-display text-[34px] font-extrabold tracking-[-0.03em] text-ink-hi px-5 pt-2 pb-3.5">
+      <h1 className="font-display text-[34px] font-extrabold tracking-[-0.03em] text-ink-hi px-1 pt-2 pb-3.5">
         Settings
       </h1>
 
@@ -1467,7 +1528,7 @@ export function SettingsView() {
             }
             openDialog({
               title: "Reset local data?",
-              body: "Your local ByTune data will be removed from this device. Your account and cloud backup won't be deleted. Sign in again and everything restores. Downloaded audio files are not touched.",
+              body: "Your local Songsta data will be removed from this device. Your account and cloud backup won't be deleted. Sign in again and everything restores. Downloaded audio files are not touched.",
               confirmLabel: "Reset local data",
               danger: true,
               onConfirm: () => void resetAppData(),
@@ -1509,8 +1570,8 @@ export function SettingsView() {
       )}
 
 
-      <div className="text-center text-[11px] text-ink-dim/80 pt-6 px-5 leading-relaxed">
-        ByTune {versions?.app ?? "1.0.0"} · GPL-3.0
+      <div className="text-center text-[11px] text-ink-dim/80 pt-6 px-1 leading-relaxed">
+        Songsta {versions?.app ?? "1.0.0"} · GPL-3.0 · based on ByTune by rishiteja21
       </div>
     </div>
   );

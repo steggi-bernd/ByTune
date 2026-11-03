@@ -88,7 +88,7 @@ export function LibraryCheckView() {
       <header className="animate-slide-up">
         <h1 className="font-display text-[30px] font-bold tracking-[-0.03em] text-ink-hi">Library check</h1>
         <p className="text-[13px] text-ink-faint mt-1">
-          {found ? `${plural(found, "thing")} to look at` : "Nothing to fix"} · ByTune only changes how it shows your music — your files stay as they are.
+          {found ? `${plural(found, "thing")} to look at` : "Nothing to fix"} · Songsta only changes how it shows your music — your files stay as they are.
         </p>
       </header>
 
@@ -152,7 +152,7 @@ export function LibraryCheckView() {
       )}
 
       {spares.length > 0 && (
-        <Section title="Songs you have twice" count={spares.length} hint="ByTune plays the best copy. The others only take up space — clear them away in their folder if you like.">
+        <Section title="Songs you have twice" count={spares.length} hint="Songsta plays the best copy. The others only take up space — clear them away in their folder if you like.">
           {shown("spare", spares).map(({ song, keep, spare }) => (
             <div key={song.id} className="px-4 py-3">
               <div className="text-[14px] text-ink-hi truncate">

@@ -438,7 +438,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
               </Btn>
               <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">
                 In the playlist's order — adding again later puts newly found songs in their place. Songs you added to it in
-                ByTune stay, after them{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
+                Songsta stay, after them{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
               </p>
               {target && (
                 <Btn variant="glass" size="sm" onClick={() => navigate({ name: "playlist", param: target.id })}>
@@ -453,7 +453,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
               </Btn>
               <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">
                 In Spotify's order, newest first — adding again later puts newly found songs in their place. Songs you liked
-                only in ByTune stay on top{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
+                only in Songsta stay on top{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
               </p>
               <Btn variant="glass" size="sm" onClick={() => navigate({ name: "library", param: "liked" })}>
                 Open Liked Songs
@@ -573,7 +573,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
                     <p className="text-[13px] text-ink-dim mr-auto">
                       Songs not in your library{dated ? ", newest like first" : playlistMode ? ", in the playlist's order" : ""}. The list saves as a spreadsheet that
                       opens in Excel. Have one under another name? Use “I have it…”. Bought one? Drop the store's ZIP
-                      anywhere on ByTune.
+                      anywhere on Songsta.
                     </p>
                     <Btn variant="white" size="sm" icon={FileDown} onClick={() => void saveList()}>
                       Save as list…

@@ -25,6 +25,8 @@
   --ink-dim: 142 142 147;
   --ink-faint: 255 255 255;
   --ink-ghost: 255 255 255;
+  /* the content panel's side margin */
+  --page-pad: 24px;
   /* artwork-derived ambience (R G B) — set from the current track's artwork.
      The fallback is a neutral grey, never a brand hue, so an unread sleeve
      leaves the canvas black rather than tinting it. */
@@ -381,37 +383,59 @@ body.bytune-dragging * {
   scroll-behavior: smooth;
 }
 
-/* The main content scroller — Spotify's floating pill. The scroller itself
-   carries no background of its own (the rounded panel behind it is the only
-   surface), and the thumb floats a few pixels inside the panel edge instead
-   of hugging it. */
+/* The main content scroller. It carries no background of its own (the rounded
+   panel behind it is the only surface) and no native scrollbar: that would
+   take its width out of the page, and nothing could reach the panel's edge
+   past it. <PageScrollbar> floats Spotify's pill over the page instead, a few
+   pixels inside the panel edge, while the pointer is over the panel. */
 .scroll-host {
   background: transparent;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-width: none;
 }
 .scroll-host::-webkit-scrollbar {
-  width: 14px;
+  display: none;
 }
-.scroll-host::-webkit-scrollbar-thumb {
-  background: transparent;
+.page-scrollbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 20;
+}
+.page-scrollbar__thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   border: 5px solid transparent;
   border-radius: 999px;
   background-clip: content-box;
 }
-.scroll-host:hover::-webkit-scrollbar-thumb {
+main:hover .page-scrollbar__thumb {
   background-color: rgba(255, 255, 255, 0.14);
 }
-.scroll-host::-webkit-scrollbar-thumb:hover {
+main .page-scrollbar__thumb:hover,
+main .page-scrollbar__thumb:active {
   background-color: rgba(255, 255, 255, 0.22);
 }
-.scroll-host::-webkit-scrollbar-track,
-.scroll-host::-webkit-scrollbar-corner {
-  background: transparent;
+
+/* The panel's side margin: every page lines up on it (.page-pad). A header
+   that should reach the panel's edges takes it back (.page-bleed). */
+.page-pad {
+  padding-inline: var(--page-pad);
+}
+.page-bleed {
+  margin-inline: calc(var(--page-pad) * -1);
+}
+/* A shelf's row runs off the panel's edge instead of stopping at the margin;
+   the cards' own 8px inset hangs outside it, so covers line up with the heading. */
+.shelf-row {
+  padding-inline: calc(var(--page-pad) - 8px);
 }
 
 /* Side lists: the scrollbar's room on both sides, so what they hold stays
-   centred whether the list scrolls or not (the main scroller, .scroll-host,
-   does the same). */
+   centred whether the list scrolls or not. */
 .scroll-center {
   scrollbar-gutter: stable both-edges;
 }
@@ -1136,8 +1160,10 @@ html.noglass .chrome-glass {
   width: auto;
 }
 .ob-lockup-text {
-  height: 28.4px;
-  width: auto;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
 .ob-headline {

@@ -3,9 +3,10 @@
  * the name over it, play/shuffle, then two tabs.
  *
  *  - Overview: the artist's most played songs (from your own listening
- *    history), the songs of theirs you've liked as a small playlist, their
- *    albums, singles & EPs and compilations (newest first), the releases
- *    they appear on, and an About card with the Wikipedia bio
+ *    history), a strip leading to the songs of theirs you've liked (a small
+ *    playlist of their own, ArtistLikedView), their albums, singles & EPs and
+ *    compilations (newest first), the releases they appear on, and an About
+ *    card with the Wikipedia bio
  *  - Discography: every release of theirs in the library, newest on top,
  *    each with its cover, type, year and full track list — filterable by type
  *
@@ -15,20 +16,20 @@
  * (lib/artistBanner.ts); everything else is your own library.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Shuffle, User } from "lucide-react";
+import { ChevronRight, ExternalLink, Shuffle, User } from "lucide-react";
+import { BannerPicture } from "../components/BannerPicture";
 import { AlbumTile, BigPlayButton, playCollection } from "../components/LibraryCards";
 import { TrackList } from "../components/TrackList";
 import { Artwork, EmptyState, ShelfScroller } from "../components/primitives";
 import { LikedCover } from "../components/LikedCover";
 import { resolveArtistAbout, useArtistPicture, type ArtistAbout } from "../lib/artistAbout";
 import { bannerCandidates } from "../lib/artistBanner";
-import { artistAlbums, artistTracks, byPlays, useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
+import { artistAlbums, artistTracks, byPlays, useLibraryIndex, useLikedAmong, type LibAlbum } from "../lib/catalogIndex";
 import { fmtLength } from "../lib/format";
 import { parseRoute } from "../lib/libraryTracks";
 import { RELEASE_LABEL } from "../lib/releases";
 import { useArtistImages } from "../lib/songInfo";
-import { songKey, useCatalog, useFreshPlayCounts } from "../stores/catalog";
-import { useLibrary } from "../stores/library";
+import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useUI } from "../stores/ui";
 
 type Tab = "overview" | "discography";
@@ -82,55 +83,13 @@ function DiscographyRelease({ album }: { album: LibAlbum }) {
   );
 }
 
-/**
- * The banner's picture: the best of the candidates that has loaded — a
- * sharper one fades in over it once it has loaded too, one that fails is
- * passed over (offline: the stored photo, else a cover).
- */
-function BannerPicture({ candidates }: { candidates: string[] }) {
-  const [loaded, setLoaded] = useState<ReadonlySet<string>>(() => new Set());
-  const [layers, setLayers] = useState<string[]>([]);
-  const wanted = candidates.join("\n");
-  useEffect(() => {
-    const images = candidates.map((src) => {
-      const img = new Image();
-      img.onload = () => setLoaded((s) => (s.has(src) ? s : new Set(s).add(src)));
-      img.src = src;
-      return img;
-    });
-    return () => {
-      for (const img of images) img.onload = null;
-    };
-    // The list is rebuilt every render; its contents are what count.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted]);
-  const best = candidates.find((c) => loaded.has(c)) ?? null;
-  useEffect(() => {
-    if (best) setLayers((l) => (l[l.length - 1] === best ? l : [...l.slice(-1), best]));
-  }, [best]);
-  if (!layers.length) return <div className="absolute inset-0 bg-ink-hi/[0.06]" />;
-  return (
-    <>
-      {layers.map((src, i) => (
-        <img
-          key={src}
-          src={src}
-          alt=""
-          className={`absolute inset-0 w-full h-full object-cover object-[center_25%] ${i === layers.length - 1 ? "animate-fade-in" : ""}`}
-          style={{ animationDuration: "500ms" }}
-        />
-      ))}
-    </>
-  );
-}
-
 export function LibraryArtistView({ param }: { param: string }) {
   const name = parseRoute(param, "artist") ?? "";
   const { tracks, albums, loaded } = useLibraryIndex();
   const playCounts = useCatalog((s) => s.playCounts);
+  const navigate = useUI((s) => s.navigate);
   const [about, setAbout] = useState<ArtistAbout | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [showAllLiked, setShowAllLiked] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [discFilter, setDiscFilter] = useState<DiscFilter>("all");
   useFreshPlayCounts();
@@ -139,7 +98,6 @@ export function LibraryArtistView({ param }: { param: string }) {
     let alive = true;
     setAbout(null);
     setShowAll(false);
-    setShowAllLiked(false);
     setTab("overview");
     setDiscFilter("all");
     void resolveArtistAbout(name).then((a) => {
@@ -154,20 +112,7 @@ export function LibraryArtistView({ param }: { param: string }) {
   const picture = useArtistPicture(name);
   const songs = useMemo(() => artistTracks(tracks, name), [tracks, name]);
   const popular = useMemo(() => byPlays(songs, playCounts), [songs, playCounts]);
-  // The songs of theirs you've liked, the latest like first.
-  const liked = useLibrary((s) => s.liked);
-  const versions = useCatalog((s) => s.versions);
-  const likedHere = useMemo(() => {
-    const at = new Map<string, number>();
-    liked.forEach((t, i) => {
-      const k = songKey(t.id);
-      if (!at.has(k)) at.set(k, i);
-    });
-    const order = (t: (typeof songs)[number]): number => at.get(songKey(t.id)) ?? -1;
-    return songs.filter((t) => order(t) >= 0).sort((a, b) => order(a) - order(b));
-    // songKey reads the catalog's versions.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songs, liked, versions]);
+  const likedHere = useLikedAmong(songs);
   const { own, appearsOn } = useMemo(() => artistAlbums(albums, name), [albums, name]);
   const byType = useMemo(
     () => ({
@@ -196,10 +141,10 @@ export function LibraryArtistView({ param }: { param: string }) {
   return (
     <div className="space-y-7">
       {/* Banner: the photo bleeds to the panel edges, the name sits on it. */}
-      <header className="relative -mx-10 -mt-5 h-[340px] overflow-hidden animate-fade-in">
+      <header className="relative page-bleed -mt-5 h-[340px] overflow-hidden animate-fade-in">
         <BannerPicture key={name} candidates={banner} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/10" />
-        <div className="absolute left-10 right-10 bottom-7">
+        <div className="absolute inset-x-0 page-pad bottom-7">
           <h1 className="font-display font-extrabold tracking-[-0.04em] text-white leading-none drop-shadow-lg" style={{ fontSize: name.length > 18 ? 56 : 88 }}>
             {name}
           </h1>
@@ -251,38 +196,19 @@ export function LibraryArtistView({ param }: { param: string }) {
           </section>
 
           {likedHere.length > 0 && (
-            <section aria-label={`Your liked songs by ${name}`}>
-              <div className="flex items-center gap-4 mb-3">
-                <LikedCover className="w-14 h-14 rounded-md shrink-0" heartClassName="w-6 h-6" />
-                <div className="min-w-0 flex-1">
-                  <h2 className="section-title text-[21px]">Liked songs</h2>
-                  <div className="text-[13px] text-ink-dim mt-0.5 truncate">
-                    {likedHere.length} {likedHere.length === 1 ? "song" : "songs"} by {name} you've liked
-                  </div>
-                </div>
-                <BigPlayButton
-                  size="md"
-                  exact
-                  onClick={() => playCollection(likedHere)}
-                  label={`Play your liked songs by ${name}`}
-                  tracks={likedHere}
-                />
-              </div>
-              <TrackList
-                tracks={showAllLiked ? likedHere : likedHere.slice(0, 5)}
-                showAlbum
-                sourceName={`Liked songs by ${name}`}
-                emptyLabel="No songs."
-              />
-              {likedHere.length > 5 && (
-                <button
-                  onClick={() => setShowAllLiked((v) => !v)}
-                  className="mt-2 ml-3 text-[13px] font-bold text-ink-dim hover:text-ink-hi transition-colors"
-                >
-                  {showAllLiked ? "Show less" : `Show all ${likedHere.length}`}
-                </button>
-              )}
-            </section>
+            <button
+              onClick={() => navigate({ name: "artistliked", param })}
+              className="group w-full flex items-center gap-3.5 h-[68px] pl-2 pr-4 rounded-lg bg-ink-hi/[0.05] hover:bg-ink-hi/[0.1] transition-colors text-left"
+            >
+              <LikedCover className="w-[52px] h-[52px] rounded-md shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-ink-hi truncate">Liked songs</span>
+                <span className="block text-[13px] text-ink-dim truncate mt-0.5">
+                  {likedHere.length} {likedHere.length === 1 ? "song" : "songs"} by {name}
+                </span>
+              </span>
+              <ChevronRight className="w-5 h-5 shrink-0 text-ink-dim group-hover:text-ink-hi transition-colors" />
+            </button>
           )}
 
           {(

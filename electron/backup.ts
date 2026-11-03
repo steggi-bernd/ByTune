@@ -65,9 +65,9 @@ export async function backupExport(parent: BrowserWindow | null): Promise<{ path
   };
   const stamp = now.toISOString().slice(0, 10);
   const saveOpts = {
-    title: "Export ByTune backup",
-    defaultPath: `bytune-backup-${stamp}.json`,
-    filters: [{ name: "ByTune backup", extensions: ["json"] }],
+    title: "Export Songsta backup",
+    defaultPath: `songsta-backup-${stamp}.json`,
+    filters: [{ name: "Songsta backup", extensions: ["json"] }],
   };
   const res = parent
     ? await dialog.showSaveDialog(parent, saveOpts)
@@ -81,9 +81,9 @@ export async function backupImport(
   parent: BrowserWindow | null
 ): Promise<{ restored?: boolean; cancelled?: boolean; months?: number }> {
   const openOpts = {
-    title: "Import ByTune backup",
+    title: "Import Songsta backup",
     properties: ["openFile" as const],
-    filters: [{ name: "ByTune backup", extensions: ["json"] }],
+    filters: [{ name: "Songsta backup", extensions: ["json"] }],
   };
   const res = parent
     ? await dialog.showOpenDialog(parent, openOpts)
@@ -98,15 +98,15 @@ export async function backupImport(
   try {
     raw = JSON.parse(await fs.promises.readFile(file, "utf-8"));
   } catch {
-    throw new Error("That doesn't look like a ByTune backup");
+    throw new Error("That doesn't look like a Songsta backup");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("That doesn't look like a ByTune backup");
+    throw new Error("That doesn't look like a Songsta backup");
   }
   const doc = raw as Record<string, unknown>;
   if (doc.app !== "bytune") throw new Error("That backup is from another app");
   if (typeof doc.version !== "number" || doc.version > BACKUP_VERSION) {
-    throw new Error("That backup was written by a newer version of ByTune");
+    throw new Error("That backup was written by a newer version of Songsta");
   }
 
   // Store sections must be real zustand envelopes — anything else used to be

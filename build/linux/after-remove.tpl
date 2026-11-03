@@ -1,7 +1,7 @@
 #!/bin/bash
 # Runs after the .deb is removed (and during an upgrade, before the new
 # version's after-install). electron-builder's own step, then the AppArmor
-# profile after-install.tpl added, but only when ByTune really goes.
+# profile after-install.tpl added, but only when Songsta really goes.
 
 # Delete the link to the binary
 if type update-alternatives >/dev/null 2>&1; then

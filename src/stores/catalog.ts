@@ -12,6 +12,7 @@
  */
 import { useEffect } from "react";
 import { create } from "zustand";
+import type { PlayCounts } from "../lib/catalogBuild";
 import type { JellyfinStatus } from "../../electron/jellyfin";
 import type { SubsonicStatus } from "../../electron/subsonic";
 import { applyAlbumMerges, applyArtistAliases, applySongEdits } from "../lib/albumEdits";
@@ -21,7 +22,7 @@ import { useAlbumEdits } from "./albumEdits";
 import { useSettings } from "./settings";
 import type { Track } from "../types";
 
-export type PlayCounts = Record<string, { plays: number; lastAt: number }>;
+export type { PlayCounts };
 
 interface CatalogState {
   /** one entry per song (duplicates merged), album merges applied */

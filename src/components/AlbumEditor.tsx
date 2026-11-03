@@ -116,7 +116,7 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Edit album</div>
             <div className="text-[18px] font-bold text-ink-hi truncate">{album.title}</div>
-            <div className="text-[12.5px] text-ink-dim">Changes stay in ByTune — your files and servers aren't touched.</div>
+            <div className="text-[12.5px] text-ink-dim">Changes stay in Songsta — your files and servers aren't touched.</div>
           </div>
           <IconBtn icon={X} title="Close" onClick={onClose} className="rounded-full" />
         </div>

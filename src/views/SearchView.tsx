@@ -135,7 +135,7 @@ function BrowseSearchRow({ item }: { item: BrowseItem }) {
     } else {
       // Profiles and podcasts open their page on the phone; the desktop only
       // browses music pages, so say so rather than dead-click.
-      toast("This result isn't browsable on ByTune desktop", "info");
+      toast("This result isn't browsable on Songsta desktop", "info");
     }
   };
 
@@ -381,7 +381,7 @@ export function SearchView() {
         <RecentSearches />
         <div className="flex flex-col items-center text-center py-16">
           <SearchX className="w-10 h-10 text-ink-ghost mb-4" />
-          <div className="text-[15px] font-semibold text-ink-hi">Search ByTune</div>
+          <div className="text-[15px] font-semibold text-ink-hi">Search Songsta</div>
           <p className="text-[13px] text-ink-dim mt-1.5 max-w-sm leading-relaxed">
             Find songs, albums, artists and playlists from YouTube Music. Press {isMac ? "⌘F" : "Ctrl+F"} anywhere to jump into search.
           </p>

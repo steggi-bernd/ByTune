@@ -34,7 +34,7 @@ test("menu has the six macOS menus in order", () => {
   const menu = buildAppMenu(STATE, NOOP_WIRING, false);
   assert.deepEqual(
     menu.map((m) => m.label),
-    ["ByTune", "File", "Edit", "View", "Playback", "Window"]
+    ["Songsta", "File", "Edit", "View", "Playback", "Window"]
   );
 });
 
@@ -84,7 +84,7 @@ test("play label mirrors playing state; settings and find are reachable", () => 
   assert.equal(findByLabel(findByLabel(playing, "Playback").submenu, "Pause").label, "Pause");
   assert.equal(findByLabel(findByLabel(paused, "Playback").submenu, "Play").label, "Play");
 
-  const app = findByLabel(playing, "ByTune").submenu;
+  const app = findByLabel(playing, "Songsta").submenu;
   const settings = findByLabel(app, "Settings…");
   assert.equal(settings.accelerator, "Cmd+,");
   assert.doesNotThrow(() => settings.click());

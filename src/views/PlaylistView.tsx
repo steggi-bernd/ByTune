@@ -4,10 +4,11 @@
  * "PLAYLIST • N TRACKS • ABOUT 3:2X" metadata line, circular glass controls,
  * then the playlist's own numbered track rows.
  */
-import { Download, FileDown, Heart, ListMusic, ListPlus, MoreHorizontal, Play, Shuffle } from "lucide-react";
+import { Download, FileDown, Heart, ListMusic, ListPlus, MoreHorizontal, Play } from "lucide-react";
 import { exportM3uPlaylist } from "../lib/playlistFiles";
 import { downloadForOffline, SERVER_SONG } from "../lib/downloads";
 import { versionsOf } from "../stores/catalog";
+import { PlaylistHero } from "../components/PlaylistHero";
 import { FileButton } from "../components/TrackList";
 import { Artwork, EmptyState, EqBars, ExplicitBadge } from "../components/primitives";
 import { playlistHeaderItems, playlistMenuItems } from "../lib/trackActions";
@@ -100,16 +101,15 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   };
 
   return (
-    <div className="page-tint -mt-5">
-      {/* Hero — the playlist cover full-bleed, name + metadata over its lower edge. */}
-      <div className="relative -mx-10 overflow-hidden">
-        <div className="absolute inset-0">
-          {coverThumb ? (
+    <div className="page-tint page-bleed -mt-5">
+      <PlaylistHero
+        art={
+          coverThumb ? (
             <img src={upgradeArtwork(coverThumb, 1200)} alt="" className="w-full h-full object-cover" />
           ) : (
             /* Default cover — ByTune violet gradient with a big soft note
-               watermark, Spotify's default-playlist-cover model. The bottom
-               fade below still melts it into the page background. */
+               watermark, Spotify's default-playlist-cover model. The hero's
+               bottom fade still melts it into the page background. */
             <div
               className="relative w-full h-full overflow-hidden"
               style={{
@@ -130,60 +130,16 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
                 aria-hidden
               />
             </div>
-          )}
-          <div
-            className="absolute inset-0"
-            style={{
-              background: `linear-gradient(to bottom,
-                rgb(var(--page-bg) / 0.20) 0%,
-                rgb(var(--page-bg) / 0.45) 50%,
-                rgb(var(--page-bg) / 0.90) 80%,
-                rgb(var(--page-bg)) 100%)`,
-            }}
-          />
-        </div>
+          )
+        }
+        title={playlist.name}
+        meta={meta}
+        onShuffle={() => play(true)}
+        onPlay={() => play(false)}
+        onMore={openHeaderMenu}
+      />
 
-        <div className="relative flex flex-col items-center text-center px-8 pt-[244px] pb-5">
-          {/* leading-[1.35]: Segoe UI's ascent+descent needs ~1.33em — any
-              tighter and line-clamp's overflow:hidden slices the descenders. */}
-          <h1 className="font-display text-[34px] leading-[1.35] font-extrabold tracking-[-0.03em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)] break-words max-w-3xl line-clamp-2">
-            {playlist.name}
-          </h1>
-          <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white/70 mt-1.5 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]">
-            {meta}
-          </div>
-
-          <div className="flex items-center justify-center gap-2.5 mt-4">
-            {/* No `disabled` dimming when empty — play() no-ops on an empty
-                list, and grayed-out buttons made fresh playlists look broken. */}
-            <button
-              onClick={() => play(true)}
-              title="Shuffle"
-              aria-label="Shuffle"
-              className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
-            >
-              <Shuffle className="w-[18px] h-[18px]" />
-            </button>
-            <button
-              onClick={() => play(false)}
-              className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-black/45 border border-white/10 text-[14.5px] font-semibold text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
-            >
-              <Play className="w-[18px] h-[18px] fill-current" />
-              Play
-            </button>
-            <button
-              onClick={(e) => openHeaderMenu(e.clientX, e.clientY)}
-              title="More options"
-              aria-label="More options"
-              className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
-            >
-              <MoreHorizontal className="w-[18px] h-[18px]" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-8 pb-12 pt-2">
+      <div className="page-pad pb-12 pt-2">
         {tracks.length ? (
           <div>
             {tracks.map((track, i) => (

@@ -178,7 +178,7 @@ export function ReplayView() {
       <div className="flex items-center justify-between gap-4 flex-wrap animate-slide-up">
         <div>
           <h1 className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink-hi">Replay</h1>
-          <p className="text-[13.5px] text-ink-dim mt-1">Your listening, counted by ByTune — nothing estimated, kept on this computer.</p>
+          <p className="text-[13.5px] text-ink-dim mt-1">Your listening, counted by Songsta — nothing estimated, kept on this computer.</p>
         </div>
         <Pills options={PERIODS.map((p) => ({ key: p.key, label: p.label }))} value={period} onChange={(k) => setPeriod(k as typeof period)} />
       </div>
@@ -195,7 +195,7 @@ export function ReplayView() {
         <EmptyState
           icon={Clock3}
           title="Nothing here yet"
-          body="Play something first — Replay fills in as ByTune counts what you actually listen to."
+          body="Play something first — Replay fills in as Songsta counts what you actually listen to."
         />
       )}
 

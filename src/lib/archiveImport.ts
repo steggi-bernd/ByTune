@@ -28,7 +28,7 @@ export function importTargets<F extends { path: string }>(folders: F[]): F[] {
     return c !== p && (c.startsWith(`${p}\\`) || c.startsWith(`${p}/`));
   };
   const picked = folders.filter((f) => !folders.some((o) => inside(f.path, o.path)));
-  const kept = picked.filter((f) => !/[\\/]ByTune Offline$/i.test(f.path.replace(/[\\/]+$/, "")));
+  const kept = picked.filter((f) => !/[\\/](?:ByTune|Songsta) Offline$/i.test(f.path.replace(/[\\/]+$/, "")));
   return kept.length ? kept : picked;
 }
 

@@ -584,7 +584,7 @@ export function PipApp() {
         <button
           type="button"
           onClick={() => window.bytune?.pipShowMain()}
-          title="Open ByTune"
+          title="Open Songsta"
           className="min-w-0 flex-1 cursor-pointer text-left"
         >
           <div key={trackId ?? "t"} className="animate-meta-in truncate text-[15px] font-semibold leading-[1.35] text-white">

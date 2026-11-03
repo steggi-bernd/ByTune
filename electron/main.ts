@@ -1,4 +1,6 @@
-/** ByTune desktop — Electron main process. */
+/** Songsta desktop — Electron main process. */
+// First of all: the data folder moves before anything else opens a file in it.
+import "./rename-data";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, session, shell } from "electron";
 import type { NativeImage } from "electron";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -14,6 +16,7 @@ import * as folderWatch from "./folder-watch";
 import * as archive from "./archive-import";
 import * as cast from "./cast";
 import { samePath } from "./local-paths";
+import * as homeSync from "./home-sync";
 import * as jellyfin from "./jellyfin";
 import * as subsonic from "./subsonic";
 import { indexLibraryLyrics, libraryLyrics } from "./library-lyrics";
@@ -180,7 +183,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 640,
     backgroundColor: "#0a0a0a",
-    title: "ByTune",
+    title: "Songsta",
     show: false,
     autoHideMenuBar: true,
     // Frameless look, native behaviour. Windows: the renderer's top bar is a
@@ -588,6 +591,13 @@ function registerIpc(): void {
   ipc.handle("subsonic:library", () => subsonic.readLibrary());
   ipc.handle("subsonic:refresh", () => subsonic.refreshLibrary());
 
+  // The sync service: the page decides what to say (lib/homeSync.ts), the login stays here.
+  ipc.handle("homeSync:info", () => homeSync.info());
+  ipc.handle("homeSync:setAddress", (_e, value: unknown) => homeSync.setAddress(String(value ?? "").slice(0, 300)));
+  ipc.handle("homeSync:request", (_e, method: unknown, path: unknown, body: unknown, timeoutMs: unknown) =>
+    homeSync.request(method, path, body, timeoutMs)
+  );
+
   // Server sync: Liked Songs ↔ the servers' favorites, plays counted there too.
   // The renderer decides what changes (lib/serverSync.ts); these only talk to the servers.
   ipc.handle("jellyfin:users", () => jellyfin.listUsers());
@@ -657,7 +667,7 @@ function registerIpc(): void {
     if (!mainWindow) return null;
     const res = await dialog.showSaveDialog(mainWindow, {
       title: "Export listening history",
-      defaultPath: path.join(app.getPath("documents"), "ByTune listening history.csv"),
+      defaultPath: path.join(app.getPath("documents"), "Songsta listening history.csv"),
       filters: [{ name: "Spreadsheet (CSV)", extensions: ["csv"] }],
     });
     if (res.canceled || !res.filePath) return null;
@@ -801,7 +811,7 @@ function registerIpc(): void {
     }
     const dir = path.dirname(file);
     const entries = m3u.parseM3u(text).map((e) => {
-      if (!e.path) return e; // a ByTune note
+      if (!e.path) return e; // a Songsta note
       try {
         if (/^file:/i.test(e.path)) return { ...e, path: fileURLToPath(e.path) };
         if (/^[a-z][a-z0-9+.-]+:\/\//i.test(e.path)) return e; // http(s) and other URLs stay as they are
@@ -1053,7 +1063,7 @@ if (!gotLock) {
     if (isMac) {
       applyMenu();
       app.setAboutPanelOptions({
-        applicationName: "ByTune",
+        applicationName: "Songsta",
         applicationVersion: app.getVersion(),
         copyright: "Licensed under GPL-3.0",
       });

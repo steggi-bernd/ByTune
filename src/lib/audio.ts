@@ -1721,7 +1721,7 @@ function updateMediaSession(track: Track | null): void {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist,
-      album: track.album || "ByTune",
+      album: track.album || "Songsta",
       artwork: [96, 192, 512].map((size) => ({
         src: upgradeArtwork(track.thumb),
         sizes: `${size}x${size}`,

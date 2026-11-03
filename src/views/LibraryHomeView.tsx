@@ -161,7 +161,8 @@ export function LibraryHomeView() {
     <div className="space-y-9">
       <section className="animate-slide-up">
         <h1 className="font-display text-[34px] font-extrabold tracking-[-0.03em] text-ink-hi mb-5">{greeting()}</h1>
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5">
+        {/* As many columns as the panel has room for, four at most: the tiles' titles stay readable. */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(max(240px,calc(25%-8px)),1fr))] gap-2.5">
           {quick.map((q) => (
             <QuickTile key={q.id} title={q.title} thumb={q.thumb} art={q.art} onOpen={q.open} onPlay={q.play} />
           ))}

@@ -60,7 +60,7 @@ export function GuestDeleteModal({
           </div>
           <div>
             <h2 id="guest-delete-title" className="text-[16px] font-semibold leading-snug">
-              You're using ByTune as a guest
+              You're using Songsta as a guest
             </h2>
             <p className="text-[13px] text-ink-dim mt-1 leading-relaxed">
               Your data lives only on this PC. Deleting it now can't be undone. There's no cloud

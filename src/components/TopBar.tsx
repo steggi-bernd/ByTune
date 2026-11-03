@@ -37,7 +37,7 @@ import { useUI } from "../stores/ui";
 import { usePlayer } from "../stores/player";
 import { useRecents } from "../stores/recents";
 import type { SearchSuggestion } from "../types";
-import brandLogo from "../assets/brand/bytune-logo.svg";
+import brandLogo from "../assets/brand/songsta-logo.svg";
 
 /** The brand mark alone — no wordmark beside it. The SVG is pure white and
     sits directly on the dark `chrome-glass` bar. Imported as an asset so Vite
@@ -45,7 +45,7 @@ import brandLogo from "../assets/brand/bytune-logo.svg";
     is what makes it resolve under file:// in the packaged app — a string like
     "/brand/x.svg" only works on the dev server. */
 function BrandHeader() {
-  return <img src={brandLogo} alt="ByTune" className="h-7 w-auto block" />;
+  return <img src={brandLogo} alt="Songsta" className="h-7 w-auto block" />;
 }
 
 /** A round 40px button of the right cluster; `dot` marks a source as reachable (true) or away (false). */
@@ -341,7 +341,7 @@ export function TopBar() {
         <button
           onClick={goHome}
           className="app-no-drag flex items-center justify-center px-1.5 h-10 rounded-full hover:bg-ink-hi/[0.06] transition-colors"
-          title="ByTune"
+          title="Songsta"
         >
           <BrandHeader />
         </button>

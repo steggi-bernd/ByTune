@@ -1,11 +1,11 @@
 {
-  "name": "bytune-desktop",
-  "productName": "ByTune Local",
+  "name": "songsta-desktop",
+  "productName": "Songsta",
   "private": true,
   "version": "1.1.0",
-  "author": "ByTune",
-  "description": "ByTune Local — local music player with Jellyfin and open metadata",
-  "desktopName": "bytune-local.desktop",
+  "author": "Songsta",
+  "description": "Songsta — local music player with Jellyfin and open metadata",
+  "desktopName": "songsta.desktop",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -s first \"npm:dev:renderer\" \"npm:dev:app\"",
@@ -14,7 +14,7 @@
     "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --external:electron --external:jsdom --external:undici --outdir=dist-electron && esbuild electron/po-page.ts --bundle --format=iife --outfile=dist-electron/po-page.js && node -e \"require('fs').copyFileSync('electron/po.html','dist-electron/po.html')\" && node -e \"require('fs').cpSync('electron/assets','dist-electron/assets',{recursive:true})\"",
     "icons:thumbar": "node scripts/gen-thumbar-icons.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "esbuild src/lib/account-validators.ts --bundle --format=esm --outfile=.test-build/account-validators.mjs && esbuild src/lib/config.ts --bundle --format=esm --outfile=.test-build/config.mjs && esbuild electron/sync-merge.ts --bundle --format=esm --outfile=.test-build/sync-merge.mjs && esbuild electron/audio-format.ts --bundle --format=esm --outfile=.test-build/audio-format.mjs && esbuild electron/backup-transfer.ts --bundle --format=esm --outfile=.test-build/backup-transfer.mjs && esbuild electron/market.ts --bundle --format=esm --outfile=.test-build/market.mjs && esbuild electron/ytm.ts --bundle --format=esm --outfile=.test-build/ytm.mjs && esbuild electron/local-paths.ts --bundle --format=esm --outfile=.test-build/local-paths.mjs && esbuild src/lib/deletion-sync.ts --bundle --format=esm --outfile=.test-build/deletion-sync.mjs && esbuild src/lib/download-reconcile.ts --bundle --format=esm --outfile=.test-build/download-reconcile.mjs && esbuild electron/mac-menu.ts --bundle --format=esm --outfile=.test-build/mac-menu.mjs && esbuild src/lib/media-key-tap.ts --bundle --format=esm --outfile=.test-build/media-key-tap.mjs && esbuild src/lib/audio-output.ts --bundle --format=esm --outfile=.test-build/audio-output.mjs && esbuild src/lib/duplicates.ts --bundle --format=esm --outfile=.test-build/duplicates.mjs && esbuild src/lib/releases.ts --bundle --format=esm --outfile=.test-build/releases.mjs && esbuild src/lib/playbackFormat.ts --bundle --format=esm --outfile=.test-build/playbackFormat.mjs && esbuild electron/jellyfin-stream.ts --bundle --format=esm --outfile=.test-build/jellyfin-stream.mjs && esbuild src/lib/libraryTracks.ts --bundle --format=esm --outfile=.test-build/libraryTracks.mjs && esbuild src/lib/spotifyImport.ts --bundle --format=esm --outfile=.test-build/spotifyImport.mjs && esbuild src/lib/albumEdits.ts --bundle --format=esm --outfile=.test-build/albumEdits.mjs && esbuild src/lib/catalogIndex.ts --bundle --format=esm --outfile=.test-build/catalogIndex.mjs && esbuild electron/discord.ts --bundle --platform=node --format=esm --outfile=.test-build/discord.mjs && esbuild electron/lyrics.ts --bundle --platform=node --format=esm --outfile=.test-build/lyrics.mjs && esbuild src/lib/favoriteSync.ts --bundle --format=esm --outfile=.test-build/favoriteSync.mjs && esbuild src/lib/storeLinks.ts --bundle --format=esm --outfile=.test-build/storeLinks.mjs && esbuild src/lib/transliterate.ts --bundle --format=esm --outfile=.test-build/transliterate.mjs && esbuild electron/m3u.ts --bundle --format=esm --outfile=.test-build/m3u.mjs && esbuild src/lib/m3uMatch.ts --bundle --format=esm --outfile=.test-build/m3uMatch.mjs && esbuild scripts/vite-milkdrop.ts --bundle --platform=node --format=esm --external:vite --outfile=.test-build/vite-milkdrop.mjs && esbuild electron/archive-import.ts --bundle --platform=node --format=cjs --outfile=.test-build/archive-import.cjs && esbuild electron/release-date.ts --bundle --format=esm --outfile=.test-build/release-date.mjs && node --test tests/*.test.mjs",
+    "test": "esbuild src/lib/account-validators.ts --bundle --format=esm --outfile=.test-build/account-validators.mjs && esbuild src/lib/config.ts --bundle --format=esm --outfile=.test-build/config.mjs && esbuild electron/sync-merge.ts --bundle --format=esm --outfile=.test-build/sync-merge.mjs && esbuild electron/audio-format.ts --bundle --format=esm --outfile=.test-build/audio-format.mjs && esbuild electron/backup-transfer.ts --bundle --format=esm --outfile=.test-build/backup-transfer.mjs && esbuild electron/market.ts --bundle --format=esm --outfile=.test-build/market.mjs && esbuild electron/ytm.ts --bundle --format=esm --outfile=.test-build/ytm.mjs && esbuild electron/local-paths.ts --bundle --format=esm --outfile=.test-build/local-paths.mjs && esbuild src/lib/deletion-sync.ts --bundle --format=esm --outfile=.test-build/deletion-sync.mjs && esbuild src/lib/download-reconcile.ts --bundle --format=esm --outfile=.test-build/download-reconcile.mjs && esbuild electron/mac-menu.ts --bundle --format=esm --outfile=.test-build/mac-menu.mjs && esbuild src/lib/media-key-tap.ts --bundle --format=esm --outfile=.test-build/media-key-tap.mjs && esbuild src/lib/audio-output.ts --bundle --format=esm --outfile=.test-build/audio-output.mjs && esbuild src/lib/duplicates.ts --bundle --format=esm --outfile=.test-build/duplicates.mjs && esbuild src/lib/releases.ts --bundle --format=esm --outfile=.test-build/releases.mjs && esbuild src/lib/playbackFormat.ts --bundle --format=esm --outfile=.test-build/playbackFormat.mjs && esbuild electron/jellyfin-stream.ts --bundle --format=esm --outfile=.test-build/jellyfin-stream.mjs && esbuild src/lib/libraryTracks.ts --bundle --format=esm --outfile=.test-build/libraryTracks.mjs && esbuild src/lib/spotifyImport.ts --bundle --format=esm --outfile=.test-build/spotifyImport.mjs && esbuild src/lib/albumEdits.ts --bundle --format=esm --outfile=.test-build/albumEdits.mjs && esbuild src/lib/catalogIndex.ts --bundle --format=esm --outfile=.test-build/catalogIndex.mjs && esbuild electron/discord.ts --bundle --platform=node --format=esm --outfile=.test-build/discord.mjs && esbuild electron/lyrics.ts --bundle --platform=node --format=esm --outfile=.test-build/lyrics.mjs && esbuild src/lib/favoriteSync.ts --bundle --format=esm --outfile=.test-build/favoriteSync.mjs && esbuild src/lib/storeLinks.ts --bundle --format=esm --outfile=.test-build/storeLinks.mjs && esbuild src/lib/transliterate.ts --bundle --format=esm --outfile=.test-build/transliterate.mjs && esbuild electron/m3u.ts --bundle --format=esm --outfile=.test-build/m3u.mjs && esbuild src/lib/m3uMatch.ts --bundle --format=esm --outfile=.test-build/m3uMatch.mjs && esbuild scripts/vite-milkdrop.ts --bundle --platform=node --format=esm --external:vite --outfile=.test-build/vite-milkdrop.mjs && esbuild electron/archive-import.ts --bundle --platform=node --format=cjs --outfile=.test-build/archive-import.cjs && esbuild electron/release-date.ts --bundle --format=esm --outfile=.test-build/release-date.mjs && esbuild electron/data-folder.ts --bundle --platform=node --format=esm --outfile=.test-build/data-folder.mjs && esbuild src/lib/syncEngine.ts --bundle --format=esm --outfile=.test-build/syncEngine.mjs && esbuild src/lib/playlistSync.ts --bundle --format=esm --outfile=.test-build/playlistSync.mjs && node --test tests/*.test.mjs",
     "build": "npm run typecheck && npm run build:electron && vite build",
     "start": "electron .",
     "smoke": "node scripts/smoke.mjs",
@@ -24,12 +24,12 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:arm64": "npm run build && electron-builder --mac --arm64",
     "dist:x64": "npm run build && electron-builder --mac --x64",
-    "icon": "node scripts/gen-icon.mjs",
+    "icon": "node scripts/gen-icon.mjs && node scripts/gen-phone-icons.mjs",
     "qa:local": "node scripts/local-lib-qa.mjs"
   },
   "build": {
     "appId": "com.bytune.local",
-    "productName": "ByTune Local",
+    "productName": "Songsta",
     "directories": {
       "output": "release"
     },
@@ -42,7 +42,7 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "artifactName": "ByTune-Local-Setup.${ext}"
+      "artifactName": "Songsta-Setup.${ext}"
     },
     "mac": {
       "target": [
@@ -63,7 +63,7 @@
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.music",
-      "artifactName": "ByTune-${version}-${arch}.${ext}",
+      "artifactName": "Songsta-${version}-${arch}.${ext}",
       "darkModeSupport": true,
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -74,12 +74,12 @@
         "NSHighResolutionCapable": true,
         "NSPrincipalClass": "NSApplication",
         "NSSupportsAutomaticGraphicsSwitching": true,
-        "CFBundleDisplayName": "ByTune"
+        "CFBundleDisplayName": "Songsta"
       }
     },
     "dmg": {
-      "title": "ByTune ${version}",
-      "artifactName": "ByTune-${version}-${arch}.${ext}",
+      "title": "Songsta ${version}",
+      "artifactName": "Songsta-${version}-${arch}.${ext}",
       "contents": [
         {
           "x": 130,
@@ -109,11 +109,11 @@
         }
       ],
       "icon": "build/icon.png",
-      "executableName": "bytune-local",
-      "artifactName": "ByTune-Local-${arch}.${ext}",
+      "executableName": "songsta",
+      "artifactName": "Songsta-${arch}.${ext}",
       "category": "AudioVideo;Audio;Player",
       "synopsis": "Music player for your own files, Jellyfin and Navidrome",
-      "description": "ByTune Local plays the music on your computer and on your Jellyfin or Navidrome server, with lyrics, covers and artist info from open sources.",
+      "description": "Songsta plays the music on your computer and on your Jellyfin or Navidrome server, with lyrics, covers and artist info from open sources.",
       "maintainer": "steggi-bernd <322764890+steggi-bernd@users.noreply.github.com>",
       "desktop": {
         "GenericName": "Music Player",
@@ -121,7 +121,7 @@
       }
     },
     "deb": {
-      "packageName": "bytune-local",
+      "packageName": "songsta",
       "recommends": [
         "ffmpeg"
       ],
@@ -130,7 +130,7 @@
     },
     "protocols": [
       {
-        "name": "ByTune",
+        "name": "Songsta",
         "schemes": [
           "bytune"
         ]
@@ -140,7 +140,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
-      "shortcutName": "ByTune Local"
+      "shortcutName": "Songsta"
     }
   },
   "devDependencies": {

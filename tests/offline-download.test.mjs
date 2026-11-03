@@ -1,5 +1,5 @@
 // Offline copies of server songs (electron/downloads.ts): the original file, filed as
-// <Music>/ByTune Offline/<artist>/<album>/<no> <title>.<ext>, fetched with the server's auth header.
+// <Music>/Songsta Offline/<artist>/<album>/<no> <title>.<ext>, fetched with the server's auth header.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -51,9 +51,9 @@ test("a Jellyfin song's original lands in the offline library folder, filed by a
   downloads.enqueueDownload({ id: "jf:0123456789abcdef0123456789abcdef", title: "Night Ferry", artist: "Lumen Harbor", album: "Night Ferry", trackNo: 2, duration: 252, thumb: "" });
   const event = await done;
 
-  const expected = path.join(dir, "ByTune Offline", "Lumen Harbor", "Night Ferry", "02 Night Ferry.flac");
+  const expected = path.join(dir, "Songsta Offline", "Lumen Harbor", "Night Ferry", "02 Night Ferry.flac");
   assert.equal(event.path, expected, "filed by artist and album, the extension the server gave its file");
   assert.equal(fs.readFileSync(expected, "utf8"), "fLaC");
   assert.equal(auth, 'MediaBrowser Token="secret"', "the login travels in the header, from the main process only");
-  assert.equal(downloads.offlineDir(), path.join(dir, "ByTune Offline"));
+  assert.equal(downloads.offlineDir(), path.join(dir, "Songsta Offline"));
 });

@@ -1,4 +1,5 @@
 /** Preload — exposes a minimal, typed API to the renderer via contextBridge. */
+import type { HomeSyncInfo } from "./home-sync";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DownloadProgress, Track } from "../src/types";
 import type { DiscordStatus } from "./discord";
@@ -165,6 +166,11 @@ const api = {
   subsonicLibrary: () => ipcRenderer.invoke("subsonic:library"),
   subsonicRefresh: () => ipcRenderer.invoke("subsonic:refresh"),
 
+  // The sync service: playlists and where playback stopped (lib/homeSync.ts); the login stays in the main process
+  homeSyncInfo: () => ipcRenderer.invoke("homeSync:info") as Promise<HomeSyncInfo>,
+  homeSyncSetAddress: (address: string) => ipcRenderer.invoke("homeSync:setAddress", address) as Promise<HomeSyncInfo>,
+  homeSyncRequest: (method: "GET" | "PUT", path: string, body?: unknown, timeoutMs?: number) =>
+    ipcRenderer.invoke("homeSync:request", method, path, body, timeoutMs) as Promise<{ status: number; body: any }>,
   // Server sync: favorites ↔ Liked Songs, plays reported (what to change is decided in the renderer)
   jellyfinUsers: () => ipcRenderer.invoke("jellyfin:users") as Promise<JellyfinUser[]>,
   jellyfinSetSyncUser: (id: string | null) => ipcRenderer.invoke("jellyfin:setSyncUser", id) as Promise<JellyfinStatus>,

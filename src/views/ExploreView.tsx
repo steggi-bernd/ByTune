@@ -9,71 +9,41 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, DiscAlbum, LayoutGrid, List, Play, Search, User, X } from "lucide-react";
 import { AlbumTile, ArtistTile, CoverCollage, GenreTile, playCollection, useArtistPhoto, useSeen } from "../components/LibraryCards";
 import { Artwork, EmptyState, Pills } from "../components/primitives";
-import { artistTracks, useLibraryGenres, useLibraryIndex, type LibAlbum, type LibArtist, type LibGenre } from "../lib/catalogIndex";
+import { artistTracks, useLibraryGenres, useLibraryIndex, type LibArtist } from "../lib/catalogIndex";
+import {
+  addedLabel,
+  albumOrders,
+  albumRowsOf,
+  artistOrders,
+  artistRowsOf,
+  dayLabel,
+  genreOrders,
+  genreRowsOf,
+  nextSort,
+  sortRows,
+  type AlbumRow,
+  type ArtistRow,
+  type ExploreOrder,
+  type GenreRow,
+} from "../lib/exploreRows";
 import { fmtTime, plural } from "../lib/format";
-import { splitCredits } from "../lib/libraryTracks";
-import { compareReleases, RELEASE_LABEL, type ReleaseKind } from "../lib/releases";
-import { useCatalog, useFreshPlayCounts, type PlayCounts } from "../stores/catalog";
+import { RELEASE_LABEL } from "../lib/releases";
+import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useSettings, type ExploreSort, type ExploreTab } from "../stores/settings";
 import { useUI, type MenuItem } from "../stores/ui";
-import type { Track } from "../types";
 
-interface Column<T> {
-  key: string;
-  label: string;
+/** How an order looks as a table column. */
+interface ColumnLook<T> {
   /** width — the same classes on the header and on every cell */
   className: string;
   /** shown once the table is at least this wide (px); the page sits between the library and the side panel, so the window's width says little */
   from?: number;
-  /** counts and dates start from the most / the newest; text from A */
-  numeric?: boolean;
   right?: boolean;
-  /** ascending */
-  compare: (a: T, b: T) => number;
-  /** rows without a value stay at the end, whichever way the column runs */
-  missing?: (row: T) => boolean;
   cell: (row: T) => ReactNode;
 }
+type Column<T> = ExploreOrder<T> & ColumnLook<T>;
 
-interface AlbumRow {
-  album: LibAlbum;
-  plays: number;
-}
-interface ArtistRow {
-  artist: LibArtist;
-  plays: number;
-  addedAt: number;
-}
-interface GenreRow {
-  genre: LibGenre;
-  plays: number;
-}
-
-const text = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-const playsOf = (list: Track[], counts: PlayCounts): number => list.reduce((n, t) => n + (counts[t.id]?.plays ?? 0), 0);
-const KIND_ORDER: ReleaseKind[] = ["album", "ep", "single", "compilation"];
-
-/** A local calendar day — new Date("2019-05-03") would be UTC midnight, the day before west of Greenwich. */
-function dayLabel(date: string | undefined, year: number | undefined): string {
-  const [y, m, d] = (date ?? "").split("-").map(Number);
-  if (y && m && d) return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  if (y && m) return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
-  return year ? String(year) : "—";
-}
-const addedLabel = (ms: number): string =>
-  ms > 0 ? new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—";
-
-function sortRows<T>(rows: T[], columns: Column<T>[], sort: ExploreSort): T[] {
-  const col = columns.find((c) => c.key === sort.by) ?? columns[0];
-  const first = columns[0];
-  return [...rows].sort((a, b) => {
-    const ma = col.missing?.(a) ?? false;
-    const mb = col.missing?.(b) ?? false;
-    if (ma !== mb) return ma ? 1 : -1;
-    const c = col.compare(a, b);
-    return (sort.desc ? -c : c) || first.compare(a, b);
-  });
-}
+const columnsOf = <T,>(orders: ExploreOrder<T>[], looks: Record<string, ColumnLook<T>>): Column<T>[] => orders.map((o) => ({ ...o, ...looks[o.key] }));
 
 /* ------------------------------------------------------------ the table */
 
@@ -191,65 +161,34 @@ function ArtistPhoto({ artist }: { artist: LibArtist }) {
 
 /* ------------------------------------------------------------ the columns */
 
-const albumColumns: Column<AlbumRow>[] = [
-  { key: "title", label: "Title", className: "flex-[3] min-w-0", compare: (a, b) => text(a.album.title, b.album.title), cell: (r) => r.album.title },
-  { key: "artist", label: "Artist", className: "flex-[2] min-w-0", compare: (a, b) => text(a.album.artist, b.album.artist), cell: (r) => r.album.artist },
-  {
-    key: "released",
-    label: "Released",
+const albumColumns = columnsOf<AlbumRow>(albumOrders, {
+  title: { className: "flex-[3] min-w-0", cell: (r) => r.album.title },
+  artist: { className: "flex-[2] min-w-0", cell: (r) => r.album.artist },
+  released: {
     className: "w-28 shrink-0",
     from: 630,
-    numeric: true,
-    // Ascending is oldest first; the same order as the discography, turned round.
-    compare: (a, b) => compareReleases(b.album, a.album),
-    missing: (r) => !r.album.year,
     cell: (r) => <span title={r.album.date ?? undefined}>{dayLabel(r.album.date, r.album.year)}</span>,
   },
-  {
-    key: "type",
-    label: "Type",
-    className: "w-24 shrink-0",
-    from: 820,
-    compare: (a, b) => KIND_ORDER.indexOf(a.album.kind) - KIND_ORDER.indexOf(b.album.kind),
-    cell: (r) => RELEASE_LABEL[r.album.kind],
-  },
-  { key: "songs", label: "Songs", className: "w-16 shrink-0", from: 710, numeric: true, right: true, compare: (a, b) => a.album.tracks.length - b.album.tracks.length, cell: (r) => r.album.tracks.length },
-  { key: "length", label: "Length", className: "w-20 shrink-0", from: 920, numeric: true, right: true, compare: (a, b) => a.album.duration - b.album.duration, cell: (r) => fmtTime(r.album.duration) },
-  {
-    key: "added",
-    label: "Added",
-    className: "w-28 shrink-0",
-    from: 1050,
-    numeric: true,
-    compare: (a, b) => a.album.addedAt - b.album.addedAt,
-    missing: (r) => !r.album.addedAt,
-    cell: (r) => addedLabel(r.album.addedAt),
-  },
-  { key: "plays", label: "Plays", className: "w-16 shrink-0", from: 500, numeric: true, right: true, compare: (a, b) => a.plays - b.plays, cell: (r) => r.plays || "—" },
-];
-const artistColumns: Column<ArtistRow>[] = [
-  { key: "name", label: "Name", className: "flex-1 min-w-0", compare: (a, b) => text(a.artist.name, b.artist.name), cell: (r) => r.artist.name },
-  { key: "albums", label: "Albums", className: "w-20 shrink-0", from: 420, numeric: true, right: true, compare: (a, b) => a.artist.albumCount - b.artist.albumCount, cell: (r) => r.artist.albumCount || "—" },
-  { key: "songs", label: "Songs", className: "w-20 shrink-0", from: 520, numeric: true, right: true, compare: (a, b) => a.artist.trackCount - b.artist.trackCount, cell: (r) => r.artist.trackCount },
-  { key: "plays", label: "Plays", className: "w-20 shrink-0", from: 620, numeric: true, right: true, compare: (a, b) => a.plays - b.plays, cell: (r) => r.plays || "—" },
-  {
-    key: "added",
-    label: "Added",
-    className: "w-28 shrink-0",
-    from: 750,
-    numeric: true,
-    compare: (a, b) => a.addedAt - b.addedAt,
-    missing: (r) => !r.addedAt,
-    cell: (r) => addedLabel(r.addedAt),
-  },
-];
-const genreColumns: Column<GenreRow>[] = [
-  { key: "name", label: "Name", className: "flex-1 min-w-0", compare: (a, b) => text(a.genre.name, b.genre.name), cell: (r) => r.genre.name },
-  { key: "artists", label: "Artists", className: "w-20 shrink-0", from: 620, numeric: true, right: true, compare: (a, b) => a.genre.artistCount - b.genre.artistCount, cell: (r) => r.genre.artistCount },
-  { key: "albums", label: "Albums", className: "w-20 shrink-0", from: 520, numeric: true, right: true, compare: (a, b) => a.genre.albumCount - b.genre.albumCount, cell: (r) => r.genre.albumCount },
-  { key: "songs", label: "Songs", className: "w-20 shrink-0", from: 420, numeric: true, right: true, compare: (a, b) => a.genre.tracks.length - b.genre.tracks.length, cell: (r) => r.genre.tracks.length },
-  { key: "plays", label: "Plays", className: "w-20 shrink-0", from: 720, numeric: true, right: true, compare: (a, b) => a.plays - b.plays, cell: (r) => r.plays || "—" },
-];
+  type: { className: "w-24 shrink-0", from: 820, cell: (r) => RELEASE_LABEL[r.album.kind] },
+  songs: { className: "w-16 shrink-0", from: 710, right: true, cell: (r) => r.album.tracks.length },
+  length: { className: "w-20 shrink-0", from: 920, right: true, cell: (r) => fmtTime(r.album.duration) },
+  added: { className: "w-28 shrink-0", from: 1050, cell: (r) => addedLabel(r.album.addedAt) },
+  plays: { className: "w-16 shrink-0", from: 500, right: true, cell: (r) => r.plays || "—" },
+});
+const artistColumns = columnsOf<ArtistRow>(artistOrders, {
+  name: { className: "flex-1 min-w-0", cell: (r) => r.artist.name },
+  albums: { className: "w-20 shrink-0", from: 420, right: true, cell: (r) => r.artist.albumCount || "—" },
+  songs: { className: "w-20 shrink-0", from: 520, right: true, cell: (r) => r.artist.trackCount },
+  plays: { className: "w-20 shrink-0", from: 620, right: true, cell: (r) => r.plays || "—" },
+  added: { className: "w-28 shrink-0", from: 750, cell: (r) => addedLabel(r.addedAt) },
+});
+const genreColumns = columnsOf<GenreRow>(genreOrders, {
+  name: { className: "flex-1 min-w-0", cell: (r) => r.genre.name },
+  artists: { className: "w-20 shrink-0", from: 620, right: true, cell: (r) => r.genre.artistCount },
+  albums: { className: "w-20 shrink-0", from: 520, right: true, cell: (r) => r.genre.albumCount },
+  songs: { className: "w-20 shrink-0", from: 420, right: true, cell: (r) => r.genre.tracks.length },
+  plays: { className: "w-20 shrink-0", from: 720, right: true, cell: (r) => r.plays || "—" },
+});
 
 /* ------------------------------------------------------------ the page */
 
@@ -274,21 +213,9 @@ export function ExploreView() {
   const [query, setQuery] = useState("");
   const sortButton = useRef<HTMLButtonElement | null>(null);
 
-  const albumRows = useMemo<AlbumRow[]>(() => albums.map((album) => ({ album, plays: playsOf(album.tracks, playCounts) })), [albums, playCounts]);
-  const artistRows = useMemo<ArtistRow[]>(() => {
-    // One pass over the songs: each credited artist's plays and newest song.
-    const stats = new Map<string, { plays: number; addedAt: number }>();
-    for (const t of tracks) {
-      for (const name of splitCredits(t.artist)) {
-        const cur = stats.get(name.toLowerCase()) ?? { plays: 0, addedAt: 0 };
-        cur.plays += playCounts[t.id]?.plays ?? 0;
-        cur.addedAt = Math.max(cur.addedAt, t.addedAt ?? 0);
-        stats.set(name.toLowerCase(), cur);
-      }
-    }
-    return artists.map((artist) => ({ artist, plays: stats.get(artist.name.toLowerCase())?.plays ?? 0, addedAt: stats.get(artist.name.toLowerCase())?.addedAt ?? 0 }));
-  }, [artists, tracks, playCounts]);
-  const genreRows = useMemo<GenreRow[]>(() => genres.map((genre) => ({ genre, plays: playsOf(genre.tracks, playCounts) })), [genres, playCounts]);
+  const albumRows = useMemo(() => albumRowsOf(albums, playCounts), [albums, playCounts]);
+  const artistRows = useMemo(() => artistRowsOf(artists, tracks, playCounts), [artists, tracks, playCounts]);
+  const genreRows = useMemo(() => genreRowsOf(genres, playCounts), [genres, playCounts]);
 
   const q = query.trim().toLowerCase();
   const sort = sorts[tab];
@@ -305,11 +232,8 @@ export function ExploreView() {
     [genreRows, q, sorts.genres]
   );
 
-  const columnsOf: { key: string; label: string; numeric?: boolean }[] = { albums: albumColumns, artists: artistColumns, genres: genreColumns }[tab];
-  /** A new column starts from the most (counts, dates) or from A (text); the same column again turns round. */
-  const sortBy = (col: { key: string; numeric?: boolean }): void => {
-    setSort(tab, sort.by === col.key ? { by: col.key, desc: !sort.desc } : { by: col.key, desc: !!col.numeric });
-  };
+  const tabColumns: { key: string; label: string; numeric?: boolean }[] = { albums: albumColumns, artists: artistColumns, genres: genreColumns }[tab];
+  const sortBy = (col: { key: string; numeric?: boolean }): void => setSort(tab, nextSort(sort, col));
   const openSortMenu = (): void => {
     const ui = useUI.getState();
     if (ui.contextMenu) {
@@ -319,7 +243,7 @@ export function ExploreView() {
     const rect = sortButton.current?.getBoundingClientRect();
     const items: MenuItem[] = [
       { label: "Sort by", header: true },
-      ...columnsOf.map((c) => ({
+      ...tabColumns.map((c) => ({
         label: c.label,
         icon: sort.by === c.key ? (sort.desc ? ArrowDown : ArrowUp) : undefined,
         action: () => sortBy(c),
@@ -335,7 +259,7 @@ export function ExploreView() {
 
   const counts = { albums: albums.length, artists: artists.length, genres: genres.length };
   const shown = { albums: shownAlbums.length, artists: shownArtists.length, genres: shownGenres.length }[tab];
-  const sortLabel = columnsOf.find((c) => c.key === sort.by)?.label ?? columnsOf[0].label;
+  const sortLabel = tabColumns.find((c) => c.key === sort.by)?.label ?? tabColumns[0].label;
 
   return (
     <div className="space-y-6">

@@ -28,7 +28,7 @@ const LIBRARY_STORE = "subsonic-library";
 const PAGE_SIZE = 500;
 const MAX_ITEMS = 100_000;
 const API_VERSION = "1.16.1";
-const CLIENT = "ByTune";
+const CLIENT = "Songsta";
 /** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
 const LIB_VERSION = 3;
 /** Formats Chromium can't decode — the server transcodes these to MP3. */

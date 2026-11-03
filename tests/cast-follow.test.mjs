@@ -225,7 +225,7 @@ test("a song handed over that never starts: why, as far as it can be told", asyn
   now += 7000;
   report({ trackId: "local:a", state: "stopped", fetched: false });
   assert.equal(usePlayer.getState().playing, false);
-  assert.deepEqual(globalThis.__toasts.at(-1), ["TV can't reach this computer — let ByTune Local through the firewall for private networks", "error"]);
+  assert.deepEqual(globalThis.__toasts.at(-1), ["TV can't reach this computer — let Songsta through the firewall for private networks", "error"]);
   // Fetched but not started: most likely the file type.
   usePlayer.getState().next(true);
   await flush();

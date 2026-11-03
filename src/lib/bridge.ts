@@ -13,7 +13,7 @@ export function hasBridge(): boolean {
 
 export function requireBridge(): ByTuneApi {
   if (typeof window === "undefined" || !window.bytune) {
-    throw new Error("Not running inside the ByTune desktop shell.");
+    throw new Error("Not running inside the Songsta desktop shell.");
   }
   return window.bytune;
 }

@@ -92,9 +92,9 @@ export function buildAppMenu(state: MenuPlaybackState, wiring: MenuWiring, isDev
 
   return [
     {
-      label: "ByTune",
+      label: "Songsta",
       submenu: [
-        { role: "about", label: "About ByTune" },
+        { role: "about", label: "About Songsta" },
         { type: "separator" },
         {
           label: "Settings…",
@@ -104,11 +104,11 @@ export function buildAppMenu(state: MenuPlaybackState, wiring: MenuWiring, isDev
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
-        { role: "hide", label: "Hide ByTune" },
+        { role: "hide", label: "Hide Songsta" },
         { role: "hideOthers" },
         { role: "unhide" },
         { type: "separator" },
-        { role: "quit", label: "Quit ByTune" },
+        { role: "quit", label: "Quit Songsta" },
       ],
     },
     {
@@ -173,7 +173,7 @@ export function buildAppMenu(state: MenuPlaybackState, wiring: MenuWiring, isDev
         { role: "zoom" },
         { type: "separator" },
         { label: "Main Window", click: (): void => wiring.showMainWindow() },
-        { label: "ByTune Miniplayer", click: cmd("miniplayer") },
+        { label: "Songsta Miniplayer", click: cmd("miniplayer") },
         { type: "separator" },
         { role: "front" },
       ],

@@ -46,10 +46,12 @@ export function Shelf({
 /* ============================================================ shelf arrows */
 
 /**
- * Horizontal card row with Spotify-style hover arrows. Scrolling itself stays
- * native — trackpad, wheel, touch — the arrows are a hover affordance that
- * page through the shelf in card-aligned steps, popping in from the edges
- * only for directions that still have content to show.
+ * Horizontal card row with Spotify-style hover arrows, running from one edge
+ * of the content panel to the other: the first cover lines up with the page,
+ * the cards go on until the panel ends. Scrolling itself stays native —
+ * trackpad, wheel, touch — the arrows are a hover affordance that page
+ * through the shelf in card-aligned steps, popping in from the edges only for
+ * directions that still have content to show.
  *
  * The wrapper is a named group (`group/shelf`) so the arrows' show/hide
  * variants never bleed into the cards' own `group-hover` states.
@@ -91,7 +93,10 @@ export function ShelfScroller({
     };
   }, []);
 
-  /** One press = one page of cards; uniform-width rows land card-aligned. */
+  /**
+   * One press = one page of cards; uniform-width rows land card-aligned: the
+   * cards fully in view move out, the one cut off by the panel's edge comes first.
+   */
   const page = (dir: 1 | -1): void => {
     const el = ref.current;
     if (!el) return;
@@ -99,8 +104,10 @@ export function ShelfScroller({
     const pitches = rects.slice(1).map((r, i) => r.left - rects[i].left);
     const pitch = pitches.length ? Math.min(...pitches) : 0;
     const uniform = pitch > 0 && Math.max(...pitches) - pitch < 2;
+    const gap = uniform ? pitch - rects[0].width : 0;
+    const margin = parseFloat(getComputedStyle(el).paddingLeft) || 0;
     const step = uniform
-      ? Math.max(1, Math.round((el.clientWidth + 12) / pitch)) * pitch
+      ? Math.max(1, Math.floor((el.clientWidth - margin + gap) / pitch)) * pitch
       : el.clientWidth * 0.9;
     el.scrollBy({ left: dir * step, behavior: "smooth" });
   };
@@ -111,7 +118,7 @@ export function ShelfScroller({
     return (
       <div
         className={`pointer-events-none absolute z-20 ${
-          dir === 1 ? "right-1 translate-x-1" : "left-1 -translate-x-1"
+          dir === 1 ? "right-4 translate-x-1" : "left-4 -translate-x-1"
         } ${arrowTop} scale-75 opacity-0 transition-all duration-200 ease-out ${
           can ? "" : "hidden"
         } group-hover/shelf:pointer-events-auto group-hover/shelf:translate-x-0 group-hover/shelf:scale-100 group-hover/shelf:opacity-100 group-focus-within/shelf:pointer-events-auto group-focus-within/shelf:translate-x-0 group-focus-within/shelf:scale-100 group-focus-within/shelf:opacity-100`}
@@ -129,8 +136,8 @@ export function ShelfScroller({
   };
 
   return (
-    <div className={`group/shelf relative ${className}`}>
-      <div ref={ref} className="flex gap-4 overflow-x-auto pb-2 shelf-scroll">
+    <div className={`group/shelf relative page-bleed ${className}`}>
+      <div ref={ref} className="shelf-row flex gap-4 overflow-x-auto pb-2 shelf-scroll">
         {children}
       </div>
       {arrow(-1)}

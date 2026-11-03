@@ -63,6 +63,14 @@ function sameRecording(a: Track, b: Track): boolean {
   return true;
 }
 
+/** Songs that could be the same one have this in common. */
+export function songIdentity(t: Pick<Track, "title" | "artist" | "albumArtist">): string {
+  return `${titleKey(t.title)}|${artistKey(t)}`;
+}
+
+/** Two tracks with the same identity: the same recording? */
+export const sameSong = sameRecording;
+
 const SOURCE_RANK: Record<NonNullable<Track["source"]>, number> = { local: 0, jellyfin: 1, subsonic: 2 };
 
 const LOSSLESS_CODEC = /flac|alac|wav|pcm|aiff?|dsd|dsf|dff|wavpack|^wv$|monkey|^ape$|lossless/i;
@@ -157,7 +165,7 @@ export function mergeDuplicates(all: Track[]): MergedLibrary {
   for (const t of all) {
     const title = titleKey(t.title);
     if (!title) continue;
-    const key = `${title}|${artistKey(t)}`;
+    const key = songIdentity(t);
     const bucket = buckets.get(key);
     if (bucket) bucket.push(t);
     else {

@@ -1,6 +1,6 @@
 // The Linux packages: what electron-builder needs to build them (the .deb scripts use only
 // the names it fills in, and still parse in bash once filled), what the desktop needs to
-// show ByTune as itself, and secrets on a desktop without a keyring.
+// show Songsta as itself, and secrets on a desktop without a keyring.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import fs from "node:fs";
@@ -58,10 +58,10 @@ test("the .deb scripts are plain LF text (bash chokes on CR)", () => {
 
 test("the AppArmor profile is made for the installed binary and removed only on removal", () => {
   const install = fill(scripts[0][1]);
-  assert.ok(install.includes(`profile bytune-local "/opt/ByTune Local/bytune-local" flags=(unconfined) {`));
+  assert.ok(install.includes(`profile songsta "/opt/Songsta/songsta" flags=(unconfined) {`));
   assert.ok(install.includes("userns,"));
   const remove = fill(scripts[1][1]);
-  assert.match(remove, /if \[ "\$1" = remove \] \|\| \[ "\$1" = purge \]; then[\s\S]*rm -f '\/etc\/apparmor\.d\/bytune-local'/);
+  assert.match(remove, /if \[ "\$1" = remove \] \|\| \[ "\$1" = purge \]; then[\s\S]*rm -f '\/etc\/apparmor\.d\/songsta'/);
 });
 
 const bash = spawnSync("bash", ["--version"], { encoding: "utf8" });

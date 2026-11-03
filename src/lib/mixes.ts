@@ -6,9 +6,8 @@
  * seed of its id + today's date, so it stays put through the day and changes
  * daily.
  */
-import type { PlayCounts } from "../stores/catalog";
 import type { Track } from "../types";
-import { decadeOf, genresOf } from "./catalogIndex";
+import { decadeOf, genresOf, type PlayCounts } from "./catalogBuild";
 
 export interface Mix {
   id: string;

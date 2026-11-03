@@ -102,7 +102,7 @@ export async function playSource(source: PlaySource): Promise<void> {
     }
     await playResolved(mixed.slice(0, 40), source.name);
   } catch (err) {
-    if (!requireBridgeSafe()) ui.toast("Not running inside the ByTune shell", "error");
+    if (!requireBridgeSafe()) ui.toast("Not running inside the Songsta shell", "error");
     else ui.toast(`Couldn't play that right now`, "error");
     void err;
   }

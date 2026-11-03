@@ -81,7 +81,7 @@ function ConnectCard({ onConnected }: { onConnected: (s: SubsonicStatus) => void
         {busy ? "Connecting…" : "Connect"}
       </button>
       <p className="text-[12px] text-ink-faint">
-        ByTune keeps only a hashed sign-in token (the Subsonic standard), sealed by your operating system's keychain —
+        Songsta keeps only a hashed sign-in token (the Subsonic standard), sealed by your operating system's keychain —
         never the password itself.
       </p>
     </form>
@@ -145,7 +145,7 @@ export function SubsonicView() {
   const disconnect = (): void =>
     openDialog({
       title: "Disconnect the server?",
-      body: "Its songs disappear from ByTune until you connect again. Nothing on the server changes.",
+      body: "Its songs disappear from Songsta until you connect again. Nothing on the server changes.",
       confirmLabel: "Disconnect",
       onConfirm: async () => {
         const s = (await window.bytune?.subsonicDisconnect()) as SubsonicStatus | undefined;

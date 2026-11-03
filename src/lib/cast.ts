@@ -176,7 +176,7 @@ function onStatus(st: CastStatus): void {
     toast(
       st.fetched
         ? `${cast.active.name} doesn't start "${cur.title}" — it may not play this kind of file`
-        : `${cast.active.name} can't reach this computer — let ByTune Local through the firewall for private networks`,
+        : `${cast.active.name} can't reach this computer — let Songsta through the firewall for private networks`,
       "error"
     );
     adopt(() => usePlayer.getState().setPlaying(false));

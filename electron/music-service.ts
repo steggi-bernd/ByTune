@@ -733,7 +733,7 @@ async function resolveQueueCredits(
   }
 }
 const lyricCacheAt = new Map<string, number>();
-const LRCLIB_UA = "ByTune/1.0.0";
+const LRCLIB_UA = "Songsta/1.0.0";
 
 function primaryArtist(artist: string): string {
   return artist.split(/,|&|feat\.|ft\./i)[0].trim();

@@ -1,6 +1,6 @@
-# Contributing to ByTune
+# Contributing to Songsta
 
-Thanks for helping improve ByTune! This document covers what you need to get a development environment running and what to expect when you open an issue or pull request.
+Thanks for helping improve Songsta! This document covers what you need to get a development environment running and what to expect when you open an issue or pull request.
 
 ## Getting set up
 
@@ -12,7 +12,7 @@ Prerequisites:
 - **Git**
 
 ```bash
-git clone https://github.com/rishiteja21/ByTune.git
+git clone https://github.com/steggi-bernd/ByTune.git
 cd ByTune
 npm install
 npm run dev
@@ -38,10 +38,10 @@ The Windows and macOS editions share one codebase: platform-specific behavior li
 
 ## Reporting bugs
 
-Open a [GitHub issue](https://github.com/rishiteja21/ByTune/issues) and include:
+Open a [GitHub issue](https://github.com/steggi-bernd/ByTune/issues) and include:
 
 - What you did and what happened
-- The ByTune version (Settings → About, or the release tag)
+- The Songsta version (Settings → About, or the release tag)
 - Your OS and version (Windows 10/11, or macOS 11+ on Apple Silicon/Intel)
 
 Playback issues are often upstream changes on YouTube's side — mention whether playback fails for everything or just some tracks.

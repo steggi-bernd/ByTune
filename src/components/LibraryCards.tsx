@@ -250,34 +250,27 @@ export function BigPlayButton({
   onClick,
   label = "Play",
   tracks,
-  size = "lg",
-  exact = false,
 }: {
   onClick: () => void;
   label?: string;
   tracks?: Track[];
-  /** md: a section's own play button, beside its heading */
-  size?: "lg" | "md";
-  /** pauses only while the queue is exactly these tracks (useCollectionPlayback) */
-  exact?: boolean;
 }) {
-  const { active, playing } = useCollectionPlayback(tracks ?? NO_TRACKS, exact);
+  const { active, playing } = useCollectionPlayback(tracks ?? NO_TRACKS);
   const title = playing ? "Pause" : label;
-  const glyph = size === "lg" ? "w-6 h-6" : "w-5 h-5";
   return (
     <button
       onClick={playOrToggle(active, onClick)}
       title={title}
       aria-label={title}
-      className={`${size === "lg" ? "w-14 h-14" : "w-11 h-11"} shrink-0 rounded-full bg-primary text-on-primary grid place-items-center shadow-float hover:scale-105 active:scale-95 transition-transform`}
+      className="w-14 h-14 shrink-0 rounded-full bg-primary text-on-primary grid place-items-center shadow-float hover:scale-105 active:scale-95 transition-transform"
     >
       {playing ? (
-        <svg viewBox="0 0 24 24" className={`${glyph} fill-current`} aria-hidden>
+        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current" aria-hidden>
           <rect x="6" y="5" width="4" height="14" rx="1" />
           <rect x="14" y="5" width="4" height="14" rx="1" />
         </svg>
       ) : (
-        <svg viewBox="0 0 24 24" className={`${glyph} fill-current ml-0.5`} aria-hidden>
+        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current ml-0.5" aria-hidden>
           <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
         </svg>
       )}

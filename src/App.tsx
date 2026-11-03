@@ -4,6 +4,7 @@ import { Dialog } from "./components/primitives";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { prefetchLyrics, LyricsCenter } from "./components/LyricsCenter";
 import { NowPlaying } from "./components/NowPlaying";
+import { PageScrollbar } from "./components/PageScrollbar";
 import { Onboarding } from "./views/OnboardingView";
 import { PlayerBar } from "./components/PlayerBar";
 import { RightRail } from "./components/RightRail";
@@ -13,6 +14,7 @@ import { TopBar } from "./components/TopBar";
 import { engineBoot } from "./lib/audio";
 import { setAmbientFromArtwork } from "./lib/ambient";
 import { watchDiscordPresence } from "./lib/discordPresence";
+import { watchHomeSync } from "./lib/homeSync";
 import { watchServerSync } from "./lib/serverSync";
 import { watchArchiveDrops } from "./lib/archiveImport";
 import { volumeTarget } from "./lib/cast";
@@ -37,6 +39,7 @@ import { JellyfinView } from "./views/JellyfinView";
 import { LibraryAlbumView } from "./views/LibraryAlbumView";
 import { LooseSongsView } from "./views/LooseSongsView";
 import { LibraryArtistView } from "./views/LibraryArtistView";
+import { ArtistLikedView } from "./views/ArtistLikedView";
 import { LibraryHomeView } from "./views/LibraryHomeView";
 import { MixView } from "./views/MixView";
 import { SmartPlaylistView } from "./views/SmartPlaylistView";
@@ -54,8 +57,9 @@ import { SettingsView } from "./views/SettingsView";
 
 /**
  * The middle panel's artwork wash — the morphing gradient at the top of the
- * content pane, on every view except the artist page (its hero carries its
- * own full-bleed artwork treatment). At rest it wears the playing track's
+ * content pane, on every view except Settings and the pages whose header
+ * carries its own full-bleed picture (a wash would show behind it and the
+ * list under it). At rest it wears the playing track's
  * colour; hovering any song / album / artist / playlist card borrows that
  * artwork's colour instead (cards feed `tintThumb` via tintHoverHandlers).
  * The colour itself is the ArtworkPalette background. Two stacked washes
@@ -81,7 +85,7 @@ function TintWash() {
     });
   }, [color]);
 
-  if (viewName === "artist" || viewName === "settings") return null;
+  if (viewName === "artist" || viewName === "playlist" || viewName === "artistliked" || viewName === "settings") return null;
   return (
     <>
       {([0, 1] as const).map((i) => (
@@ -273,6 +277,8 @@ function CurrentView(): ReactNode {
       return <LibraryAlbumView param={view.param ?? ""} />;
     case "artist":
       return <LibraryArtistView param={view.param ?? ""} />;
+    case "artistliked":
+      return <ArtistLikedView param={view.param ?? ""} />;
     case "mix":
       return <MixView param={view.param ?? ""} />;
     case "smart":
@@ -344,6 +350,7 @@ export default function App() {
   // The song playing now as the Discord status, when that is turned on.
   useEffect(() => watchDiscordPresence(), []);
   useEffect(() => watchServerSync(), []);
+  useEffect(() => watchHomeSync(), []);
   useEffect(() => watchArchiveDrops(), []);
 
   // The mouse's back and forward buttons walk the views like the top bar's arrows (back closes
@@ -499,23 +506,23 @@ export default function App() {
           ) : (
             <>
               <div className="flex-1 min-h-0 overflow-y-auto scroll-host relative" id="view-scroll">
-                {/* The reload nonce rides in the key: a bump remounts the current
-                    view so its data effects re-run — that is the Refresh button's
-                    mechanism everywhere except Home (which re-orchestrates its
-                    feed without a remount). */}
-                <div key={`${viewReloadNonce}:${viewName}`} className="animate-rise-in px-10 pt-5 pb-6">
-                  <ErrorBoundary>
-                    <CurrentView />
-                  </ErrorBoundary>
+                <div>
+                  {/* The reload nonce rides in the key: a bump remounts the current
+                      view so its data effects re-run — that is the Refresh button's
+                      mechanism everywhere except Home (which re-orchestrates its
+                      feed without a remount). */}
+                  <div key={`${viewReloadNonce}:${viewName}`} className="animate-rise-in page-pad pt-5 pb-6">
+                    <ErrorBoundary>
+                      <CurrentView />
+                    </ErrorBoundary>
+                  </div>
                 </div>
               </div>
-              {/* Frosted band behind the search filter row. It lives OUTSIDE
-                  the scroller on purpose: in-flow content is clipped before
-                  the 14px scrollbar gutter, so a band inside the list can
-                  never touch the panel's right edge. From here it spans the
-                  full panel width (clipped by main's rounded corners) and
-                  reads the list's scroll through the shared timeline hoisted
-                  by timeline-scope on <main>. Tree order puts it above the
+              <PageScrollbar scrollerId="view-scroll" />
+              {/* Frosted band behind the search filter row. It spans the full
+                  panel width (clipped by main's rounded corners) and reads
+                  the list's scroll through the shared timeline hoisted by
+                  timeline-scope on <main>. Tree order puts it above the
                   scrolling rows; the sticky pills (z-10 inside the scroller)
                   paint above it, so they stay sharp while the rows behind
                   them blur. */}

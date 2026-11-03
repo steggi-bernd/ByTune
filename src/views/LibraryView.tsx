@@ -432,7 +432,7 @@ export function LibraryView() {
   return (
     <div className="pb-12">
       {/* Header — counts + the shared create dropdown (Playlist / Folder) */}
-      <div className="px-8 pt-8">
+      <div>
         <div className="flex items-end justify-between gap-4 animate-slide-up">
           <div>
             <div className="micro-label text-ink-faint mb-1.5">Collection</div>
@@ -460,7 +460,7 @@ export function LibraryView() {
       </div>
 
       {tab === "playlists" && (
-        <div className="px-8 mt-6 space-y-7">
+        <div className="mt-6 space-y-7">
           {/* Shortcut tiles — Liked Songs, Downloads + Local Music, pinned by default */}
           <div className="flex flex-wrap gap-5">
             {(
@@ -561,7 +561,7 @@ export function LibraryView() {
       )}
 
       {tab === "liked" && (
-        <div className="px-8 mt-6">
+        <div className="mt-6">
           {liked.length ? (
             <>
               <div className="flex items-center gap-2">
@@ -603,7 +603,7 @@ export function LibraryView() {
       )}
 
       {tab === "downloaded" && (
-        <div className="px-8 mt-6">
+        <div className="mt-6">
           {downloadedTracks.length ? (
             <>
               <div className="flex items-center gap-2">

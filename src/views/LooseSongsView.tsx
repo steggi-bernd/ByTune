@@ -159,7 +159,7 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Make an album</div>
             <div className="text-[18px] font-bold text-ink-hi">Put songs on an album</div>
-            <div className="text-[12.5px] text-ink-dim">It stays in ByTune — your files keep their tags. The album editor takes them off again.</div>
+            <div className="text-[12.5px] text-ink-dim">It stays in Songsta — your files keep their tags. The album editor takes them off again.</div>
           </div>
           <IconBtn icon={X} title="Close" onClick={onClose} className="rounded-full" />
         </div>

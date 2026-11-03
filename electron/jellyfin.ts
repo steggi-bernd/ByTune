@@ -22,8 +22,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as persist from "./persist";
 import { jellyfinStreamPlan } from "./jellyfin-stream";
-import { isoDate } from "./release-date";
 import { openSecret, sealSecret } from "./secrets";
+import { jellyfinItemToTrack, type JellyfinTrack } from "../src/lib/jellyfinItem";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -31,40 +31,12 @@ const CONFIG_STORE = "jellyfin";
 const LIBRARY_STORE = "jellyfin-library";
 const PAGE_SIZE = 500;
 const MAX_ITEMS = 100_000;
-const CLIENT = "ByTune";
+const CLIENT = "Songsta";
 const VERSION = "1.1.0";
 /** Bump when refreshLibrary reads new fields: an older cache then refreshes once in the background. */
 const LIB_VERSION = 3;
 
-export interface JellyfinTrack {
-  /** "jf:<itemId>" — the id prefix routes playback to this module */
-  id: string;
-  itemId: string;
-  title: string;
-  artist: string;
-  album: string;
-  albumId?: string;
-  duration: number;
-  trackNo?: number;
-  discNo?: number;
-  year?: number;
-  /** the item's PremiereDate: "YYYY-MM-DD" */
-  date?: string;
-  genre?: string;
-  /** jfart:// URL for the item's (or its album's) cover */
-  art?: string;
-  addedAt?: number;
-  albumArtist?: string;
-  /** Jellyfin's own loudness gain (dB to −18 LUFS), used like a ReplayGain track gain */
-  gain?: number;
-  /** the file's container and audio stream, from the server's media info */
-  container?: string;
-  codec?: string;
-  sampleRate?: number;
-  bitsPerSample?: number;
-  /** bits per second */
-  bitrate?: number;
-}
+export type { JellyfinTrack };
 
 export interface JellyfinLibrary {
   fetchedAt: number;
@@ -252,40 +224,7 @@ function artUrl(itemId: string, tag: string): string {
   return `jfart://${itemId.toLowerCase()}/${encodeURIComponent(tag)}`;
 }
 
-function toTrack(item: any): JellyfinTrack | null {
-  if (!item?.Id) return null;
-  const artists: string[] = Array.isArray(item.Artists) ? item.Artists.filter((a: unknown) => typeof a === "string") : [];
-  const ticks = Number(item.RunTimeTicks) || 0;
-  let art: string | undefined;
-  if (typeof item.ImageTags?.Primary === "string") art = artUrl(item.Id, item.ImageTags.Primary);
-  else if (item.AlbumId && typeof item.AlbumPrimaryImageTag === "string") art = artUrl(item.AlbumId, item.AlbumPrimaryImageTag);
-  const bounded = (v: unknown): string => (typeof v === "string" ? v.slice(0, 200) : "");
-  const positive = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
-  const audio = Array.isArray(item.MediaStreams) ? item.MediaStreams.find((s: any) => s?.Type === "Audio") : undefined;
-  return {
-    id: `jf:${item.Id}`,
-    itemId: String(item.Id),
-    title: bounded(item.Name) || "Unknown title",
-    artist: bounded(artists.join(", ")) || bounded(item.AlbumArtist) || "Unknown artist",
-    album: bounded(item.Album) || "Unknown album",
-    albumId: item.AlbumId ? String(item.AlbumId) : undefined,
-    duration: Math.round(ticks / 10_000_000),
-    trackNo: typeof item.IndexNumber === "number" ? item.IndexNumber : undefined,
-    discNo: typeof item.ParentIndexNumber === "number" ? item.ParentIndexNumber : undefined,
-    year: typeof item.ProductionYear === "number" ? item.ProductionYear : undefined,
-    date: isoDate(item.PremiereDate),
-    genre: Array.isArray(item.Genres) && typeof item.Genres[0] === "string" ? item.Genres[0] : undefined,
-    art,
-    addedAt: item.DateCreated ? Date.parse(item.DateCreated) || undefined : undefined,
-    albumArtist: bounded(item.AlbumArtist) || undefined,
-    gain: typeof item.NormalizationGain === "number" && Number.isFinite(item.NormalizationGain) ? item.NormalizationGain : undefined,
-    container: bounded(item.Container).toLowerCase() || undefined,
-    codec: bounded(audio?.Codec).toLowerCase() || undefined,
-    sampleRate: positive(audio?.SampleRate),
-    bitsPerSample: positive(audio?.BitDepth),
-    bitrate: positive(audio?.BitRate),
-  };
-}
+const toTrack = (item: any): JellyfinTrack | null => jellyfinItemToTrack(item, artUrl);
 
 /** Re-list every audio item on the server and replace the cached library. */
 export async function refreshLibrary(): Promise<JellyfinLibrary> {
@@ -330,6 +269,14 @@ const ITEM_ID = /^[a-f0-9-]{32,36}$/i;
  */
 function syncUser(cfg: Config): string | null {
   return cfg.userId ?? cfg.syncUserId ?? null;
+}
+
+/** What the sync service needs of this login (home-sync.ts): the same header Jellyfin itself gets. */
+export function syncLogin(): { server: string; authorization: string; userId: string | null; deviceId: string } | null {
+  const cfg = readConfig();
+  const token = openSecret(cfg?.token);
+  if (!cfg || !token) return null;
+  return { server: cfg.server, authorization: authHeader(token, cfg.deviceId), userId: syncUser(cfg), deviceId: cfg.deviceId };
 }
 
 export interface JellyfinUser {

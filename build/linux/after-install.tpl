@@ -3,7 +3,7 @@
 # /usr/bin link, Chromium's sandbox helper, the desktop and MIME databases),
 # then an AppArmor profile for Ubuntu 23.10 and later: there AppArmor only
 # lets programs it knows open the user namespaces Chromium's sandbox runs
-# in, and without one ByTune would stop at start ("The SUID sandbox helper
+# in, and without one Songsta would stop at start ("The SUID sandbox helper
 # binary was found, but is not configured correctly").
 #
 # electron-builder fills in the dollar-brace names when it builds the package
@@ -41,7 +41,7 @@ fi
 if hash apparmor_parser 2>/dev/null && [ -d /etc/apparmor.d ]; then
     profile=$(mktemp)
     cat > "$profile" <<'EOF'
-# ByTune Local: allows everything; exists so Chromium's sandbox may use user namespaces.
+# Songsta: allows everything; exists so Chromium's sandbox may use user namespaces.
 abi <abi/4.0>,
 include <tunables/global>
 

@@ -146,7 +146,7 @@ export function LocalMusicView() {
   const renameFolder = (entry: LocalFolderEntry): void => {
     openDialog({
       title: `Rename "${entry.displayName ?? entry.name}"`,
-      body: "This name is only used inside ByTune — the folder on disk keeps its own name.",
+      body: "This name is only used inside Songsta — the folder on disk keeps its own name.",
       initialValue: entry.displayName ?? entry.name,
       confirmLabel: "Rename",
       onConfirm: (value) => {
@@ -166,7 +166,7 @@ export function LocalMusicView() {
   const removeFolder = (entry: LocalFolderEntry): void => {
     openDialog({
       title: `Remove "${entry.displayName ?? entry.name}"?`,
-      body: "Removes the folder from ByTune only — your files stay exactly where they are on disk.",
+      body: "Removes the folder from Songsta only — your files stay exactly where they are on disk.",
       confirmLabel: "Remove",
       danger: true,
       onConfirm: () => {
@@ -175,7 +175,7 @@ export function LocalMusicView() {
             const res = await window.bytune?.removeLibraryFolder(entry.path);
             if (res) setLib(res as LibState);
             if (routeParam === entry.path) navigate({ name: "local" });
-            toast("Removed from ByTune — files untouched", "success");
+            toast("Removed from Songsta — files untouched", "success");
           } catch {
             toast("Couldn't remove the folder", "error");
           }
@@ -255,7 +255,7 @@ export function LocalMusicView() {
         <EmptyState
           icon={FolderOpen}
           title="Play your own files"
-          body="Import one folder or a whole organised parent — ByTune keeps each folder as its own collection, with tags and cover art, on your machine only."
+          body="Import one folder or a whole organised parent — Songsta keeps each folder as its own collection, with tags and cover art, on your machine only."
           action={
             <button
               onClick={() => void addFolders()}
@@ -294,7 +294,7 @@ export function LocalMusicView() {
             </button>
             <button
               onClick={() => void importPurchase()}
-              title="Unpack a store's ZIP (Bandcamp, Qobuz …) into a library folder — or drop it anywhere on ByTune"
+              title="Unpack a store's ZIP (Bandcamp, Qobuz …) into a library folder — or drop it anywhere on Songsta"
               className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-[13px] font-semibold text-ink-hi transition-colors"
             >
               <PackageOpen className="w-4 h-4" />
@@ -361,7 +361,7 @@ export function LocalMusicView() {
                     title={f.path}
                   >
                     {gone
-                      ? "Folder missing — check the drive, or remove it from ByTune"
+                      ? "Folder missing — check the drive, or remove it from Songsta"
                       : `${count} song${count === 1 ? "" : "s"} · ${f.path}`}
                   </span>
                 </span>
@@ -371,7 +371,7 @@ export function LocalMusicView() {
                       e.stopPropagation();
                       renameFolder(f);
                     }}
-                    title="Rename in ByTune"
+                    title="Rename in Songsta"
                     className="w-8 h-8 grid place-items-center rounded-lg text-ink-dim hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
                   >
                     <Pencil className="w-4 h-4" />
@@ -381,7 +381,7 @@ export function LocalMusicView() {
                       e.stopPropagation();
                       removeFolder(f);
                     }}
-                    title="Remove from ByTune (files stay on disk)"
+                    title="Remove from Songsta (files stay on disk)"
                     className="w-8 h-8 grid place-items-center rounded-lg text-ink-dim hover:text-red-400 hover:bg-red-400/10 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -445,14 +445,14 @@ export function LocalMusicView() {
             <>
               <button
                 onClick={() => renameFolder(openFolder)}
-                title="Rename in ByTune"
+                title="Rename in Songsta"
                 className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-ink-dim hover:text-ink-hi transition-colors"
               >
                 <Pencil className="w-4 h-4" />
               </button>
               <button
                 onClick={() => removeFolder(openFolder)}
-                title="Remove from ByTune (files stay on disk)"
+                title="Remove from Songsta (files stay on disk)"
                 className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-red-400/10 hover:text-red-400 text-ink-dim transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
@@ -473,8 +473,8 @@ export function LocalMusicView() {
       {missing.has(collectionPath ?? "") && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 text-[13px] text-amber-300">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          This folder can't be reached right now. The list below is ByTune's last scan — rescan after reconnecting the
-          drive, or remove the folder from ByTune.
+          This folder can't be reached right now. The list below is Songsta's last scan — rescan after reconnecting the
+          drive, or remove the folder from Songsta.
         </div>
       )}
 

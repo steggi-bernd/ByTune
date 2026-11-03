@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="build/icon.png" width="88" height="88" alt="ByTune Local logo">
+  <img src="build/icon.png" width="88" height="88" alt="Songsta logo">
 </p>
 
-<h1 align="center">ByTune Local</h1>
+<h1 align="center">Songsta</h1>
 
 <p align="center">
   <b>A local music player for the music you own — Windows and Linux.</b><br>
@@ -24,9 +24,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-a8324a" alt="License: GPL-3.0"></a>
 </p>
 
-![ByTune Local: an album page with its track list; the library panel with two pinned rows over what played last; the right panel with what's next and the song's tempo and key; the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
+![Songsta: an album page with its track list; the library panel with two pinned rows over what played last; the right panel with what's next and the song's tempo and key; the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
 
-ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the open-source YouTube Music desktop app, rebuilt into a player for your own collection. YouTube and the account screens are gone: the app opens in your library, plays from your disk first and streams from your own server only when a file isn't there.
+Songsta is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the open-source YouTube Music desktop app, rebuilt into a player for your own collection. YouTube and the account screens are gone: the app opens in your library, plays from your disk first and streams from your own server only when a file isn't there.
 
 > [!NOTE]
 > The screenshots show a **made-up demo library** — artists, songs, covers and lyrics were invented for this page. The app around them is the real build.
@@ -41,7 +41,7 @@ ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the o
 - **Unreachable songs are greyed out** — an unplugged drive, a server that doesn't answer — and come back by themselves.
 - **Missing facts come from open databases**: covers and album names from MusicBrainz and the Cover Art Archive (iTunes Search as a fallback), artist bios and photos from Wikidata, Wikipedia and Wikimedia Commons. Your files are never rewritten.
 - Credits like "Artist A, Artist B" count as two artists, each with their own page.
-- **Library check** (Settings): artists written different ways, albums split into parts, songs you have twice, albums without a cover, year or genre, and songs without an album — with a fix wherever ByTune can make one itself.
+- **Library check** (Settings): artists written different ways, albums split into parts, songs you have twice, albums without a cover, year or genre, and songs without an album — with a fix wherever Songsta can make one itself.
 
 ### Made for good files
 
@@ -79,7 +79,7 @@ Songs whose tags name no album gather under **Songs without an album** in the li
 
 ![Make an album: three songs without an album tag, with the album's title taken from their folder, the artist, a year and the order](docs/screenshots/local/make-album.jpg)
 
-ByTune keeps these edits itself; your files and servers stay exactly as they are.
+Songsta keeps these edits itself; your files and servers stay exactly as they are.
 
 ### Lyrics and Now Playing
 
@@ -96,50 +96,54 @@ ByTune keeps these edits itself; your files and servers stay exactly as they are
 
 ![Spotify import: 14 songs in your library, 3 to check with Same song / Different / Choose…, 5 missing](docs/screenshots/local/spotify-import.jpg)
 
-Coming from Spotify? Export your Liked Songs with [Exportify](https://github.com/watsonbox/exportify) (CSV) or take `YourLibrary.json` from Spotify's own data download, then open **Import from Spotify** in Liked Songs or Settings. ByTune sorts every song into three lists:
+Coming from Spotify? Export your Liked Songs with [Exportify](https://github.com/watsonbox/exportify) (CSV) or take `YourLibrary.json` from Spotify's own data download, then open **Import from Spotify** in Liked Songs or Settings. Songsta sorts every song into three lists:
 
-- **In your library** — songs you already have. *Add to Liked Songs* adds them in Spotify's order, newest first. After buying more, add again: new songs land in their place, and songs you liked only in ByTune stay on top.
+- **In your library** — songs you already have. *Add to Liked Songs* adds them in Spotify's order, newest first. After buying more, add again: new songs land in their place, and songs you liked only in Songsta stay on top.
 - **To check** — the title, length or artist spelling differs. Answer *Same song* or *Different*, or *Choose…* the right song from your library yourself. Decided songs leave the list; *Your decisions* can undo them.
 - **Missing — to buy** — your shopping list, to save as a spreadsheet or copy.
 
 The import and your decisions are kept until you start over, so they survive restarts.
 
-**Playlists** come over the same way: **+ → Recover a Spotify playlist** in the library panel, or the button in an empty playlist. Use the playlist's CSV from Exportify, or `Playlist1.json` from the data download — it holds all your playlists, and you pick one. The songs you have go into a ByTune playlist in Spotify's order, and your *Same song* / *Different* answers carry over.
+**Playlists** come over the same way: **+ → Recover a Spotify playlist** in the library panel, or the button in an empty playlist. Use the playlist's CSV from Exportify, or `Playlist1.json` from the data download — it holds all your playlists, and you pick one. The songs you have go into a Songsta playlist in Spotify's order, and your *Same song* / *Different* answers carry over.
 
 ## Discord status (optional)
 
 Show what you're listening to on Discord: title, artist and a progress bar, as *Listening to …*. It is off until you switch it on, because Discord wants an application of your own — free, and done in a minute:
 
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications), choose **New Application** and name it, for example *ByTune* — Discord shows this name.
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications), choose **New Application** and name it, for example *Songsta* — Discord shows this name.
 2. Copy the **Application ID** from *General Information*.
-3. In ByTune, open **Settings → Discord**, switch on *Discord status* and paste the ID.
+3. In Songsta, open **Settings → Discord**, switch on *Discord status* and paste the ID.
 
-The Discord desktop app has to be running; ByTune connects as soon as it starts and clears the status when you pause. Only the Discord app on your computer receives the title and artist — no covers.
+The Discord desktop app has to be running; Songsta connects as soon as it starts and clears the status when you pause. Only the Discord app on your computer receives the title and artist — no covers.
+
+## The same on all your devices
+
+Liked songs and plays go through your server's own favorites and play counts (**Settings → Server sync**). Playlists and where you stopped need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login. With it running, a playlist made on one device arrives on the others within moments, and a device that isn't playing picks up where another one stopped, paused until you press play.
 
 ## Install
 
-**Windows 10 / 11 (64-bit).** Get `ByTune-Local-Setup.exe` from the [Releases page](https://github.com/steggi-bernd/ByTune/releases) or [build it yourself](#build-from-source). The installer isn't code-signed, so SmartScreen asks once: *More info → Run anyway*.
+**Windows 10 / 11 (64-bit).** Get `Songsta-Setup.exe` from the [Releases page](https://github.com/steggi-bernd/ByTune/releases) or [build it yourself](#build-from-source). The installer isn't code-signed, so SmartScreen asks once: *More info → Run anyway*.
 
-- It installs as **ByTune Local** (`com.bytune.local`), so it never replaces an installed original ByTune or shares its data.
-- Your data lives in `%APPDATA%\ByTune Local`; **Settings → Your data** exports and imports backups.
+- It installs as **Songsta** and replaces an older ByTune Local (the app's name until November 2026; `com.bytune.local` stays its app id for that). It never replaces an installed original ByTune or shares its data.
+- Your data lives in `%APPDATA%\Songsta`; an older `ByTune Local` folder moves there at the first start. **Settings → Your data** exports and imports backups.
 - For AIFF, ALAC, WMA, WavPack, APE and DSD, install FFmpeg (`winget install ffmpeg`); Settings shows whether it was found.
 
-**Linux (64-bit).** The Releases page has two packages. The **.deb** is for Debian, Ubuntu, Linux Mint, Pop!_OS and their relatives; it puts ByTune in the app menu and installs FFmpeg along with it:
+**Linux (64-bit).** The Releases page has two packages. The **.deb** is for Debian, Ubuntu, Linux Mint, Pop!_OS and their relatives; it puts Songsta in the app menu and installs FFmpeg along with it:
 
 ```bash
-sudo apt install ./ByTune-Local-amd64.deb
+sudo apt install ./Songsta-amd64.deb
 ```
 
 The **AppImage** runs on any other distribution — one file, nothing to install:
 
 ```bash
-chmod +x ByTune-Local-x86_64.AppImage
-./ByTune-Local-x86_64.AppImage
+chmod +x Songsta-x86_64.AppImage
+./Songsta-x86_64.AppImage
 ```
 
 - AppImages need FUSE 2: `libfuse2t64` on Ubuntu 24.04 and later (`libfuse2` before), `fuse-libs` on Fedora, `fuse2` on Arch. If one stops at start with a message about the "SUID sandbox helper", your system restricts the sandbox Chromium uses (Ubuntu does since 23.10) — take the .deb there, which sets up the AppArmor profile Ubuntu asks for.
-- Your data lives in `~/.config/ByTune Local`. Without the .deb, install FFmpeg with your package manager (`sudo apt install ffmpeg`, `sudo pacman -S ffmpeg`, …).
-- Server sign-ins are sealed by your desktop's keyring (GNOME Keyring, KWallet). Without one, ByTune keeps them unencrypted in its data folder.
+- Your data lives in `~/.config/Songsta`. Without the .deb, install FFmpeg with your package manager (`sudo apt install ffmpeg`, `sudo pacman -S ffmpeg`, …).
+- Server sign-ins are sealed by your desktop's keyring (GNOME Keyring, KWallet). Without one, Songsta keeps them unencrypted in its data folder.
 - Media keys and the desktop's media controls work through MPRIS. Under Wayland the mini player can't stay on top of other windows; Wayland doesn't let apps do that.
 
 The Linux packages are built by GitHub Actions for every release; this edition is developed and tested on Windows. The macOS build targets from upstream are still in the project, but untested.
@@ -158,8 +162,8 @@ npm run dev        # Vite + Electron with hot reload
 ```bash
 npm test           # unit tests (Node's test runner)
 npm run typecheck  # tsc --noEmit
-npm run dist:win   # installer: release/ByTune-Local-Setup.exe
-npm run dist:linux # on Linux: release/ByTune-Local-x86_64.AppImage and -amd64.deb
+npm run dist:win   # installer: release/Songsta-Setup.exe
+npm run dist:linux # on Linux: release/Songsta-x86_64.AppImage and -amd64.deb
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the project's conventions.
@@ -189,6 +193,6 @@ Shortcuts never fire while you're typing in a text field.
 
 ## Credits and license
 
-ByTune Local is a fork of [ByTune](https://github.com/rishiteja21/ByTune) by [rishiteja21](https://github.com/rishiteja21), which began as a desktop port of the BitChord Android player. Like both, it is licensed under the **GNU GPL v3** — see [LICENSE](LICENSE). Thanks to everyone who built them in the open.
+Songsta is a fork of [ByTune](https://github.com/rishiteja21/ByTune) by [rishiteja21](https://github.com/rishiteja21), which began as a desktop port of the BitChord Android player. Like both, it is licensed under the **GNU GPL v3** — see [LICENSE](LICENSE). Thanks to everyone who built them in the open.
 
-Built with Electron, React, TypeScript, Tailwind CSS, Zustand and music-metadata. ByTune Local is not affiliated with Spotify, Discord, Jellyfin or Navidrome.
+Built with Electron, React, TypeScript, Tailwind CSS, Zustand and music-metadata. Songsta is not affiliated with Spotify, Discord, Jellyfin or Navidrome.

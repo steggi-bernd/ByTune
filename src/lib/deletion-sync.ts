@@ -121,7 +121,7 @@ export function recordDeletionChanges(state: unknown, next: object, changes: Del
 }
 
 /** Stable JSON tie-breaker: independent of object insertion order and locale. */
-function canonical(value: any): string {
+export function canonical(value: any): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.keys(value).filter((key) => value[key] !== undefined)
     .sort(compare).map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;

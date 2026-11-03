@@ -29,7 +29,7 @@ function indexFile(): string {
 }
 
 async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { "User-Agent": "ByTune-Local" } });
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { "User-Agent": "Songsta" } });
   if (!res.ok) throw new Error(`AutoEQ answered HTTP ${res.status}`);
   return res.text();
 }

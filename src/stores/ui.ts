@@ -14,6 +14,7 @@ export type ViewName =
   | "ytplaylist"
   | "album"
   | "artist"
+  | "artistliked"
   | "downloads"
   | "local"
   | "jellyfin"

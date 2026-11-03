@@ -65,7 +65,7 @@ export function envelope(state: Record<string, unknown>): { state: Record<string
  * sections with the same user-facing error the document checks use.
  */
 export function storeEnvelopeFromBackup(raw: unknown, name: string): { state: Record<string, unknown>; version: number } {
-  const bad = (): Error => new Error(`That doesn't look like a ByTune backup (malformed ${name} section)`);
+  const bad = (): Error => new Error(`That doesn't look like a Songsta backup (malformed ${name} section)`);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw bad();
   const env = raw as { state?: unknown; version?: unknown };
   if (!env.state || typeof env.state !== "object" || Array.isArray(env.state)) throw bad();

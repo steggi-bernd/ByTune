@@ -20,7 +20,7 @@ import { BANNER_WIDTH, imageInfoUrl, pictureFromImageInfo, wikimediaFile, type A
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const UA = "ByTune-Local/1.0 (https://github.com/rishiteja21/ByTune)";
+const UA = "Songsta/1.0 (https://github.com/steggi-bernd/ByTune)";
 const CACHE_STORE = "open-metadata";
 /** A miss is retried after a week — databases grow, tags get fixed. */
 const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;

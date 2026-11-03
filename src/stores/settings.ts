@@ -3,6 +3,8 @@ import { FLAT_PEQ, type ParametricEq } from "../lib/peq";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { storage } from "../lib/persist";
+import { DEFAULT_EXPLORE_SORTS, type ExploreSort, type ExploreTab } from "../lib/exploreRows";
+export type { ExploreSort, ExploreTab };
 
 export type StreamQuality = "low" | "medium" | "high" | "lossless";
 export type LibraryOrder = "played" | "added" | "alpha" | "artist";
@@ -78,6 +80,8 @@ interface SettingsState {
   discordClientId: string;
   /** Liked Songs ↔ the Jellyfin/Navidrome favorites, both ways (lib/serverSync.ts) */
   serverSync: boolean;
+  /** playlists and where playback stopped through the sync service (lib/homeSync.ts) */
+  syncPlaylists: boolean;
   /** count plays on the servers too */
   serverPlays: boolean;
   /** shop links next to the songs a Spotify import misses */
@@ -137,6 +141,7 @@ interface SettingsState {
   setDiscordPresence(v: boolean): void;
   setDiscordClientId(id: string): void;
   setServerSync(v: boolean): void;
+  setSyncPlaylists(v: boolean): void;
   setServerPlays(v: boolean): void;
   setStoreLinks(v: boolean): void;
   setLyricsLatin(v: boolean): void;
@@ -152,14 +157,8 @@ interface SettingsState {
   setAccent(v: Accent): void;
 }
 
-export type ExploreTab = "albums" | "artists" | "genres";
 export type Corners = "round" | "soft" | "square";
 export type Accent = "violet" | "blue" | "teal" | "green" | "amber" | "coral" | "pink" | "white";
-/** a column key of that tab's list, and whether it runs from the most / Z */
-export interface ExploreSort {
-  by: string;
-  desc: boolean;
-}
 
 export const useSettings = create<SettingsState>()(
   persist(
@@ -202,6 +201,7 @@ export const useSettings = create<SettingsState>()(
       discordPresence: false,
       discordClientId: "",
       serverSync: true,
+      syncPlaylists: true,
       serverPlays: true,
       storeLinks: false,
       lyricsLatin: true,
@@ -211,11 +211,7 @@ export const useSettings = create<SettingsState>()(
       milkdrop: false,
       exploreTab: "albums",
       exploreLayout: "list",
-      exploreSort: {
-        albums: { by: "title", desc: false },
-        artists: { by: "name", desc: false },
-        genres: { by: "songs", desc: true },
-      },
+      exploreSort: DEFAULT_EXPLORE_SORTS,
       rightRailWidth: 328,
       corners: "soft",
       accent: "violet",
@@ -255,6 +251,7 @@ export const useSettings = create<SettingsState>()(
       // Only the digits survive a paste ("ID: 1234…", spaces, a trailing newline).
       setDiscordClientId: (id) => set({ discordClientId: id.replace(/\D/g, "").slice(0, 22) }),
       setServerSync: (serverSync) => set({ serverSync }),
+      setSyncPlaylists: (syncPlaylists) => set({ syncPlaylists }),
       setServerPlays: (serverPlays) => set({ serverPlays }),
       setStoreLinks: (storeLinks) => set({ storeLinks }),
       setLyricsLatin: (lyricsLatin) => set({ lyricsLatin }),

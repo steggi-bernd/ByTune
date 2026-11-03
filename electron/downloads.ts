@@ -29,7 +29,7 @@ export const SERVER_SONG = /^(jf|ss):/;
  * server song and plays from disk first — offline too.
  */
 export function offlineDir(): string {
-  return path.join(app.getPath("music"), "ByTune Offline");
+  return path.join(app.getPath("music"), "Songsta Offline");
 }
 
 /** The extension a server names its file with (Content-Disposition), if any. */
@@ -120,7 +120,7 @@ export function queueSnapshot(): { id: string; phase: string; downloaded?: numbe
 }
 
 export async function defaultDownloadDir(): Promise<string> {
-  return path.join(app.getPath("downloads"), "ByTune");
+  return path.join(app.getPath("downloads"), "Songsta");
 }
 
 /**
@@ -129,7 +129,7 @@ export async function defaultDownloadDir(): Promise<string> {
  * `Music/BitChord` (vs the app download folder above).
  */
 export function exportDownloadDir(): string {
-  return path.join(app.getPath("music"), "ByTune");
+  return path.join(app.getPath("music"), "Songsta");
 }
 
 /** Exported for security regression tests — the production path is internal. */

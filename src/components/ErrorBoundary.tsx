@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <h1 className="font-display text-lg font-bold tracking-tight text-ink-hi mb-2">Something went wrong</h1>
             <p className="text-sm text-ink-dim mb-1.5">
-              ByTune hit an unexpected error. Your library is safe — reloading usually fixes it.
+              Songsta hit an unexpected error. Your library is safe — reloading usually fixes it.
             </p>
             <details className="text-left mt-4">
               <summary className="text-xs text-ink-faint cursor-pointer hover:text-ink-dim transition-colors select-none">
@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={() => window.location.reload()}
               className="mt-6 px-5 py-2.5 rounded-full bg-primary text-on-primary text-sm font-medium hover:brightness-110 transition-colors"
             >
-              Reload ByTune
+              Reload Songsta
             </button>
           </div>
         </div>

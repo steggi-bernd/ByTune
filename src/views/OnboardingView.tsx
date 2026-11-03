@@ -36,8 +36,7 @@ import {
   USERNAME_MIN,
   type UsernameAvailability,
 } from "../lib/account-validators";
-import brandLogo from "../assets/brand/bytune-logo.svg";
-import brandText from "../assets/brand/bytune-Text.svg";
+import brandLogo from "../assets/brand/songsta-logo.svg";
 
 type Screen = "choose" | "signup" | "signin" | "resume" | "restoring" | "pickusername";
 
@@ -654,7 +653,7 @@ function PickUsernameContent() {
 
   return (
     <div>
-      <CardHead title="Choose your username" hint="This is how you'll appear in ByTune. You can change it later in Settings." />
+      <CardHead title="Choose your username" hint="This is how you'll appear in Songsta. You can change it later in Settings." />
       <Field
         icon={UserRound}
         autoFocus
@@ -760,7 +759,7 @@ export function Onboarding({ initial }: { initial: Screen }) {
           <div className="ob-hero">
             <div className="ob-lockup">
               <img src={brandLogo} alt="" aria-hidden className="ob-lockup-logo ob-item" />
-              <img src={brandText} alt="ByTune" className="ob-lockup-text ob-item" style={dly(70)} />
+              <span className="ob-lockup-text ob-item font-display text-ink-hi" style={dly(70)}>Songsta</span>
             </div>
             <h1 className="ob-headline ob-item" style={dly(140)}>
               Your music lives here.

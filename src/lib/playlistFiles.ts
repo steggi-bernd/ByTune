@@ -62,7 +62,7 @@ export async function exportM3uPlaylist(name: string, tracks: Track[]): Promise<
     if (!saved) return;
     ui.toast(
       notes > 0
-        ? `Saved ${files + notes} songs — ${notes} only on your server come back in ByTune; other players skip those`
+        ? `Saved ${files + notes} songs — ${notes} only on your server come back in Songsta; other players skip those`
         : `Saved "${name}" with ${files} songs`,
       "success"
     );

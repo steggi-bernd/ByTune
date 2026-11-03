@@ -1,6 +1,6 @@
-# ByTune Architecture
+# Songsta Architecture
 
-A high-level map of how ByTune works, for contributors. This document intentionally goes deeper than the README.
+A high-level map of how Songsta works, for contributors. This document intentionally goes deeper than the README.
 
 ## Layers
 
@@ -36,7 +36,7 @@ Providers & storage
 
 ## How streaming works (no login required)
 
-YouTube gates stream URLs behind BotGuard "PO tokens" for anonymous sessions. ByTune handles this end-to-end locally:
+YouTube gates stream URLs behind BotGuard "PO tokens" for anonymous sessions. Songsta handles this end-to-end locally:
 
 1. A BotGuard challenge is taken from the YouTube homepage (with an `/att/get` fallback) and the interpreter runs inside a sandboxed JSDOM environment presented as youtube.com — the same approach as the [bgutil](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) provider.
 2. The resulting WebPO token is bound to the session's visitor data and attached to InnerTube requests.

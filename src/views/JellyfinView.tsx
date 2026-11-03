@@ -124,7 +124,7 @@ function ConnectCard({ onConnected }: { onConnected: (s: JellyfinStatus) => void
         </button>
       </div>
       <p className="text-[12px] text-ink-faint">
-        The password is only sent to your server to sign in; ByTune keeps the session token, sealed by your
+        The password is only sent to your server to sign in; Songsta keeps the session token, sealed by your
         operating system's keychain.
       </p>
     </form>
@@ -190,7 +190,7 @@ export function JellyfinView() {
   const disconnect = (): void =>
     openDialog({
       title: "Disconnect Jellyfin?",
-      body: "Its songs disappear from ByTune until you connect again. Nothing on the server changes.",
+      body: "Its songs disappear from Songsta until you connect again. Nothing on the server changes.",
       confirmLabel: "Disconnect",
       onConfirm: async () => {
         const s = (await window.bytune?.jellyfinDisconnect()) as JellyfinStatus | undefined;

@@ -251,7 +251,7 @@ export function openPip(): void {
     alwaysOnTop: true,
     hasShadow: true,
     backgroundColor: "#000000",
-    title: "ByTune Miniplayer",
+    title: "Songsta Miniplayer",
     // Unthrottled: the always-on-top window must keep animating and receiving
     // state pushes even while fully covered by another always-on-top window.
     webPreferences: {
