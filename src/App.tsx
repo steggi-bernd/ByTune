@@ -15,6 +15,7 @@ import { engineBoot } from "./lib/audio";
 import { setAmbientFromArtwork } from "./lib/ambient";
 import { watchDiscordPresence } from "./lib/discordPresence";
 import { watchHomeSync } from "./lib/homeSync";
+import { watchMutedSongs } from "./lib/mutedSongs";
 import { watchServerSync } from "./lib/serverSync";
 import { watchArchiveDrops } from "./lib/archiveImport";
 import { volumeTarget } from "./lib/cast";
@@ -351,6 +352,7 @@ export default function App() {
   useEffect(() => watchDiscordPresence(), []);
   useEffect(() => watchServerSync(), []);
   useEffect(() => watchHomeSync(), []);
+  useEffect(() => watchMutedSongs(), []);
   useEffect(() => watchArchiveDrops(), []);
 
   // The mouse's back and forward buttons walk the views like the top bar's arrows (back closes

@@ -145,7 +145,7 @@ export function LibraryHomeView() {
       title: a.title,
       thumb: a.thumb,
       open: () => navigate({ name: "album", param: a.route }),
-      play: () => playQueue(a.tracks, 0),
+      play: () => usePlayer.getState().playAll(a.tracks),
     })),
     ...mixes.map((m) => ({
       id: m.id,
@@ -153,7 +153,7 @@ export function LibraryHomeView() {
       thumb: m.tracks[0]?.thumb,
       art: <CoverCollage tracks={m.tracks} className="w-16 h-16" />,
       open: () => navigate({ name: "mix", param: m.id }),
-      play: () => playQueue(m.tracks, 0),
+      play: () => usePlayer.getState().playAll(m.tracks),
     })),
   ].slice(0, 8);
 

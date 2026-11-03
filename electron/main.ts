@@ -275,7 +275,8 @@ function createWindow(): void {
     // Keep explicit web links in the system browser, never in a privileged window.
     try {
       const target = new URL(url);
-      if (target.protocol === "http:" || target.protocol === "https:") {
+      // And the one page of Windows' settings the devices panel points to.
+      if (target.protocol === "http:" || target.protocol === "https:" || target.href === "ms-settings:bluetooth") {
         void shell.openExternal(target.href).catch((err) => console.warn("[bytune] external browser unavailable:", err.message));
       }
     } catch { /* malformed URL */ }
@@ -406,6 +407,8 @@ const RENDERER_STORES = new Set([
   "spotify-import",
   "album-edits",
   "library-order",
+  "muted",
+  "device-names",
   "server-sync",
 ]);
 /** "jf:<item>" / "ss:<song>" — a song on one of the servers. */
@@ -775,20 +778,29 @@ function registerIpc(): void {
   });
   // Casting to a network player (cast.ts / upnp.ts); the renderer steers, status comes back as cast:status.
   ipc.handle("cast:find", () => cast.findDevices());
-  ipc.handle("cast:start", (_e, id: unknown) =>
-    cast.start(String(id ?? "").slice(0, 300), (s) => {
-      try {
-        mainWindow?.webContents.send("cast:status", s);
-      } catch {
-        /* window gone */
-      }
-    })
+  const castSession = (value: unknown): string | undefined => (typeof value === "string" && /^[\w-]{1,40}$/.test(value) ? value : undefined);
+  ipc.handle("cast:start", (_e, id: unknown, session: unknown) =>
+    cast.start(
+      String(id ?? "").slice(0, 300),
+      (s) => {
+        try {
+          mainWindow?.webContents.send("cast:status", s);
+        } catch {
+          /* window gone */
+        }
+      },
+      castSession(session)
+    )
   );
-  ipc.handle("cast:load", (_e, song: unknown, position: unknown, play: unknown) =>
-    cast.load(cast.songFrom(song), Math.max(0, Number(position) || 0), play === true)
+  ipc.handle("cast:load", (_e, song: unknown, position: unknown, play: unknown, session: unknown) =>
+    cast.load(cast.songFrom(song), Math.max(0, Number(position) || 0), play === true, castSession(session))
   );
-  ipc.handle("cast:control", (_e, action: unknown, value: unknown) => cast.control(String(action ?? ""), Number(value)));
-  ipc.handle("cast:stop", () => cast.stop());
+  ipc.handle("cast:control", (_e, action: unknown, value: unknown, session: unknown, device: unknown) =>
+    cast.control(String(action ?? ""), Number(value), castSession(session), typeof device === "string" ? device.slice(0, 300) : undefined)
+  );
+  ipc.handle("cast:join", (_e, session: unknown, device: unknown) => cast.join(castSession(session) ?? "main", String(device ?? "").slice(0, 300)));
+  ipc.handle("cast:leave", (_e, session: unknown, device: unknown) => cast.leave(castSession(session) ?? "main", String(device ?? "").slice(0, 300)));
+  ipc.handle("cast:stop", (_e, session: unknown) => cast.stop(castSession(session)));
 
   // M3U playlists (m3u.ts): read with paths resolved; written where the user picks.
   ipc.handle("playlist:openM3u", async () => {
@@ -1172,7 +1184,7 @@ if (!gotLock) {
       saveSoundIndexSync();
       pip.savePipRect();
       discord.stopDiscord();
-  void cast.stop();
+  void cast.stopAll();
       // Kick off a final push, then persist sync-meta synchronously: quit
       // cannot await the push, but the meta must record any un-synced local
       // edits (changedAt > syncedAt) so the next boot pushes them instead of

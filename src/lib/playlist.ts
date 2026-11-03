@@ -10,7 +10,7 @@ export async function playPlaylist(playlistId: string): Promise<void> {
     ui.toast("Loading playlist…");
     const { tracks } = await requireBridge().getPlaylist(playlistId);
     if (!tracks.length) throw new Error("No playable songs");
-    usePlayer.getState().playQueue(tracks, 0);
+    usePlayer.getState().playAll(tracks);
   } catch {
     useUI.getState().toast("Couldn't load that playlist", "error");
   }

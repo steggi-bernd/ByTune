@@ -15,8 +15,15 @@ import { withoutOtherCopies } from "../lib/duplicates";
 import { lazyJSONStorage } from "../lib/persist";
 import type { Track } from "../types";
 import { songKey } from "./catalog";
+import { isMuted } from "./muted";
 
 export type RepeatMode = "off" | "all" | "one";
+
+/** While somebody is choosing music for another device, what's asked for goes there (lib/zones.ts). */
+let playHook: ((tracks: Track[], start: number) => boolean) | null = null;
+export function setPlayHook(hook: typeof playHook): void {
+  playHook = hook;
+}
 
 interface PlayerState {
   queue: Track[];
@@ -38,7 +45,10 @@ interface PlayerState {
   sources: Record<string, Track>;
 
   current(): Track | null;
+  /** A song asked for, with its list after it. Muted ones in the list stay out; the asked-for one plays anyway. */
   playQueue(tracks: Track[], startIndex?: number): void;
+  /** A whole list from its Play or Shuffle button: nothing in it is asked for by name, so nothing muted plays. */
+  playAll(tracks: Track[], random?: boolean): void;
   playTrack(track: Track): void;
   addToQueue(tracks: Track | Track[], playNext?: boolean): void;
   /**
@@ -96,9 +106,12 @@ export const usePlayer = create<PlayerState>()(
 
       playQueue(tracks, startIndex = 0) {
         if (!tracks.length) return;
+        if (playHook?.(tracks, startIndex)) return;
+        const asked = tracks[clamp(startIndex, 0, tracks.length - 1)];
+        const open = tracks.filter((t) => t === asked || !isMuted(t.id));
         // A list holding two copies of a song (a playlist with the local file
         // and its server copy) still queues it once — the clicked one stays.
-        const { list, keep } = withoutOtherCopies(tracks, songKey, clamp(startIndex, 0, tracks.length - 1));
+        const { list, keep } = withoutOtherCopies(open, songKey, open.indexOf(asked));
         set({
           queue: list,
           index: Math.max(0, keep),
@@ -106,6 +119,11 @@ export const usePlayer = create<PlayerState>()(
           position: 0,
           error: null,
         });
+      },
+
+      playAll(tracks, random = false) {
+        const open = tracks.filter((t) => !isMuted(t.id));
+        if (open.length) get().playQueue(open, random ? Math.floor(Math.random() * open.length) : 0);
       },
 
       playTrack(track) {

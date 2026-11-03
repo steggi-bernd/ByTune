@@ -5,11 +5,13 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { House, Library, Search } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, TAB_BAR_HEIGHT } from "../theme";
+import { deviceName, pickMusicFor, useZones } from "../stores/zones";
+import { colors, MINI_PLAYER_HEIGHT, TAB_BAR_HEIGHT } from "../theme";
 import { PlayerSheet } from "./PlayerSheet";
+import { useSongMenu } from "./SongMenu";
 
 const TABS = [
   { label: "Home", Icon: House },
@@ -21,7 +23,12 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const progress = useRef(new Animated.Value(0, { useNativeDriver: true })).current;
   const [expanded, setExpanded] = useState(false);
+  const pickingFor = useZones((s) => s.pickingFor);
   const shownTab = state.routes[state.index].name;
+  const goTo = (screen: string, params: object): void => navigation.navigate(shownTab, { screen, params });
+  useEffect(() => {
+    useSongMenu.setState({ goTo });
+  });
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -52,11 +59,21 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
           </View>
         </LinearGradient>
       </View>
+      {pickingFor && (
+        <View style={[styles.picking, { bottom: insets.bottom + TAB_BAR_HEIGHT + MINI_PLAYER_HEIGHT + 8 }]}>
+          <Text numberOfLines={1} style={styles.pickingText}>
+            Choose music for {deviceName(pickingFor)}
+          </Text>
+          <Pressable onPress={() => pickMusicFor(null)} hitSlop={8} accessibilityLabel="Stop choosing">
+            <Text style={styles.pickingCancel}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
       <PlayerSheet
         progress={progress}
         expanded={expanded}
         setExpanded={setExpanded}
-        goTo={(screen, params) => navigation.navigate(shownTab, { screen, params })}
+        goTo={goTo}
       />
     </View>
   );
@@ -67,4 +84,7 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: "row", height: TAB_BAR_HEIGHT, paddingHorizontal: 12 },
   tab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4 },
   tabLabel: { fontSize: 11, fontWeight: "500" },
+  picking: { position: "absolute", left: 12, right: 12, zIndex: 5, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, height: 44 },
+  pickingText: { flex: 1, color: colors.onAccent, fontSize: 14, fontWeight: "600" },
+  pickingCancel: { color: colors.onAccent, fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
 });

@@ -9,6 +9,10 @@
  *    half minute while it plays. A device that isn't playing takes over a
  *    newer note from another one, paused, so it picks up where that stopped.
  *  - changes: a long poll, so other devices hear within moments.
+ *  - devices: each device says what it's doing and hears what the others do, so
+ *    one shows what plays on another and can steer it; commands go through the
+ *    service too, and one that isn't picked up within a minute is forgotten.
+ *  - muted songs: one list for all devices; the newer list wins.
  */
 import { mergePlaylistDocs, sameDoc, sameLikes, toPlaylistDoc, type PlaylistDoc, type WireTrack } from "./playlistSync";
 
@@ -18,7 +22,7 @@ export interface SyncReply {
 }
 
 /** A request to the service; rejects when it can't be reached. */
-export type SyncRequest = (method: "GET" | "PUT", path: string, body?: unknown, timeoutMs?: number) => Promise<SyncReply>;
+export type SyncRequest = (method: "GET" | "PUT" | "POST", path: string, body?: unknown, timeoutMs?: number) => Promise<SyncReply>;
 
 export interface PlaybackNote {
   device: { id: string; name: string };
@@ -36,6 +40,42 @@ export interface PlaybackNote {
 export interface QueueDoc {
   id: string;
   context?: string;
+  tracks: WireTrack[];
+}
+
+/** What a device says about itself to the others. */
+export interface DevicePresence {
+  name: string;
+  kind: "phone" | "computer";
+  playing: boolean;
+  positionMs: number;
+  durationMs: number;
+  track: WireTrack | null;
+  queueId?: string;
+  context?: string;
+}
+
+/** Another device as this one knows it. */
+export interface RemoteDevice {
+  id: string;
+  /** since it last said something, by the service's clock */
+  ageMs: number;
+  presence: DevicePresence;
+}
+
+export type DeviceCommand =
+  | { action: "play" | "pause" | "next" | "previous" | "syncLikes" }
+  | { action: "seek"; positionMs: number }
+  /** a song of its queue */
+  | { action: "jump"; trackId: string }
+  /** songs for its queue, next or at the end */
+  | { action: "enqueue"; tracks: WireTrack[]; next?: boolean }
+  /** go on from the position and queue documents, playing */
+  | { action: "takeOver" };
+
+export interface MutedDoc {
+  /** when the list last changed (ms) */
+  at: number;
   tracks: WireTrack[];
 }
 
@@ -57,6 +97,15 @@ export interface SyncHost {
   readLikes?(): WireTrack[];
   /** The order arranged on another device, on a device that follows it. */
   applyLikes?(tracks: WireTrack[]): void;
+  /** What this device says about itself; without it, it isn't listed among the devices. */
+  readPresence?(): DevicePresence | null;
+  /** The other devices, whenever one of them says something. */
+  applyDevices?(devices: RemoteDevice[]): void;
+  /** Another device asks this one to do something. */
+  onCommand?(command: DeviceCommand): void;
+  readMuted?(): MutedDoc;
+  /** A newer list of muted songs from another device. */
+  applyMuted?(doc: MutedDoc): void;
   onStatus?(status: SyncStatus): void;
 }
 
@@ -70,7 +119,15 @@ const PLAYLISTS_AFTER_CHANGE_MS = 1500;
 const PLAYBACK_AFTER_CHANGE_MS = 800;
 const PLAYBACK_WHILE_PLAYING_MS = 30_000;
 const LIKES_AFTER_CHANGE_MS = 3000;
+const MUTED_AFTER_CHANGE_MS = 800;
+const PRESENCE_AFTER_CHANGE_MS = 300;
+/** A device that says nothing for longer than this and a bit counts as gone: see DEVICE_ONLINE_MS. */
+const PRESENCE_EVERY_MS = 40_000;
+const DEVICES_LOOK_MS = 45_000;
 const MERGE_ATTEMPTS = 4;
+
+/** Heard of within this long, a device is around. */
+export const DEVICE_ONLINE_MS = 100_000;
 
 function readNote(doc: unknown): PlaybackNote | null {
   const n = doc as PlaybackNote | null;
@@ -86,7 +143,7 @@ export function createSyncEngine(host: SyncHost) {
   let session = 0;
   let status: SyncStatus = "off";
   let seq = -1;
-  const known = { playlists: -1, position: -1, likes: -1 };
+  const known = { playlists: -1, position: -1, likes: -1, muted: -1, devices: -1 };
   let sentQueueId: string | null = null;
   /** the note last sent or taken over: nothing newer, nothing to say */
   let sentAt = 0;
@@ -95,6 +152,12 @@ export function createSyncEngine(host: SyncHost) {
   let playlistsTimer: ReturnType<typeof setTimeout> | null = null;
   let playbackTimer: ReturnType<typeof setTimeout> | null = null;
   let likesTimer: ReturnType<typeof setTimeout> | null = null;
+  let mutedTimer: ReturnType<typeof setTimeout> | null = null;
+  let presenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPresenceAt = 0;
+  let lastDevicesAt = 0;
+  /** an older service has no such thing */
+  let hasDevices = false;
   let lastPlaybackAt = 0;
   let wakeSleep: (() => void) | null = null;
 
@@ -151,9 +214,9 @@ export function createSyncEngine(host: SyncHost) {
     }, PLAYLISTS_AFTER_CHANGE_MS);
   }
 
-  async function pushPlayback(): Promise<void> {
+  async function pushPlayback(evenIfSent = false): Promise<void> {
     const state = host.readPlayback();
-    if (!state || state.note.at <= sentAt) return;
+    if (!state || (!evenIfSent && state.note.at <= sentAt)) return;
     lastPlaybackAt = Date.now();
     if (state.note.queueId !== sentQueueId) {
       const put = await host.request("PUT", "/v1/docs/queue", { doc: state.queue() }, REQUEST_TIMEOUT_MS);
@@ -164,6 +227,8 @@ export function createSyncEngine(host: SyncHost) {
     if (put.status !== 200) throw refused(put);
     known.position = put.body.rev;
     sentAt = state.note.at;
+    // The others should see the same moment; this also runs in the background, where other timers don't.
+    await sendPresence().catch(() => undefined);
   }
 
   async function checkPlayback(): Promise<void> {
@@ -202,6 +267,73 @@ export function createSyncEngine(host: SyncHost) {
     known.likes = put.body.rev;
   }
 
+  async function pullMuted(): Promise<void> {
+    if (!host.readMuted || !host.applyMuted) return;
+    const got = await host.request("GET", "/v1/docs/muted", undefined, REQUEST_TIMEOUT_MS);
+    if (got.status !== 200) throw refused(got);
+    known.muted = got.body.rev;
+    const remote = got.body.doc as MutedDoc | null;
+    const mine = host.readMuted();
+    if (remote && Array.isArray(remote.tracks) && remote.at > mine.at) host.applyMuted(remote);
+    // Changed here while nobody listened, or the service has none yet.
+    else if (mine.at > (remote?.at ?? 0)) await pushMuted();
+  }
+
+  async function pushMuted(): Promise<void> {
+    if (!host.readMuted) return;
+    const put = await host.request("PUT", "/v1/docs/muted", { doc: host.readMuted() }, REQUEST_TIMEOUT_MS);
+    if (put.status !== 200) throw refused(put);
+    known.muted = put.body.rev;
+  }
+
+  async function sendPresence(): Promise<void> {
+    if (!hasDevices || !host.readPresence) return;
+    const doc = host.readPresence();
+    if (!doc) return;
+    lastPresenceAt = Date.now();
+    const put = await host.request("PUT", `/v1/devices/${encodeURIComponent(host.deviceId)}`, { doc }, REQUEST_TIMEOUT_MS);
+    if (put.status !== 200) throw refused(put);
+  }
+
+  async function pullDevices(): Promise<void> {
+    if (!host.applyDevices) return;
+    const got = await host.request("GET", "/v1/devices", undefined, REQUEST_TIMEOUT_MS);
+    if (got.status !== 200) throw refused(got);
+    const list: { id: string; updatedAt: number; doc: DevicePresence }[] = Array.isArray(got.body.devices) ? got.body.devices : [];
+    lastDevicesAt = Date.now();
+    host.applyDevices(
+      list
+        .filter((d) => d.id !== host.deviceId && d.doc && typeof d.doc === "object")
+        .map((d) => ({ id: d.id, ageMs: Math.max(0, got.body.now - d.updatedAt), presence: d.doc }))
+    );
+  }
+
+  async function takeCommands(): Promise<void> {
+    if (!host.onCommand) return;
+    const got = await host.request("GET", `/v1/devices/${encodeURIComponent(host.deviceId)}/commands`, undefined, REQUEST_TIMEOUT_MS);
+    if (got.status !== 200) throw refused(got);
+    for (const command of Array.isArray(got.body.commands) ? got.body.commands : []) {
+      // Going on from where another device stands needs that device's latest word.
+      if (command?.action === "takeOver") await takeOver();
+      else host.onCommand(command);
+    }
+  }
+
+  async function takeOver(): Promise<void> {
+    const got = await host.request("GET", "/v1/docs/position", undefined, REQUEST_TIMEOUT_MS);
+    if (got.status !== 200) throw refused(got);
+    known.position = got.body.rev;
+    const note = readNote(got.body.doc);
+    if (note) {
+      const queue = await host.request("GET", "/v1/docs/queue", undefined, REQUEST_TIMEOUT_MS);
+      const doc = queue.status === 200 ? (queue.body.doc as QueueDoc | null) : null;
+      sentQueueId = note.queueId;
+      sentAt = note.at;
+      host.adoptPlayback(note, doc?.id === note.queueId && Array.isArray(doc.tracks) ? doc : null);
+    }
+    host.onCommand?.({ action: "takeOver" });
+  }
+
   function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
       const timer = setTimeout(done, ms);
@@ -221,7 +353,7 @@ export function createSyncEngine(host: SyncHost) {
       try {
         // Asked for at once the first time round; from then on it waits for news.
         const wait = seq < 0 ? 0 : LONG_POLL_SEC;
-        const reply = await host.request("GET", `/v1/changes?since=${seq}&wait=${wait}`, undefined, LONG_POLL_TIMEOUT_MS);
+        const reply = await host.request("GET", `/v1/changes?since=${seq}&wait=${wait}&device=${encodeURIComponent(host.deviceId)}`, undefined, LONG_POLL_TIMEOUT_MS);
         if (!running || mine !== session) return;
         if (reply.status !== 200) throw refused(reply);
         setStatus("connected");
@@ -235,6 +367,17 @@ export function createSyncEngine(host: SyncHost) {
           if (host.applyLikes) {
             if (!synced || revs.likes !== known.likes) await pullLikes();
           } else if (!synced) await pushLikes();
+        }
+        if (revs.muted !== undefined && (!synced || revs.muted !== known.muted)) await pullMuted();
+        hasDevices = revs.devices !== undefined;
+        if (hasDevices) {
+          if (reply.body.inbox > 0) await takeCommands();
+          // Also without news: a device that went away says nothing about it.
+          if (!synced || revs.devices !== known.devices || Date.now() - lastDevicesAt > DEVICES_LOOK_MS) {
+            known.devices = revs.devices;
+            await pullDevices();
+          }
+          if (!synced || Date.now() - lastPresenceAt > PRESENCE_EVERY_MS) await sendPresence();
         }
         synced = true;
       } catch (err) {
@@ -258,6 +401,8 @@ export function createSyncEngine(host: SyncHost) {
       known.playlists = -1;
       known.position = -1;
       known.likes = -1;
+      known.muted = -1;
+      known.devices = -1;
       setStatus("connecting");
       void run(session);
     },
@@ -276,7 +421,9 @@ export function createSyncEngine(host: SyncHost) {
       if (playlistsTimer) clearTimeout(playlistsTimer);
       if (playbackTimer) clearTimeout(playbackTimer);
       if (likesTimer) clearTimeout(likesTimer);
-      playlistsTimer = playbackTimer = likesTimer = null;
+      if (mutedTimer) clearTimeout(mutedTimer);
+      if (presenceTimer) clearTimeout(presenceTimer);
+      playlistsTimer = playbackTimer = likesTimer = mutedTimer = presenceTimer = null;
       wakeSleep?.();
       setStatus("off");
     },
@@ -318,6 +465,48 @@ export function createSyncEngine(host: SyncHost) {
     /** Look again whether another device has something to continue from, say when this one comes back to the front. */
     checkPlayback(): Promise<void> {
       return running ? checkPlayback().catch(() => undefined) : Promise.resolve();
+    },
+
+    /** The list of muted songs changed here. */
+    mutedChanged(): void {
+      if (!enabled) return;
+      if (mutedTimer) clearTimeout(mutedTimer);
+      mutedTimer = setTimeout(() => {
+        mutedTimer = null;
+        void pushMuted().catch(() => undefined);
+      }, MUTED_AFTER_CHANGE_MS);
+    },
+
+    /** What this device is doing changed: the others hear of it in a moment. */
+    presenceChanged(): void {
+      if (!enabled || !hasDevices) return;
+      if (presenceTimer) clearTimeout(presenceTimer);
+      presenceTimer = setTimeout(() => {
+        presenceTimer = null;
+        void sendPresence().catch(() => undefined);
+      }, PRESENCE_AFTER_CHANGE_MS);
+    },
+
+    /** The same, now: the app is about to go quiet, or a timer wouldn't get to run. */
+    presenceNow(): Promise<void> {
+      if (!enabled) return Promise.resolve();
+      return sendPresence().catch(() => undefined);
+    },
+
+    /** A word for another device; false when it couldn't be left for it. */
+    async sendCommand(deviceId: string, command: DeviceCommand): Promise<boolean> {
+      try {
+        const res = await host.request("POST", `/v1/devices/${encodeURIComponent(deviceId)}/commands`, { command }, REQUEST_TIMEOUT_MS);
+        return res.status === 200;
+      } catch {
+        return false;
+      }
+    },
+
+    /** Hands the music to another device: where this one stands goes out first, and it goes on from there. */
+    async handOver(deviceId: string): Promise<boolean> {
+      await pushPlayback(true).catch(() => undefined);
+      return this.sendCommand(deviceId, { action: "takeOver" });
     },
 
     /** A retry now instead of at the end of the wait, say after a new address was entered. */

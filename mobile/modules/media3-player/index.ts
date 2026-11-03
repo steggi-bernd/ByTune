@@ -37,6 +37,12 @@ export interface NetworkState {
   metered: boolean;
 }
 
+/** Where the sound comes out; `name` only for what isn't the phone itself. */
+export interface SoundOutput {
+  kind: "phone" | "wired" | "bluetooth" | "tv";
+  name: string;
+}
+
 export interface DownloadJob {
   job: number;
   status: "waiting" | "wifi" | "running" | "done" | "failed";
@@ -53,6 +59,13 @@ type Events = {
   onState(state: PlaybackState): void;
   onError(error: { message: string; code?: string }): void;
   onNetwork(state: NetworkState): void;
+  onOutput(output: SoundOutput): void;
+  /** bytes from a connection to a device, or that it's gone */
+  onSocket(news: { id: number; data?: string; closed?: boolean }): void;
+  /** about once a second while devices on the network play */
+  onZoneTick(news: Record<string, never>): void;
+  /** a button in the notification of what they play, or the volume keys: "toggle", "next", "previous", "volume:NN" */
+  onZoneControl(news: { action: string }): void;
 };
 
 declare class Media3PlayerModule extends NativeModule<Events> {
@@ -60,6 +73,19 @@ declare class Media3PlayerModule extends NativeModule<Events> {
   setKeep24Bit(on: boolean, restart: boolean): Promise<void>;
   setGain(gainDb: number): Promise<void>;
   getNetwork(): Promise<NetworkState>;
+  getOutput(): Promise<SoundOutput>;
+  /** Android's own list of where the sound can go. */
+  chooseOutput(): Promise<void>;
+  /** One question (base64) to the local network and its answers within the time; null without Wi-Fi or a cable. */
+  netAsk(address: string, port: number, question: string, waitMs: number): Promise<{ from: string; data: string }[] | null>;
+  /** An encrypted connection to a device on the local network. */
+  socketOpen(host: string, port: number): Promise<number>;
+  socketWrite(id: number, data: string): Promise<void>;
+  socketClose(id: number): Promise<void>;
+  /** `volume` is the lead device's, 0–100; below 0 when it can't be set from here. */
+  zonesWatch(ticking: boolean, keepAwake: boolean, title: string, text: string, playing: boolean, volume: number): Promise<void>;
+  /** What a gesture feels like. */
+  haptic(kind: "arm" | "charge" | "charged" | "commit" | "cancel"): Promise<void>;
   downloadStart(url: string, headers: Record<string, string>, fileName: string, wifiOnly: boolean): Promise<number>;
   downloadQuery(jobs: number[]): Promise<DownloadJob[]>;
   downloadFinish(job: number): Promise<{ file: string; bytes: number } | null>;
@@ -70,6 +96,7 @@ declare class Media3PlayerModule extends NativeModule<Events> {
   replaceUpcoming(items: QueueItem[]): Promise<void>;
   replaceCurrent(item: QueueItem, positionMs: number): Promise<void>;
   addItems(items: QueueItem[]): Promise<void>;
+  insertItems(at: number, items: QueueItem[]): Promise<void>;
   removeItem(index: number): Promise<void>;
   moveItem(from: number, to: number): Promise<void>;
   play(): Promise<void>;

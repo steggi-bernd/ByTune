@@ -3,6 +3,7 @@ import { AlertCircle, ArrowDownCircle, Check, Download, FolderOpen, Heart, Loade
 import { sourceOf, useAvailabilityCheck } from "../stores/availability";
 import { sameSong, useCatalog, versionsOf } from "../stores/catalog";
 import { likedIdSet, useLibrary } from "../stores/library";
+import { useIsMuted } from "../stores/muted";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI, type MenuItem } from "../stores/ui";
 import { trackMenuItems } from "../lib/trackActions";
@@ -124,6 +125,7 @@ const TrackRow = memo(function TrackRow({
 }: TrackRowProps) {
   const liked = useLibrary((s) => likedIdSet(s.liked).has(track.id));
   const toggleLike = useLibrary((s) => s.toggleLike);
+  const muted = useIsMuted(track.id);
   const openContextMenu = useUI((s) => s.openContextMenu);
   const navigate = useUI((s) => s.navigate);
   const from: TrackSource | undefined = sourceName && sourceTracks ? { name: sourceName, tracks: sourceTracks, index } : undefined;
@@ -156,7 +158,7 @@ const TrackRow = memo(function TrackRow({
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
       className={`group flex items-center gap-3.5 h-[60px] px-3 rounded-lg select-none ${available ? "cursor-pointer" : "cursor-default"} ${
         isCurrent ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"
-      } ${drag.dragging || !available ? "opacity-40" : ""}`}
+      } ${drag.dragging || !available ? "opacity-40" : muted ? "opacity-60" : ""}`}
     >
       {/* index (EQ bars while playing); on hover, play/pause at the same spot */}
       <div className="w-7 shrink-0 grid place-items-center text-[13px] text-ink-faint tabular-nums">
@@ -190,7 +192,7 @@ const TrackRow = memo(function TrackRow({
           basis is 0, it would collapse to zero width before anything else gives.
           The floor keeps the title visible; the album column shrinks instead. */}
       <div className="flex-1 min-w-[120px]">
-        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : "text-ink-hi"}`}>
+        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : muted ? "text-red-300" : "text-ink-hi"}`}>
           {track.explicit && <ExplicitBadge />}
           <span className="truncate">{track.title}</span>
         </div>

@@ -93,17 +93,49 @@ export const sameLikes = (a: WireTrack[], b: WireTrack[]): boolean => a.length =
 
 /**
  * The favorites in the arranged order. What the order doesn't know yet, liked
- * somewhere a moment ago, stands on top like any new like.
+ * somewhere a moment ago, stands on top like any new like. A second copy of a
+ * song the order knows (two items on the server, one song on the computer) is
+ * no new like: `songOf` lets it stand with its song.
  */
-export function likedInOrder(favorites: string[], order: WireTrack[], find: (wire: WireTrack) => { id: string } | undefined): string[] {
+export function likedInOrder(
+  favorites: string[],
+  order: WireTrack[],
+  find: (wire: WireTrack) => Track | { id: string } | undefined,
+  songOf?: (id: string) => Track | undefined
+): string[] {
   const rank = new Map<string, number>();
+  const ranked: { song: Track; at: number }[] = [];
   order.forEach((wire, i) => {
-    const id = find(wire)?.id;
-    if (id !== undefined && !rank.has(id)) rank.set(id, i);
+    const song = find(wire);
+    if (song === undefined || rank.has(song.id)) return;
+    rank.set(song.id, i);
+    if ("title" in song) ranked.push({ song, at: i });
   });
+  if (songOf) {
+    for (const id of favorites) {
+      if (rank.has(id)) continue;
+      const own = songOf(id);
+      const twin = own && ranked.find((r) => songIdentity(r.song) === songIdentity(own) && sameSong(r.song, own));
+      if (twin) rank.set(id, twin.at + 0.5);
+    }
+  }
   const fresh = favorites.filter((id) => !rank.has(id));
   const known = favorites.filter((id) => rank.has(id)).sort((a, b) => (rank.get(a) as number) - (rank.get(b) as number));
   return [...fresh, ...known];
+}
+
+/** A list of song ids with every song once: of two copies the first stays. */
+export function oneCopyEach(ids: string[], songOf: (id: string) => Track | undefined): string[] {
+  const seen = new Map<string, Track[]>();
+  return ids.filter((id) => {
+    const song = songOf(id);
+    if (!song) return true;
+    const key = songIdentity(song);
+    const others = seen.get(key) ?? [];
+    if (others.some((other) => sameSong(other, song))) return false;
+    seen.set(key, [...others, song]);
+    return true;
+  });
 }
 
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

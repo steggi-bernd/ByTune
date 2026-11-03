@@ -657,12 +657,12 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       const playable = album.tracks.filter((t) => available(t));
       const none = playable.length === 0;
       openContextMenu(e.clientX, e.clientY, [
-        { label: "Play", icon: Play, disabled: none, action: () => usePlayer.getState().playQueue(playable, 0) },
+        { label: "Play", icon: Play, disabled: none, action: () => usePlayer.getState().playAll(playable) },
         {
           label: "Shuffle",
           icon: Shuffle,
           disabled: none,
-          action: () => usePlayer.getState().playQueue([...playable].sort(() => Math.random() - 0.5), 0),
+          action: () => usePlayer.getState().playAll([...playable].sort(() => Math.random() - 0.5)),
         },
         {
           label: "Add to queue",

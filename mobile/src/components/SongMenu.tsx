@@ -1,11 +1,15 @@
-/** What a held song offers, and the download button of a whole list. */
-import { CircleArrowDown } from "lucide-react-native";
-import { Alert, Modal, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+/** What a song's menu offers, and the download buttons of a song and of a whole list. */
+import { ArrowDown, CircleArrowDown } from "lucide-react-native";
+import { Alert, Modal, Pressable, Share, StyleSheet, Text, ToastAndroid, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
 import { create } from "zustand";
-import { plural, type Track } from "../shared";
+import { albumKeyOf } from "../playingFrom";
+import { leadArtist, plural, type Track } from "../shared";
 import { useConnection } from "../stores/connection";
-import { downloadOf, useDownloads } from "../stores/downloads";
+import { downloadOf, percentOf, useDownloads } from "../stores/downloads";
+import { useLibrary } from "../stores/library";
+import { usePlayer } from "../stores/player";
 import { usePlaylists } from "../stores/playlists";
 import { colors } from "../theme";
 
@@ -19,6 +23,8 @@ interface SongMenuState {
   extras: MenuExtra[];
   /** a playlist's song this library doesn't have: only the extras apply */
   plain: boolean;
+  /** to a page in the tab that's showing: the bottom bar knows which that is */
+  goTo: ((screen: string, params: object) => void) | null;
   open(track: Track, options?: { extras?: MenuExtra[]; plain?: boolean }): void;
   close(): void;
 }
@@ -27,6 +33,7 @@ export const useSongMenu = create<SongMenuState>((set) => ({
   track: null,
   extras: [],
   plain: false,
+  goTo: null,
   open: (track, options) => set({ track, extras: options?.extras ?? [], plain: !!options?.plain }),
   close: () => set({ track: null, extras: [], plain: false }),
 }));
@@ -70,8 +77,10 @@ export function useDownloadAction(track: Track | null | undefined): { label: str
 
 export function SongMenu() {
   const insets = useSafeAreaInsets();
-  const { track, extras, plain, close } = useSongMenu();
+  const { track, extras, plain, goTo, close } = useSongMenu();
   const download = useDownloadAction(track);
+  const albumKey = track ? albumKeyOf(track) : null;
+  const muted = useLibrary((s) => !!track && s.muted.has(track.id));
   const row = (label: string, run: () => void) => (
     <Pressable
       key={label}
@@ -100,10 +109,85 @@ export function SongMenu() {
           )}
           {!plain && !!download && row(download.label, download.run)}
           {!plain && !!track && row("Add to playlist", () => usePlaylists.getState().setPicking(track))}
+          {!plain &&
+            !!track &&
+            row("Play next", () => {
+              usePlayer.getState().playNext([track]);
+              ToastAndroid.show("Plays next", ToastAndroid.SHORT);
+            })}
+          {!plain &&
+            !!track &&
+            row("Add to queue", () => {
+              usePlayer.getState().addToQueue([track]);
+              ToastAndroid.show("Added to the queue", ToastAndroid.SHORT);
+            })}
+          {!plain && !!albumKey && row("Go to album", () => goTo?.("Album", { albumKey }))}
+          {!plain && !!track && row("Go to artist", () => goTo?.("Artist", { name: leadArtist(track.artist) }))}
+          {!plain && !!track && row(muted ? "Play again (unmute)" : "Mute song", () => useLibrary.getState().toggleMuted(track))}
+          {!plain && !!track && row("Share", () => void Share.share({ message: `${track.title} · ${track.artist}` }))}
           {extras.map((extra) => row(extra.label, extra.run))}
         </View>
       </Pressable>
     </Modal>
+  );
+}
+
+/** How far a song is: a ring that closes around the arrow. */
+function DownloadRing({ size, part }: { size: number; part: number }) {
+  const stroke = Math.max(2, size / 11);
+  const radius = (size - stroke) / 2;
+  const around = 2 * Math.PI * radius;
+  const middle = size / 2;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        <Circle cx={middle} cy={middle} r={radius} stroke={colors.hairline} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={middle}
+          cy={middle}
+          r={radius}
+          stroke={colors.accent}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${around * part} ${around}`}
+          fill="none"
+          transform={`rotate(-90 ${middle} ${middle})`}
+        />
+      </Svg>
+      <ArrowDown size={size * 0.55} color={colors.accent} />
+    </View>
+  );
+}
+
+/** One song's arrow: nothing said in words. It also takes the song off again. */
+export function SongDownloadButton({ track, size = 24, style }: { track: Track; size?: number; style?: ViewStyle }) {
+  const state = useDownloads((s) => downloadOf(s, track.id));
+  const percent = useDownloads((s) => percentOf(s, track.id));
+  const { remove } = useDownloads.getState();
+  return (
+    <Pressable
+      accessibilityLabel={state ? DOWNLOAD_LABEL[state] : "Download"}
+      onPress={() => {
+        if (state === "kept") {
+          Alert.alert("Remove this download?", `“${track.title}” goes from this phone. It stays on your server.`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Remove", style: "destructive", onPress: () => remove([track]) },
+          ]);
+        } else if (state === "loading" || state === "wifi") remove([track]);
+        else startDownload([track]);
+      }}
+      style={[styles.button, style]}
+    >
+      {state === "loading" && percent !== null && percent >= 0 ? (
+        <DownloadRing size={size} part={percent / 100} />
+      ) : (
+        <CircleArrowDown
+          size={size}
+          color={state === "kept" ? colors.onAccent : state === "failed" ? "#FF9D9D" : state ? colors.accent : colors.ink}
+          fill={state === "kept" ? colors.accent : "transparent"}
+        />
+      )}
+    </Pressable>
   );
 }
 

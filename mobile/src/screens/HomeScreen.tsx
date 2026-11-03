@@ -5,7 +5,7 @@
  */
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
-import { CloudOff, Settings } from "lucide-react-native";
+import { CloudOff, Settings, Speaker } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -143,6 +143,9 @@ export function HomeScreen() {
       <LinearGradient colors={[tinted(color, 0.16), "rgba(0,0,0,0)"]} style={styles.wash} />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.greeting}>{greeting()}</Text>
+        <Pressable onPress={() => nav.navigate("Devices")} accessibilityLabel="Devices" style={styles.headerButton}>
+          <Speaker size={23} color={colors.ink} />
+        </Pressable>
         <Pressable onPress={() => nav.navigate("Settings")} accessibilityLabel="Settings" style={styles.headerButton}>
           <Settings size={23} color={colors.ink} />
         </Pressable>

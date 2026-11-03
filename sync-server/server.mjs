@@ -11,7 +11,11 @@
  *   GET  /health
  *   GET  /v1/docs/:name           { rev, updatedAt, doc }   (rev 0: nothing yet)
  *   PUT  /v1/docs/:name           { rev?, doc } → { rev, seq, updatedAt }, 409 when rev is behind
- *   GET  /v1/changes?since&wait   { seq, revs }: answers at once when seq differs, else within `wait` seconds
+ *   GET  /v1/changes?since&wait&device   { seq, revs, inbox }: answers at once when seq differs, else within `wait` seconds
+ *   GET  /v1/devices              { now, devices: [{ id, updatedAt, doc }] }: who is around and what they play
+ *   PUT  /v1/devices/:id          { doc }: what this device says about itself
+ *   POST /v1/devices/:id/commands { command }: a word for that device, kept for a minute
+ *   GET  /v1/devices/:id/commands { commands }: that device's words, handed over once
  */
 import { createHash } from "node:crypto";
 import { mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
@@ -25,7 +29,15 @@ const DOCS = {
   queue: {},
   position: {},
   likes: {},
+  muted: {},
 };
+const DEVICES_FILE = "devices.json";
+/** A device not heard of for this long is forgotten. */
+const DEVICE_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_DEVICE_BYTES = 64 * 1024;
+const COMMAND_KEPT_MS = 60_000;
+const MAX_COMMANDS = 20;
+const DEVICE_ID = "[A-Za-z0-9._:-]{1,80}";
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const IDENTITY_TTL_MS = 5 * 60_000;
 const MAX_WAIT_SEC = 30;
@@ -159,7 +171,17 @@ export function createSyncServer({ dataDir, jellyfinUrl }) {
             if (err.code !== "ENOENT") console.error(`[sync] unreadable ${name} of ${userId}:`, err.message);
           }
         }
-        return { dir, docs, seq, waiters: new Set(), writing: Promise.resolve() };
+        let devices = {};
+        let devicesRev = 0;
+        try {
+          const stored = JSON.parse(await readFile(path.join(dir, DEVICES_FILE), "utf8"));
+          devices = stored.devices ?? {};
+          devicesRev = stored.rev ?? 0;
+          seq = Math.max(seq, stored.seq ?? 0);
+        } catch (err) {
+          if (err.code !== "ENOENT") console.error(`[sync] unreadable devices of ${userId}:`, err.message);
+        }
+        return { dir, docs, seq, devices, devicesRev, inbox: new Map(), waiters: new Set(), writing: Promise.resolve() };
       })();
       users.set(userId, user);
     }
@@ -200,13 +222,51 @@ export function createSyncServer({ dataDir, jellyfinUrl }) {
     return run;
   }
 
-  const summary = (user) => ({
+  /** A device says where it stands; everybody else hears of it through the long poll. */
+  function writeDevice(user, id, doc) {
+    const run = user.writing.then(async () => {
+      const now = Date.now();
+      for (const [other, entry] of Object.entries(user.devices)) {
+        if (now - entry.updatedAt > DEVICE_KEPT_MS) delete user.devices[other];
+      }
+      user.devices[id] = { updatedAt: now, doc };
+      user.devicesRev += 1;
+      user.seq += 1;
+      await writeAtomic(path.join(user.dir, DEVICES_FILE), { rev: user.devicesRev, seq: user.seq, devices: user.devices });
+      for (const wake of [...user.waiters]) wake();
+    });
+    user.writing = run.catch(() => undefined);
+    return run;
+  }
+
+  const waitingCommands = (user, id) => {
+    const now = Date.now();
+    const list = (user.inbox.get(id) ?? []).filter((c) => now - c.at <= COMMAND_KEPT_MS);
+    if (list.length) user.inbox.set(id, list);
+    else user.inbox.delete(id);
+    return list;
+  };
+
+  /** A word for one device. It isn't stored on disk: a command means now, or not at all. */
+  function postCommand(user, id, command) {
+    const list = waitingCommands(user, id);
+    list.push({ at: Date.now(), command });
+    user.inbox.set(id, list.slice(-MAX_COMMANDS));
+    user.seq += 1;
+    for (const wake of [...user.waiters]) wake();
+  }
+
+  const summary = (user, device) => ({
     seq: user.seq,
-    revs: Object.fromEntries(Object.keys(DOCS).map((name) => [name, user.docs[name]?.rev ?? 0])),
+    revs: {
+      ...Object.fromEntries(Object.keys(DOCS).map((name) => [name, user.docs[name]?.rev ?? 0])),
+      devices: user.devicesRev,
+    },
+    inbox: device ? waitingCommands(user, device).length : 0,
   });
 
-  function changes(res, user, since, waitSec) {
-    if (user.seq !== since || waitSec <= 0) return send(res, 200, summary(user));
+  function changes(res, user, since, waitSec, device) {
+    if (user.seq !== since || waitSec <= 0 || (device && waitingCommands(user, device).length)) return send(res, 200, summary(user, device));
     let timer = null;
     const finish = () => {
       clearTimeout(timer);
@@ -214,7 +274,7 @@ export function createSyncServer({ dataDir, jellyfinUrl }) {
     };
     const wake = () => {
       finish();
-      if (!res.writableEnded && !res.destroyed) send(res, 200, summary(user));
+      if (!res.writableEnded && !res.destroyed) send(res, 200, summary(user, device));
     };
     timer = setTimeout(wake, waitSec * 1000);
     user.waiters.add(wake);
@@ -230,7 +290,8 @@ export function createSyncServer({ dataDir, jellyfinUrl }) {
     }
 
     const docMatch = /^\/v1\/docs\/([a-z]+)$/.exec(pathname);
-    if (pathname !== "/v1/changes" && !docMatch) throw new HttpError(404, "Not found");
+    const deviceMatch = new RegExp(`^/v1/devices(?:/(${DEVICE_ID})(/commands)?)?$`).exec(pathname);
+    if (pathname !== "/v1/changes" && !docMatch && !deviceMatch) throw new HttpError(404, "Not found");
     if (docMatch && !Object.hasOwn(DOCS, docMatch[1])) throw new HttpError(404, "No such document");
 
     const user = await userState(await authenticate(req));
@@ -239,7 +300,41 @@ export function createSyncServer({ dataDir, jellyfinUrl }) {
       if (req.method !== "GET") throw new HttpError(405, "Method not allowed");
       const since = Number(url.searchParams.get("since"));
       const wait = Math.min(MAX_WAIT_SEC, Math.max(0, Number(url.searchParams.get("wait")) || 0));
-      return changes(res, user, Number.isSafeInteger(since) ? since : -1, wait);
+      const device = new RegExp(`^${DEVICE_ID}$`).test(url.searchParams.get("device") ?? "") ? url.searchParams.get("device") : null;
+      return changes(res, user, Number.isSafeInteger(since) ? since : -1, wait, device);
+    }
+
+    if (deviceMatch) {
+      const [, id, commands] = deviceMatch;
+      if (!id) {
+        if (req.method !== "GET") throw new HttpError(405, "Method not allowed");
+        const now = Date.now();
+        const devices = Object.entries(user.devices)
+          .filter(([, entry]) => now - entry.updatedAt <= DEVICE_KEPT_MS)
+          .map(([deviceId, entry]) => ({ id: deviceId, updatedAt: entry.updatedAt, doc: entry.doc }));
+        return send(res, 200, { now, devices });
+      }
+      if (commands) {
+        if (req.method === "GET") {
+          const list = waitingCommands(user, id);
+          user.inbox.delete(id);
+          return send(res, 200, { commands: list.map((c) => c.command) });
+        }
+        if (req.method !== "POST") throw new HttpError(405, "Method not allowed");
+        const body = await readBody(req);
+        if (!body?.command || typeof body.command !== "object" || JSON.stringify(body.command).length > MAX_DEVICE_BYTES) {
+          throw new HttpError(400, "A command is a small object");
+        }
+        postCommand(user, id, body.command);
+        return send(res, 200, { ok: true });
+      }
+      if (req.method !== "PUT") throw new HttpError(405, "Method not allowed");
+      const body = await readBody(req);
+      if (!body?.doc || typeof body.doc !== "object" || Array.isArray(body.doc) || JSON.stringify(body.doc).length > MAX_DEVICE_BYTES) {
+        throw new HttpError(400, "A device says a small object about itself");
+      }
+      await writeDevice(user, id, body.doc);
+      return send(res, 200, { ok: true });
     }
 
     const name = docMatch[1];

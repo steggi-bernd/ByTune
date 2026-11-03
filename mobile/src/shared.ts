@@ -1,6 +1,10 @@
 /** What the phone takes from the desktop app's library logic: pure code, one copy for both. */
 export type { Track } from "../../src/types";
 export { jellyfinStreamPlan } from "../../electron/jellyfin-stream";
+export { sameSong, songIdentity } from "../../src/lib/duplicates";
+export { artistFromOpenData, OPEN_DATA_AGENT, type ArtistMeta } from "../../electron/artist-facts";
+export { GENIUS_HEADERS, geniusFindWith, songFromGenius, songIsBy, type SongInfo } from "../../electron/genius";
+export { primaryArtist, queryTitle } from "../../electron/song-names";
 export { leadArtist, matchesQuery, splitCredits } from "../../src/lib/libraryCore";
 export { describePlayback, formatLine } from "../../src/lib/playbackFormat";
 export { jellyfinItemToTrack, jellyfinToTrack } from "../../src/lib/jellyfinItem";
@@ -38,8 +42,13 @@ export {
 } from "../../src/lib/exploreRows";
 export { allMixes, type Mix } from "../../src/lib/mixes";
 export { recordDeletionChanges, type DeletionChange } from "../../src/lib/deletion-sync";
-export { likedInOrder, mergePlaylistDocs, songFinder, toPlaylistDoc, toWireTrack, type PlaylistDoc, type WirePlaylist, type WireTrack } from "../../src/lib/playlistSync";
-export { createSyncEngine, defaultSyncAddress, type PlaybackNote, type QueueDoc, type SyncEngine, type SyncStatus } from "../../src/lib/syncEngine";
+export { likedInOrder, mergePlaylistDocs, oneCopyEach, songFinder, toPlaylistDoc, toWireTrack, type PlaylistDoc, type WirePlaylist, type WireTrack } from "../../src/lib/playlistSync";
+export { createSyncEngine, defaultSyncAddress, DEVICE_ONLINE_MS, type DeviceCommand, type DevicePresence, type PlaybackNote, type QueueDoc, type RemoteDevice, type SyncEngine, type SyncStatus } from "../../src/lib/syncEngine";
+export { castPlayer, EndWatch, mimeOf, upnpPlayer, type DevicePlayer } from "../../electron/device-player";
+export { describe as describeRenderer, isLanUrl, parseSsdp, type Renderer } from "../../electron/upnp-control";
+export { utf8Bytes, utf8Text, type CastSocket } from "../../src/lib/castV2";
+export { devicesFromMdns, MDNS_ADDRESS, MDNS_PORT, mdnsQuery, readMdns, SSDP_ADDRESS, SSDP_PORT, SSDP_SEARCH, type MdnsService, type NetDevice } from "../../src/lib/netScan";
+export { Zone, type ZoneDriver, type ZoneMember, type ZonePlayState, type ZoneSong } from "../../src/lib/zoneEngine";
 export { playCreditSeconds } from "../../src/lib/favoriteSync";
 export { fmtLength, fmtTime, plural } from "../../src/lib/format";
 export { RELEASE_LABEL } from "../../src/lib/releases";

@@ -14,11 +14,14 @@ import {
   Split,
   Trash2,
   User,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { downloadForOffline, SERVER_SONG, startDownload } from "./downloads";
 import type { TrackSource } from "./dnd";
 import { versionsOf } from "../stores/catalog";
 import { useLibrary, type Playlist } from "../stores/library";
+import { isMuted, useMuted } from "../stores/muted";
 import { usePlayer } from "../stores/player";
 import { useUI, type MenuItem } from "../stores/ui";
 import type { Track } from "../types";
@@ -87,6 +90,14 @@ export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
       label: liked ? "Remove from Liked Songs" : "Add to Liked Songs",
       icon: Heart,
       action: () => useLibrary.getState().toggleLike(track),
+    },
+    {
+      label: isMuted(track.id) ? "Play again (unmute)" : "Mute song",
+      icon: isMuted(track.id) ? Volume2 : VolumeX,
+      action: () => {
+        const nowMuted = useMuted.getState().toggle(track);
+        useUI.getState().toast(nowMuted ? `“${track.title}” is skipped from now on` : `“${track.title}” plays again`);
+      },
     },
   ];
 

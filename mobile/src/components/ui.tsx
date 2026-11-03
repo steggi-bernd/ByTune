@@ -1,6 +1,6 @@
 /** The small parts every screen is built from: covers, chips, shelves, song rows. */
 import { Image } from "expo-image";
-import { CircleArrowDown, EllipsisVertical, Heart, Music2 } from "lucide-react-native";
+import { CircleArrowDown, EllipsisVertical, Heart, Music2, VolumeX } from "lucide-react-native";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PixelRatio, Pressable, ScrollView, StyleSheet, Text, View, type ImageStyle, type ViewStyle } from "react-native";
 import { withoutServer } from "../addresses";
@@ -13,6 +13,7 @@ import { usePlayer } from "../stores/player";
 import { here, useSession } from "../stores/session";
 import { colors } from "../theme";
 import { useSongMenu } from "./SongMenu";
+import { SwipeRow, type RowList } from "./SwipeRow";
 
 /** Jellyfin scales pictures to order: a row's 48 points don't need the player's 800 pixels. */
 const PICTURE_WIDTHS = [200, 480];
@@ -196,6 +197,7 @@ export function TrackRow({
   showCover = true,
   subtitle,
   missing,
+  list,
   onPress,
   onLongPress,
 }: {
@@ -205,6 +207,8 @@ export function TrackRow({
   subtitle?: string;
   /** a playlist's song this library doesn't have */
   missing?: boolean;
+  /** the list this row is part of: with it the row can be pulled left, into the queue or branching off */
+  list?: RowList;
   onPress: () => void;
   /** by default a held song can go to a playlist */
   onLongPress?: () => void;
@@ -213,6 +217,7 @@ export function TrackRow({
   const playing = usePlayer((s) => s.isPlaying);
   const download = useDownloads((s) => downloadOf(s, track.id));
   const percent = useDownloads((s) => percentOf(s, track.id));
+  const muted = useLibrary((s) => s.muted.has(track.id));
   // Without a way to the server only what's on the phone can play.
   const outOfReach = useConnection((s) => s.reach === "offline") && download !== "kept";
   const openMenu = onLongPress ?? (() => useSongMenu.getState().open(track));
@@ -221,12 +226,12 @@ export function TrackRow({
   else if (download === "wifi") line = "Waiting for Wi-Fi";
   else if (download === "failed") line = "Didn't download";
   else if (download === "loading") line = percent === null ? "Waiting to download" : percent < 0 ? "Downloading…" : `Downloading ${percent}%`;
-  return (
+  const row = (
     <Pressable
       disabled={missing && !onLongPress}
       onPress={missing || outOfReach ? undefined : onPress}
       onLongPress={openMenu}
-      style={[styles.row, !showCover && styles.rowPlain, (missing || outOfReach) && styles.rowMissing]}
+      style={[styles.row, !showCover && styles.rowPlain, (missing || outOfReach) && styles.rowMissing, muted && styles.rowMuted]}
     >
       {number !== undefined && (
         <View style={styles.rowNumber}>
@@ -235,14 +240,15 @@ export function TrackRow({
       )}
       {showCover && <Cover uri={track.thumb} size={48} radius={4} />}
       <View style={styles.rowText}>
-        <Text numberOfLines={1} style={[styles.rowTitle, current && { color: colors.accent }]}>
+        <Text numberOfLines={1} style={[styles.rowTitle, muted && styles.rowTitleMuted, current && { color: colors.accent }]}>
           {track.title}
         </Text>
         <View style={styles.rowSubline}>
+          {muted && <VolumeX size={13} color={colors.mutedSong} />}
           {(download === "kept" || download === "loading" || download === "wifi") && (
             <CircleArrowDown size={13} color={download === "kept" ? colors.onAccent : colors.dim} fill={download === "kept" ? colors.accent : "transparent"} accessibilityLabel={download === "kept" ? "Downloaded" : "Downloading"} />
           )}
-          <Text numberOfLines={1} style={styles.rowSubtitle}>
+          <Text numberOfLines={1} style={[styles.rowSubtitle, muted && styles.rowSubtitleMuted]}>
             {line}
           </Text>
         </View>
@@ -259,6 +265,13 @@ export function TrackRow({
         </Pressable>
       )}
     </Pressable>
+  );
+  return list && !missing && !outOfReach ? (
+    <SwipeRow track={track} list={list}>
+      {row}
+    </SwipeRow>
+  ) : (
+    row
   );
 }
 
@@ -279,6 +292,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12, height: 62, paddingLeft: 16, paddingRight: 2 },
   rowPlain: { height: 60 },
   rowMissing: { opacity: 0.45 },
+  rowMuted: { opacity: 0.62 },
+  rowTitleMuted: { color: colors.mutedSong },
+  rowSubtitleMuted: { color: colors.mutedSong },
   rowNumber: { width: 18, alignItems: "center" },
   rowNumberText: { color: colors.dim, fontSize: 13 },
   rowText: { flex: 1, minWidth: 0 },

@@ -68,6 +68,8 @@ export function SettingsScreen() {
 
   const keptSongs = Object.values(kept);
   const keptBytes = keptSongs.reduce((sum, song) => sum + song.bytes, 0);
+  const onItsWay = useDownloads((s) => Object.keys(s.loading).length);
+  const anyDownloads = keptSongs.length + onItsWay > 0;
 
   const leave = (): void => {
     stop();
@@ -186,18 +188,18 @@ export function SettingsScreen() {
         </View>
         <View style={styles.divider} />
         <Pressable
-          disabled={!keptSongs.length}
+          disabled={!anyDownloads}
           onPress={() =>
-            Alert.alert("Remove all downloads?", `${plural(keptSongs.length, "song", "songs")}, ${sizeLine(keptBytes)} from this phone. They stay on your server.`, [
+            Alert.alert("Remove all downloads?", `${plural(keptSongs.length, "song", "songs")}, ${sizeLine(keptBytes)} from this phone${onItsWay ? `, and ${plural(onItsWay, "song", "songs")} on the way` : ""}. They stay on your server.`, [
               { text: "Cancel", style: "cancel" },
               { text: "Remove", style: "destructive", onPress: () => useDownloads.getState().removeAll() },
             ])
           }
           style={styles.action}
         >
-          <Trash2 size={20} color={keptSongs.length ? "#FF9D9D" : colors.dim} />
-          <Text style={[styles.actionText, { color: keptSongs.length ? "#FF9D9D" : colors.dim }]}>
-            {keptSongs.length ? `Remove all (${plural(keptSongs.length, "song", "songs")}, ${sizeLine(keptBytes)})` : "Nothing downloaded yet"}
+          <Trash2 size={20} color={anyDownloads ? "#FF9D9D" : colors.dim} />
+          <Text style={[styles.actionText, { color: anyDownloads ? "#FF9D9D" : colors.dim }]}>
+            {anyDownloads ? `Remove all (${plural(keptSongs.length + onItsWay, "song", "songs")}, ${sizeLine(keptBytes)})` : "Nothing downloaded yet"}
           </Text>
         </Pressable>
       </View>

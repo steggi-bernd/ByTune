@@ -23,6 +23,10 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import type { SyncedLyricLine, SyncedLyricWord } from "../src/types";
+import { GENIUS_HEADERS, geniusFindWith } from "./genius";
+import { cleanTitle, primaryArtist, queryTitle } from "./song-names";
+
+export { GENIUS_HEADERS };
 
 export interface LyricQuery {
   id: string;
@@ -87,21 +91,6 @@ function stampMs(min: string, sec: string, frac: string): number {
   return (m * 60 + s) * 1000 + f;
 }
 
-/** Placeholders the mixed search page prints when a row carries no credit
- * links ("Unknown artist", same as BitChord mobile) — never a real credit,
- * so the lyric databases must not be asked with it: they key on artist +
- * title and miss every such track. An empty artist degrades each provider
- * to title-based matching instead. */
-const PLACEHOLDER_ARTISTS = new Set(["", "unknown artist", "unknown", "various artists", "artist"]);
-
-function primaryArtist(artist: string): string {
-  const lead = artist
-    .split(/,|;| & | feat\. | ft\. | featuring /i)[0]
-    .replace(/\s*\(.*?\)\s*/g, "")
-    .trim();
-  return PLACEHOLDER_ARTISTS.has(lead.toLowerCase()) ? "" : lead;
-}
-
 /** Rendition markers that change the timing itself — a match to the normal
  * studio cut can never stay in sync with these, no matter the offset. */
 const EDITION_MARKERS = /(sped[ -]?up|slowed(?:\s*(?:\+|and|&)?\s*(?:down|reverb))?|reverb|nightcore|daycore|super\s*(?:sped|slowed)|remix|bootleg|live)/i;
@@ -118,29 +107,6 @@ function editionOf(title: string): string | null {
 function withinTolerance(recordSec: number | null | undefined, playingSec: number): boolean {
   if (!recordSec || !playingSec) return true;
   return Math.abs(recordSec - playingSec) <= Math.max(12, playingSec * 0.08);
-}
-
-/**
- * Title for provider QUERIES: strips any parenthetical/bracket too — YT Music
- * titles carry credit noise like "WILDFLOWER (BILLIE BY FINNEAS)", and every
- * catalogue 401s or mismatches on it. The display title stays untouched.
- */
-function queryTitle(title: string): string {
-  const base = cleanTitle(title)
-    .replace(/\([^)]*\)|\[[^\]]*]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return base || cleanTitle(title);
-}
-
-/** Strip the noise YouTube titles carry: "(Official Video)", "[HD]" … */
-function cleanTitle(title: string): string {
-  return title
-    .replace(/\((official\s+)?(music\s+)?(lyric[s]?\s+)?(video|audio|visualizer?|mv)\)/gi, "")
-    .replace(/\[(official\s+)?(music\s+)?(lyric[s]?\s+)?(video|audio|hd|4k)\]/gi, "")
-    .replace(/\s*-\s*(official|lyric|audio|video).*$/i, "")
-    .replace(/\|.*$/, "")
-    .trim();
 }
 
 /** Insert gap markers where ≥5s of nobody sings — instrumental sections. */
@@ -1857,64 +1823,7 @@ async function fetchMusixmatch(q: LyricQuery): Promise<ProviderResult | null> {
 /**
  * Plain-text lyrics scraped from Genius — no timings, but a catalogue so
  * large it is the last resort that almost always answers.
- *
- * The User-Agent deliberately claims nothing: Genius sits behind Cloudflare,
- * which challenges a browser-claiming agent whose TLS fingerprint does not
- * back the claim. A plain one is answered; a Chrome one gets a 403 that
- * reads, one layer up, as "no lyrics for this track".
  */
-const GENIUS_AGENT = "Songsta";
-
-function geniusCleanQuery(text: string): string {
-  const cleaned = text
-    .replace(/[♪♫★☆【】《》「」~_]/g, " ")
-    .replace(
-      /\s*[(\[]\s*(?:from|feat\.?|ft\.?|featuring|with|prod\.?|produced by|official|lyrical|video|audio|remix|music video|visualizer|mv|hd|4k|hq|full song)[^)\]]*[)\]]/gi,
-      " "
-    )
-    .replace(
-      /\s*\b(?:official\s+(?:music\s+)?(?:video|audio)|lyrical(?:\s+video)?|full\s+song|4k\s+video|hd\s+video|music\s+video)\b/gi,
-      " "
-    )
-    .replace(/\b(?:prod(?:uced)?\.?(?:\s+by)?)\s+.*$/i, "")
-    .split(" | ")[0]
-    .replace(/\s+/g, " ")
-    .trim();
-  return cleaned || text.trim();
-}
-
-function geniusBestMatch(
-  candidates: { id?: unknown; url?: unknown; path?: unknown; title?: unknown; artistNames?: unknown }[],
-  title: string,
-  artist: string
-): { id: number; url: string } | null {
-  const normTitle = title.toLowerCase();
-  const normArtist = artist.toLowerCase();
-  let best: { id: number; url: string } | null = null;
-  let bestScore = 0;
-  for (const item of candidates) {
-    const t = String(item.title ?? "").toLowerCase();
-    const a = String(item.artistNames ?? "").toLowerCase();
-    const titleMatches = !!normTitle && (t === normTitle || t.includes(normTitle) || normTitle.includes(t));
-    const artistMatches = !!normArtist && (a === normArtist || a.includes(normArtist) || normArtist.includes(a));
-    if (!titleMatches && !artistMatches) continue;
-    let score = 0;
-    if (t === normTitle) score += 50;
-    else if (titleMatches) score += 25;
-    if (artistMatches) score += a === normArtist ? 40 : 20;
-    // Penalize translations, instrumentals and album pages unless asked for.
-    const path = String(item.path ?? "").toLowerCase();
-    if (path.includes("translation") && !normTitle.includes("translation")) score -= 30;
-    if (path.includes("türkçe") || path.includes("polskie-tlumaczenie")) score -= 40;
-    if (path.includes("tracklist") || path.includes("album-art")) score -= 50;
-    if (score > bestScore && typeof item.url === "string") {
-      bestScore = score;
-      best = { id: Number(item.id) || 0, url: item.url };
-    }
-  }
-  return bestScore > 0 ? best : null;
-}
-
 async function geniusExtractLyrics(html: string): Promise<string | null> {
   const { JSDOM } = await import("jsdom");
   const dom = new JSDOM(html);
@@ -1950,56 +1859,11 @@ async function geniusExtractLyrics(html: string): Promise<string | null> {
   }
 }
 
-export const GENIUS_HEADERS = {
-  "User-Agent": GENIUS_AGENT,
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-};
-
 /**
- * The song's Genius page (id + url) — the search's best hit; null when Genius
- * answered without one, undefined when it didn't answer at all (offline).
- * Lyrics and song info share it.
+ * The song's Genius page; see geniusFindWith. Lyrics and song info share it.
  */
-export async function geniusFindSong(songTitle: string, songArtist: string): Promise<{ id: number; url: string } | null | undefined> {
-  const artist = primaryArtist(songArtist || "");
-  const title = queryTitle(songTitle);
-  if (!title) return null;
-  const cleanTitle2 = geniusCleanQuery(title);
-  const attempts: { query: string; title: string; artist: string }[] = [];
-  const push = (query: string, t: string, a: string): void => {
-    query = query.trim();
-    if (query && !attempts.some((x) => x.query === query)) attempts.push({ query, title: t, artist: a });
-  };
-  if (artist) {
-    push(`${artist} ${title}`, title, artist);
-    if (cleanTitle2.toLowerCase() !== title.toLowerCase()) {
-      push(`${artist} ${cleanTitle2}`, cleanTitle2, artist);
-    }
-  }
-  push(cleanTitle2 || title, cleanTitle2 || title, artist);
-
-  let answered = false;
-  for (const attempt of attempts) {
-    const body = await getText(`https://genius.com/api/search/multi?q=${encodeURIComponent(attempt.query)}`, 8000, GENIUS_HEADERS);
-    if (!body) continue;
-    answered = true;
-    try {
-      const sections = JSON.parse(body)?.response?.sections;
-      if (!Array.isArray(sections)) continue;
-      const songSection = sections.find((s: any) => s?.type === "song");
-      const hits: any[] = songSection?.hits ?? [];
-      const candidates = hits
-        .map((h) => h?.result)
-        .filter(Boolean)
-        .map((r) => ({ id: r.id, url: r.url, path: r.path, title: r.title, artistNames: r.artist_names }));
-      const best = geniusBestMatch(candidates, attempt.title, attempt.artist);
-      if (best) return best;
-    } catch {
-      /* next attempt */
-    }
-  }
-  return answered ? null : undefined;
+export function geniusFindSong(songTitle: string, songArtist: string): Promise<{ id: number; url: string } | null | undefined> {
+  return geniusFindWith(songTitle, songArtist, (url) => getText(url, 8000, GENIUS_HEADERS));
 }
 
 async function fetchGenius(q: LyricQuery): Promise<ProviderResult | null> {

@@ -16,11 +16,14 @@
 import { app } from "electron";
 import { storeFetchedArt } from "./local-library";
 import * as persist from "./persist";
+import { artistFromOpenData, isPlaceholder, leadArtist, norm, OPEN_DATA_AGENT, phrase, sameName, wikidataEntity, wikipediaSummary, type ArtistMeta } from "./artist-facts";
 import { BANNER_WIDTH, imageInfoUrl, pictureFromImageInfo, wikimediaFile, type ArtistPicture } from "./wikimedia";
+
+export type { ArtistMeta } from "./artist-facts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const UA = "Songsta/1.0 (https://github.com/steggi-bernd/ByTune)";
+const UA = OPEN_DATA_AGENT;
 const CACHE_STORE = "open-metadata";
 /** A miss is retried after a week — databases grow, tags get fixed. */
 const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -34,23 +37,6 @@ export interface ReleaseMeta {
   year: string | null;
   /** remote cover URL (Cover Art Archive or iTunes), when one exists */
   coverUrl: string | null;
-}
-
-export interface ArtistMeta {
-  /** MusicBrainz artist id */
-  mbid: string;
-  name: string;
-  /** "Group · Germany · since 1994" — built from the MusicBrainz record */
-  facts: string | null;
-  /** Wikipedia lead section, plain text */
-  description: string | null;
-  /** artist photo (Wikimedia Commons / Wikipedia lead image) */
-  image: string | null;
-  /** the Wikipedia article the bio came from */
-  wikiUrl: string | null;
-  genres: string[];
-  /** the Wikidata item ("Q1234") — answers cached before it was kept lack it */
-  wikidata?: string | null;
 }
 
 /* ------------------------------------------------------------- cache */
@@ -154,44 +140,6 @@ function mb(pathAndQuery: string): Promise<any> {
   const next = mbQueue.catch(() => undefined).then(run);
   mbQueue = next;
   return next as Promise<any>;
-}
-
-/* ------------------------------------------------------------- matching */
-
-const PLACEHOLDERS = new Set(["", "unknown artist", "unknown album", "unknown", "various artists"]);
-
-function isPlaceholder(s: string | undefined | null): boolean {
-  return PLACEHOLDERS.has((s ?? "").trim().toLowerCase());
-}
-
-/** Lowercase, accents and punctuation stripped, edition noise removed. */
-function norm(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\((?:[^)]*(?:remaster|deluxe|edition|version|expanded|anniversary|bonus)[^)]*)\)/g, "")
-    .replace(/\[(?:[^\]]*(?:remaster|deluxe|edition|version|expanded|anniversary|bonus)[^\]]*)\]/g, "")
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function sameName(a: string, b: string): boolean {
-  const x = norm(a);
-  const y = norm(b);
-  if (!x || !y) return false;
-  return x === y || (Math.min(x.length, y.length) >= 5 && (x.includes(y) || y.includes(x)));
-}
-
-/** First credited artist — "A feat. B", "A, B" and "A & B" all key on A. */
-function leadArtist(artist: string): string {
-  return artist.split(/,|;| feat\.? | ft\.? | featuring | x | & /i)[0].trim();
-}
-
-/** Lucene-safe phrase for MusicBrainz's search syntax. */
-function phrase(s: string): string {
-  return `"${s.replace(/["\\]/g, " ").trim()}"`;
 }
 
 function lang(): string {
@@ -367,41 +315,6 @@ export async function downloadCover(url: string): Promise<{ data: Uint8Array; fo
 
 /* ------------------------------------------------------------- artists */
 
-const TYPE_LABEL: Record<string, string> = {
-  Person: "Artist",
-  Group: "Band",
-  Orchestra: "Orchestra",
-  Choir: "Choir",
-  Character: "Character",
-};
-
-function artistFacts(a: any): string | null {
-  const parts: string[] = [];
-  if (a.type && TYPE_LABEL[a.type]) parts.push(TYPE_LABEL[a.type]);
-  const area = a.area?.name ?? a.country;
-  if (area) parts.push(String(area));
-  const begin = typeof a["life-span"]?.begin === "string" ? a["life-span"].begin.slice(0, 4) : "";
-  const end = typeof a["life-span"]?.end === "string" ? a["life-span"].end.slice(0, 4) : "";
-  if (begin && end) parts.push(`${begin}–${end}`);
-  else if (begin) parts.push(`since ${begin}`);
-  return parts.length ? parts.join(" · ") : null;
-}
-
-async function wikidataEntity(qid: string): Promise<any | null> {
-  const res = (await getJson(`https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`)) as any;
-  return res?.entities?.[qid] ?? null;
-}
-
-async function wikipediaSummary(langCode: string, title: string): Promise<any | null> {
-  const url = `https://${langCode}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`;
-  const res = (await getJson(url)) as any;
-  if (!res || res.type === "disambiguation" || !res.extract) return null;
-  return res;
-}
-
-/** Artist photos are stored at this width: sharp in the 328 px card on 2× screens, ~30–80 KB each. */
-const PHOTO_WIDTH = 600;
-
 /**
  * Keep the artist photo on disk (in the cover cache, served as localart://),
  * so the card paints offline and Wikimedia is asked once per artist. A failed
@@ -423,51 +336,7 @@ export async function lookupArtist(name: string): Promise<ArtistMeta | null> {
   if (isPlaceholder(lead)) return null;
   const key = `art:${lang()}:${norm(lead)}`;
   const meta = await cached<ArtistMeta>(key, async () => {
-    const search = await mb(`artist?query=${encodeURIComponent(`artist:${phrase(lead)}`)}&limit=5`);
-    const hits: any[] = Array.isArray(search?.artists) ? search.artists : [];
-    const hit = hits.find((a) => (a.score ?? 0) >= 90 && (sameName(a.name ?? "", lead) || (a.aliases ?? []).some((al: any) => sameName(al.name ?? "", lead))));
-    if (!hit?.id) return null;
-    const full = await mb(`artist/${hit.id}?inc=url-rels+genres`);
-    const rels: any[] = Array.isArray(full?.relations) ? full.relations : [];
-    const wikidataUrl: string | undefined = rels.find((r) => r.type === "wikidata")?.url?.resource;
-    const qid = wikidataUrl?.match(/(Q\d+)$/)?.[1];
-
-    let description: string | null = null;
-    let image: string | null = null;
-    let wikiUrl: string | null = null;
-    if (qid) {
-      const entity = await wikidataEntity(qid).catch(() => null);
-      const p18 = entity?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
-      if (typeof p18 === "string") {
-        image = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=${PHOTO_WIDTH}`;
-      }
-      for (const code of [...new Set([lang(), "en"])]) {
-        const title = entity?.sitelinks?.[`${code}wiki`]?.title;
-        if (!title) continue;
-        const summary = await wikipediaSummary(code, title).catch(() => null);
-        if (!summary) continue;
-        description = String(summary.extract);
-        wikiUrl = summary.content_urls?.desktop?.page ?? null;
-        // The lead image's thumbnail, resized — the original can be a multi-MB scan.
-        const thumb: string | undefined = summary.thumbnail?.source;
-        image = image ?? (thumb ? thumb.replace(/\/\d+px-/, `/${PHOTO_WIDTH}px-`) : summary.originalimage?.source) ?? null;
-        break;
-      }
-    }
-    const genres = (Array.isArray(full?.genres) ? full.genres : [])
-      .sort((a: any, b: any) => (b.count ?? 0) - (a.count ?? 0))
-      .slice(0, 4)
-      .map((g: any) => String(g.name));
-    return {
-      mbid: hit.id,
-      name: full?.name ?? hit.name ?? lead,
-      facts: artistFacts(full ?? hit),
-      description,
-      image,
-      wikiUrl,
-      genres,
-      wikidata: qid ?? null,
-    };
+    return artistFromOpenData(lead, [lang(), "en"], { mb, json: getJson });
   });
   // Also upgrades entries cached before photos were stored locally.
   return meta ? localizeArtistPhoto(key, meta) : null;
@@ -492,13 +361,13 @@ export async function lookupArtistPicture(name: string): Promise<ArtistPicture |
       qid = wikidataUrl?.match(/(Q\d+)$/)?.[1] ?? null;
     }
     if (!qid) return null;
-    const entity = await wikidataEntity(qid);
+    const entity = await wikidataEntity(qid, getJson);
     const p18 = entity?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
     let source: { host: string; file: string } | null = typeof p18 === "string" ? { host: "commons.wikimedia.org", file: p18 } : null;
     for (const code of source ? [] : [...new Set([lang(), "en"])]) {
       const title = entity?.sitelinks?.[`${code}wiki`]?.title;
       if (!title) continue;
-      const summary = await wikipediaSummary(code, title).catch(() => null);
+      const summary = await wikipediaSummary(code, title, getJson).catch(() => null);
       const lead: unknown = summary?.originalimage?.source ?? summary?.thumbnail?.source;
       source = typeof lead === "string" ? wikimediaFile(lead) : null;
       if (source) break;

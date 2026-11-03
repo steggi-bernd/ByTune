@@ -14,6 +14,7 @@ import { fmtTime } from "../lib/format";
 import { useArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { queueAlbum } from "../lib/album";
+import { useIsMuted } from "../stores/muted";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Album, Track } from "../types";
@@ -90,9 +91,9 @@ export function AlbumView({ albumId }: { albumId: string }) {
     if (!tracks.length) return;
     if (shuffle) {
       usePlayer.setState({ shuffle: true });
-      playQueue(tracks, Math.floor(Math.random() * tracks.length));
+      usePlayer.getState().playAll(tracks, true);
     } else {
-      playQueue(tracks, 0);
+      usePlayer.getState().playAll(tracks);
     }
   };
 
@@ -238,6 +239,7 @@ function AlbumTrackRow({ song, index, tracks }: { song: Track; index: number; tr
   const playQueue = usePlayer((s) => s.playQueue);
   const openContextMenu = useUI((s) => s.openContextMenu);
   const currentId = usePlayer((s) => s.queue[s.index]?.id ?? null);
+  const muted = useIsMuted(song.id);
   const drag = useDrag({ track: song });
   const openMenu = (x: number, y: number): void => {
     openContextMenu(x, y, trackMenuItems(song));
@@ -252,7 +254,7 @@ function AlbumTrackRow({ song, index, tracks }: { song: Track; index: number; tr
       }}
       className={`group flex items-center gap-3.5 h-[64px] px-3 rounded-lg cursor-pointer select-none ${
         currentId === song.id ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"
-      } ${drag.dragging ? "opacity-40" : ""}`}
+      } ${drag.dragging ? "opacity-40" : muted ? "opacity-60" : ""}`}
     >
       {/* An album's numbers are the sleeve's own — numbered rows, like mobile. */}
       <div className="w-7 shrink-0 grid place-items-center text-[13px] text-ink-faint tabular-nums">
@@ -276,7 +278,7 @@ function AlbumTrackRow({ song, index, tracks }: { song: Track; index: number; tr
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] text-ink-hi">
+        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${muted ? "text-red-300" : "text-ink-hi"}`}>
           {song.explicit && <ExplicitBadge />}
           <span className="truncate">{song.title}</span>
         </div>

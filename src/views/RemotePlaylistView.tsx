@@ -142,9 +142,9 @@ export function RemotePlaylistView({ playlistId }: { playlistId: string }) {
     if (!tracks.length) return;
     if (shuffle) {
       usePlayer.setState({ shuffle: true });
-      playQueue(tracks, Math.floor(Math.random() * tracks.length));
+      usePlayer.getState().playAll(tracks, true);
     } else {
-      playQueue(tracks, 0);
+      usePlayer.getState().playAll(tracks);
     }
   };
 

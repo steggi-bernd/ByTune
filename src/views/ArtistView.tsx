@@ -14,6 +14,7 @@ import { fmtTime } from "../lib/format";
 import { useArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { useLibrary } from "../stores/library";
+import { useIsMuted } from "../stores/muted";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { ArtistPageData, HomeItem, Track } from "../types";
@@ -59,6 +60,7 @@ function SongRow({ song, songs, index }: { song: Track; songs: Track[]; index: n
   const playQueue = usePlayer((s) => s.playQueue);
   const openContextMenu = useUI((s) => s.openContextMenu);
   const drag = useDrag({ track: song });
+  const muted = useIsMuted(song.id);
   const openMenu = (x: number, y: number): void => {
     openContextMenu(x, y, trackMenuItems(song));
   };
@@ -70,11 +72,11 @@ function SongRow({ song, songs, index }: { song: Track; songs: Track[]; index: n
         e.preventDefault();
         openMenu(e.clientX, e.clientY);
       }}
-      className={`group flex items-center gap-3.5 h-[64px] px-3 rounded-lg cursor-pointer select-none hover:bg-ink-hi/[0.05] ${drag.dragging ? "opacity-40" : ""}`}
+      className={`group flex items-center gap-3.5 h-[64px] px-3 rounded-lg cursor-pointer select-none hover:bg-ink-hi/[0.05] ${drag.dragging ? "opacity-40" : muted ? "opacity-60" : ""}`}
     >
       <Artwork src={song.thumb} className="w-[52px] h-[52px] rounded-lg shrink-0" iconClassName="w-4 h-4" alt="" />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] text-ink-hi">
+        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${muted ? "text-red-300" : "text-ink-hi"}`}>
           {song.explicit && <ExplicitBadge />}
           <span className="truncate">{song.title}</span>
         </div>
@@ -196,7 +198,7 @@ export function ArtistView({ artistId }: { artistId: string }) {
   const shuffle = (): void => {
     if (!top.length) return;
     usePlayer.setState({ shuffle: true });
-    playQueue(top, Math.floor(Math.random() * top.length));
+    usePlayer.getState().playAll(top, true);
   };
 
   const openMore = (x: number, y: number): void => {
@@ -290,7 +292,7 @@ export function ArtistView({ artistId }: { artistId: string }) {
               <Shuffle className="w-[18px] h-[18px]" />
             </button>
             <button
-              onClick={() => top.length && playQueue(top, 0)}
+              onClick={() => usePlayer.getState().playAll(top)}
               disabled={!top.length}
               className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-black/45 border border-white/10 text-[14.5px] font-semibold text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >

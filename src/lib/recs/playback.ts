@@ -39,7 +39,7 @@ async function playResolved(tracks: Track[], label: string): Promise<void> {
     useUI.getState().toast(`Couldn't build "${label}" right now`, "error");
     return;
   }
-  usePlayer.getState().playQueue(tracks, 0);
+  usePlayer.getState().playAll(tracks);
 }
 
 export async function playSource(source: PlaySource): Promise<void> {

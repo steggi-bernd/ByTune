@@ -26,3 +26,6 @@ export function tinted(rgb: Rgb | null, luma: number): string {
   const k = own > luma ? luma / own : 1;
   return `rgb(${Math.round(r * k)}, ${Math.round(g * k)}, ${Math.round(b * k)})`;
 }
+
+/** The same colour with nothing of it showing: what a fade ends in without passing through grey. */
+export const seeThrough = (rgb: string): string => rgb.replace("rgb(", "rgba(").replace(")", ", 0)");

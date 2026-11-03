@@ -17,6 +17,7 @@ import { fmtTime, plural } from "../lib/format";
 import { useArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { useLibrary, type Playlist } from "../stores/library";
+import { useIsMuted } from "../stores/muted";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
@@ -62,9 +63,9 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
     if (!tracks.length) return;
     if (shuffle) {
       usePlayer.setState({ shuffle: true });
-      playQueue(tracks, Math.floor(Math.random() * tracks.length));
+      usePlayer.getState().playAll(tracks, true);
     } else {
-      playQueue(tracks, 0);
+      usePlayer.getState().playAll(tracks);
     }
   };
 
@@ -210,6 +211,7 @@ function PlaylistTrackRow({
   const drag = useDrag({ track, from });
   const isCurrent = currentId === track.id;
 
+  const muted = useIsMuted(track.id);
   const openMenu = (x: number, y: number): void => {
     openContextMenu(x, y, playlistMenuItems(playlist, track, from));
   };
@@ -224,7 +226,7 @@ function PlaylistTrackRow({
       }}
       className={`group flex items-center gap-3.5 h-[64px] px-3 rounded-lg cursor-pointer select-none ${
         isCurrent ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"
-      } ${drag.dragging ? "opacity-40" : ""}`}
+      } ${drag.dragging ? "opacity-40" : muted ? "opacity-60" : ""}`}
     >
       {/* The playlist's own running order — numbered rows, play on hover. */}
       <div className="w-7 shrink-0 grid place-items-center text-[13px] text-ink-faint tabular-nums">
@@ -250,7 +252,7 @@ function PlaylistTrackRow({
       </div>
       <Artwork src={track.thumb} className="w-[52px] h-[52px] rounded-lg shrink-0" iconClassName="w-4 h-4" alt="" />
       <div className="flex-1 min-w-0">
-        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : "text-ink-hi"}`}>
+        <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : muted ? "text-red-300" : "text-ink-hi"}`}>
           {track.explicit && <ExplicitBadge />}
           <span className="truncate">{track.title}</span>
         </div>

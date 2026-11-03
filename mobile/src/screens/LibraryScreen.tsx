@@ -13,7 +13,7 @@ import { NameDialog } from "../components/PlaylistSheets";
 import { Chip, Cover, CoverGrid, EqBars } from "../components/ui";
 import { plural, type LibAlbum, type Track } from "../shared";
 import { sizeLine, useDownloads } from "../stores/downloads";
-import { useArtistPhoto, useLibrary } from "../stores/library";
+import { likedSongIds, useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { playlistTracks, usePlaylists } from "../stores/playlists";
 import { colors, PAGE_END } from "../theme";
@@ -40,6 +40,7 @@ export function LibraryScreen() {
   const [naming, setNaming] = useState(false);
   const playlists = usePlaylists((s) => s.playlists);
   const data = useLibrary((s) => s.data);
+  const byId = useLibrary((s) => s.byId);
   const albums = useLibrary((s) => s.albums);
   const artists = useLibrary((s) => s.artists);
   const mixes = useLibrary((s) => s.mixes);
@@ -80,7 +81,7 @@ export function LibraryScreen() {
     // Stable: what never played keeps its order behind the rest.
     const lastAt = (r: Row): number => (r.kind === "liked" || r.kind === "downloads" ? 0 : r.lastAt);
     rest.sort((a, b) => lastAt(b) - lastAt(a));
-    const liked: Row[] = filter === "albums" || filter === "artists" ? [] : [{ kind: "liked", key: "liked", count: data.favorites.length }];
+    const liked: Row[] = filter === "albums" || filter === "artists" ? [] : [{ kind: "liked", key: "liked", count: likedSongIds(data.favorites, byId).length }];
     const keptSongs = Object.values(kept);
     const downloads: Row[] =
       liked.length && (keptSongs.length || loadingCount)

@@ -6,17 +6,19 @@
  */
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Check, Pause, Play } from "lucide-react-native";
+import { Check, Pause, Play, Speaker, Tv } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, BackHandler, Modal, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, BackHandler, Easing, Modal, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
-import { tinted } from "../color";
-import type { QualityMode } from "../quality";
-import { leadArtist, type Track } from "../shared";
-import { useCoverColor } from "../stores/library";
+import { seeThrough, tinted } from "../color";
+import { albumKeyOf } from "../playingFrom";
+import { playingNow, type QualityMode } from "../quality";
+import { describePlayback, formatLine, leadArtist, type Track } from "../shared";
+import { useCoverColor, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { usePlaylists } from "../stores/playlists";
-import { colors, MINI_PLAYER_HEIGHT, TAB_BAR_HEIGHT } from "../theme";
+import { useZones } from "../stores/zones";
+import { colors, MINI_PLAYER_HEIGHT, qualityColors, TAB_BAR_HEIGHT } from "../theme";
 import { PlayerPage } from "./PlayerPage";
 import { useDownloadAction } from "./SongMenu";
 import { TrackStrip, useTrackSwipe } from "./TrackStrip";
@@ -27,7 +29,7 @@ const SPRING = { stiffness: 300, damping: 34, mass: 1, overshootClamping: true, 
 const MINI_MARGIN = 8;
 const MINI_COVER = 40;
 const MINI_ROW = 56;
-const MINI_BUTTON_ROOM = 48;
+const MINI_BUTTON_ROOM = 88;
 /** How much of the cards shows under the player's page. */
 const PEEK = 32;
 const COVER_SIDE = 23;
@@ -36,13 +38,21 @@ const COVER_RADIUS = 8;
 const MINI_RADIUS = 4;
 
 const QUALITIES: { mode: QualityMode; title: string; line: string }[] = [
-  { mode: "auto", title: "Automatic", line: "The best your connection carries, on mobile data up to 320 kbps" },
+  { mode: "auto", title: "Automatic", line: "The best your connection carries, on mobile data up to AAC 256 kbps" },
   { mode: "original", title: "Original", line: "Always the file itself, nothing converted" },
   { mode: "compact", title: "Compact", line: "A small copy (128 kbps) that saves data" },
 ];
 
 /** Past the end of the page the finger pulls against a spring. */
 const pageAt = (y: number, max: number): number => (y >= 0 ? 0 : y < -max ? -max + (y + max) * 0.3 : y);
+
+/** How far a flick carries the page, per unit of its speed; so much that a good one crosses a screen. */
+const FLICK_CARRIES_MS = 330;
+/** This close under the top it may as well be at the top. */
+const PAGE_TOP_SNAP = 28;
+/** How tall Android's gesture area at the bottom is at least, when the insets don't say. */
+const MIN_GESTURE_EDGE = 24;
+const GESTURE_EDGE_MARGIN = 8;
 
 function MiniProgress() {
   const part = usePlayer((s) => (s.durationMs > 0 ? Math.min(1, s.positionMs / s.durationMs) : 0));
@@ -57,6 +67,10 @@ function MiniPlayer({ width, onOpen }: { width: number; onOpen: () => void }) {
   const track = usePlayer((s) => s.queue[s.index]);
   const playWhenReady = usePlayer((s) => s.playWhenReady);
   const toggle = usePlayer((s) => s.toggle);
+  const remote = usePlayer((s) => s.remote);
+  const device = usePlayer((s) => s.device);
+  const elsewhere = device?.name ?? remote?.name;
+  const nav = useNavigation<any>();
   const color = useCoverColor(track?.thumb);
   const stripWidth = width - MINI_MARGIN * 2 - MINI_BUTTON_ROOM;
   const swipe = useTrackSwipe(stripWidth);
@@ -72,14 +86,17 @@ function MiniPlayer({ width, onOpen }: { width: number; onOpen: () => void }) {
                   <Text numberOfLines={1} style={styles.miniTitle}>
                     {t.title}
                   </Text>
-                  <Text numberOfLines={1} style={styles.miniArtist}>
-                    {t.artist}
+                  <Text numberOfLines={1} style={[styles.miniArtist, !!elsewhere && styles.miniElsewhere]}>
+                    {elsewhere ? `On ${elsewhere} · ${t.artist}` : t.artist}
                   </Text>
                 </View>
               </Pressable>
             )}
           </TrackStrip>
         </View>
+        <Pressable onPress={() => nav.navigate("Devices")} style={styles.miniDevices} accessibilityLabel="Devices">
+          {device?.tv ? <Tv size={21} color={elsewhere ? colors.accent : colors.ink} /> : <Speaker size={21} color={elsewhere ? colors.accent : colors.ink} />}
+        </Pressable>
         <Pressable onPress={toggle} style={styles.miniButton} accessibilityLabel={playWhenReady ? "Pause" : "Play"}>
           {playWhenReady ? <Pause size={24} color={colors.ink} fill={colors.ink} /> : <Play size={24} color={colors.ink} fill={colors.ink} />}
         </Pressable>
@@ -108,31 +125,69 @@ export function PlayerSheet({
   const hasTrack = !!track;
   const color = useCoverColor(track?.thumb);
   const pageY = useRef(new Animated.Value(0, { useNativeDriver: true })).current;
+  const settleRef = useRef<((open: boolean) => void) | null>(null);
   const [coverArea, setCoverArea] = useState({ y: insets.top + 46, height: width });
   const [menu, setMenu] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const quality = usePlayer((s) => s.quality);
   const setQuality = usePlayer((s) => s.setQuality);
   const audio = usePlayer((s) => s.audio);
+  const stream = usePlayer((s) => s.stream);
+  const muted = useLibrary((s) => !!track && s.muted.has(track.id));
   const download = useDownloadAction(track);
 
   const collapsedY = height - TAB_BAR_HEIGHT - insets.bottom - MINI_PLAYER_HEIGHT;
-  const geometry = useRef({ travel: height, pageMax: 0 });
+  const geometry = useRef({ travel: height, pageMax: 0, gestureEdge: height });
   geometry.current.travel = height;
+  // Along the bottom edge starts Android's own gesture: a touch from there is none of the player's business.
+  geometry.current.gestureEdge = height - Math.max(insets.bottom, MIN_GESTURE_EDGE) - GESTURE_EDGE_MARGIN;
   const isOpen = useRef(false);
   /** where the page came to rest: at the top, or down at the cards */
   const pageRest = useRef(0);
   const from = useRef({ sheet: 0, page: 0 });
+  /** A flick still under way. */
+  const gliding = useRef<{ from: number; to: number; at: number; ms: number } | null>(null);
   /** How far the finger had come when the drag was recognised: the gesture counts from zero after that. */
   const caught = useRef(0);
 
   const settlePage = useCallback(
     (to: number, velocity = 0) => {
       pageRest.current = to;
+      gliding.current = null;
       Animated.spring(pageY, { ...SPRING, toValue: to, velocity }).start();
     },
     [pageY]
   );
+
+  /** The page scrolls freely: a flick goes on and slows down, at the speed the finger left it, and stops at either end. */
+  const glidePage = useCallback(
+    (y: number, vy: number) => {
+      const { pageMax } = geometry.current;
+      const at = pageAt(y, pageMax);
+      const ahead = Math.max(-pageMax, Math.min(0, at + vy * FLICK_CARRIES_MS));
+      const to = ahead > -PAGE_TOP_SNAP ? 0 : ahead;
+      // Easing out by this curve starts at three times the average speed.
+      const ms = Math.max(180, Math.min(1000, (3 * Math.abs(to - at)) / Math.max(0.3, Math.abs(vy))));
+      pageRest.current = to;
+      gliding.current = { from: at, to, at: Date.now(), ms };
+      Animated.timing(pageY, { toValue: to, duration: ms, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    },
+    [pageY]
+  );
+
+  /** Where the page stands this moment, flick or not: the native side's own answer only comes with the next move. */
+  const pageNow = useCallback((): number => {
+    const glide = gliding.current;
+    if (!glide) return pageRest.current;
+    const part = Math.min(1, (Date.now() - glide.at) / glide.ms);
+    return glide.from + (glide.to - glide.from) * (1 - (1 - part) ** 3);
+  }, []);
+
+  // Choosing music for a device: down with the page, so there's something to choose from.
+  const picking = useZones((s) => !!s.pickingFor);
+  useEffect(() => {
+    if (picking) settleRef.current?.(false);
+  }, [picking]);
 
   const settle = useCallback(
     (open: boolean, velocity = 0) => {
@@ -143,18 +198,21 @@ export function PlayerSheet({
     },
     [progress, setExpanded, settlePage]
   );
+  settleRef.current = settle;
 
   const pan = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_, g) => {
           caught.current = g.dy;
+          if (g.moveY - g.dy >= geometry.current.gestureEdge) return false;
           if (Math.abs(g.dy) <= 10 || Math.abs(g.dy) <= Math.abs(g.dx) * 1.5) return false;
           return isOpen.current || g.dy < 0;
         },
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
-          from.current = { sheet: isOpen.current ? 1 : 0, page: pageRest.current };
+          from.current = { sheet: isOpen.current ? 1 : 0, page: pageNow() };
+          gliding.current = null;
           // Caught on its way: from wherever it is now.
           progress.stopAnimation((value) => (from.current.sheet = value));
           pageY.stopAnimation((value) => (from.current.page = value));
@@ -173,21 +231,24 @@ export function PlayerSheet({
           pageY.setValue(pageAt((1 - sheet) * travel, pageMax));
         },
         onPanResponderRelease: (_, g) => {
-          const { travel, pageMax } = geometry.current;
+          const { travel } = geometry.current;
           const dy = caught.current + g.dy;
           const sheet = from.current.sheet - dy / travel;
           if (from.current.page < -0.5 || sheet > 1) {
-            const y = from.current.page < -0.5 ? from.current.page + dy : (1 - sheet) * travel;
-            settlePage(y + g.vy * 200 < -pageMax / 2 ? -pageMax : 0, g.vy * 1000);
+            glidePage(from.current.page < -0.5 ? from.current.page + dy : (1 - sheet) * travel, g.vy);
             return;
           }
           // Where the finger was headed a moment on: a flick counts like a long drag.
           const ahead = sheet - (g.vy * 200) / travel;
           settle(ahead > (isOpen.current ? 0.8 : 0.2), (-g.vy * 1000) / travel);
         },
-        onPanResponderTerminate: () => settle(isOpen.current),
+        // Android took the touch over: everything back where it rested, or the next drag would only bring the page home.
+        onPanResponderTerminate: () => {
+          settle(isOpen.current);
+          if (isOpen.current) settlePage(pageRest.current);
+        },
       }),
-    [pageY, progress, settle, settlePage]
+    [glidePage, pageNow, pageY, progress, settle, settlePage]
   );
 
   const swipe = useTrackSwipe(width);
@@ -234,7 +295,10 @@ export function PlayerSheet({
   );
 
   if (!track) return null;
-  const albumKey = track.albumId ? decodeURIComponent(track.albumId.replace("lib:album:", "")) : null;
+  const albumKey = albumKeyOf(track);
+  const format = describePlayback(track);
+  const playing = playingNow(stream, format);
+  const isTheFile = stream.kind === "original" || (stream.kind === "download" && !stream.compact);
 
   return (
     <>
@@ -266,6 +330,8 @@ export function PlayerSheet({
               onClose={close}
               onMenu={() => setMenu(true)}
               onQuality={() => setQualityOpen(true)}
+              onContext={(page) => openPage(page.screen, page.params)}
+              onAlbum={(key) => openPage("Album", { albumKey: key })}
               onArtist={(t) => openPage("Artist", { name: leadArtist(t.artist) })}
               onCoverArea={(y, h) => setCoverArea((a) => (a.y === y && a.height === h ? a : { y, height: h }))}
               onCardsHeight={(h) => {
@@ -283,6 +349,14 @@ export function PlayerSheet({
           >
             <TrackStrip width={width}>{renderCover}</TrackStrip>
           </Animated.View>
+
+          {/* What scrolls up fades out before the clock and the battery. */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={[tinted(color, 0.24), tinted(color, 0.24), seeThrough(tinted(color, 0.24))]}
+            locations={[0, 0.7, 1]}
+            style={[styles.statusFade, { height: insets.top + 16 }]}
+          />
         </Animated.View>
       </View>
 
@@ -318,6 +392,15 @@ export function PlayerSheet({
             >
               <Text style={styles.menuText}>Quality: {QUALITIES.find((q) => q.mode === quality)?.title}</Text>
             </Pressable>
+            <Pressable
+              style={styles.menuRow}
+              onPress={() => {
+                setMenu(false);
+                useLibrary.getState().toggleMuted(track);
+              }}
+            >
+              <Text style={styles.menuText}>{muted ? "Play again (unmute)" : "Mute song"}</Text>
+            </Pressable>
             {!!track.album && !!albumKey && (
               <Pressable style={styles.menuRow} onPress={() => openPage("Album", { albumKey })}>
                 <Text style={styles.menuText}>Go to album</Text>
@@ -334,6 +417,11 @@ export function PlayerSheet({
         <Pressable style={styles.menuBack} onPress={() => setQualityOpen(false)}>
           <View style={[styles.menu, { paddingBottom: insets.bottom + 10 }]}>
             <Text style={styles.menuHeading}>Quality</Text>
+            {!!playing && (
+              <Text style={[styles.playingLine, { color: qualityColors[playing.tier] }]}>
+                Playing now: {isTheFile && format ? `${format.hiRes ? "Hi-Res " : ""}${formatLine(format)}` : playing.text}
+              </Text>
+            )}
             {QUALITIES.map((q) => (
               <Pressable
                 key={q.mode}
@@ -363,6 +451,7 @@ const styles = StyleSheet.create({
   back: { ...StyleSheet.absoluteFill, backgroundColor: "#121212" },
   page: { position: "absolute", left: 0, right: 0, top: 0 },
   bigCover: { position: "absolute", left: 0, right: 0, overflow: "hidden" },
+  statusFade: { position: "absolute", left: 0, right: 0, top: 0 },
   coverPage: { flex: 1, alignItems: "center" },
   miniLayer: { position: "absolute", left: 0, right: 0 },
   mini: { marginHorizontal: MINI_MARGIN, borderRadius: 8, overflow: "hidden" },
@@ -372,6 +461,8 @@ const styles = StyleSheet.create({
   miniText: { flex: 1, minWidth: 0, paddingRight: 8 },
   miniTitle: { color: colors.ink, fontSize: 13.5, fontWeight: "600" },
   miniArtist: { color: "rgba(255,255,255,0.78)", fontSize: 12.5, marginTop: 2 },
+  miniElsewhere: { color: colors.accent, fontWeight: "600" },
+  miniDevices: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },
   miniButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   progressTrack: { height: 2, marginHorizontal: 8, backgroundColor: "rgba(255,255,255,0.25)" },
   progressFill: { height: 2, backgroundColor: colors.ink },
@@ -380,6 +471,7 @@ const styles = StyleSheet.create({
   menuRow: { height: 52, justifyContent: "center", paddingHorizontal: 20 },
   menuText: { color: colors.ink, fontSize: 16 },
   menuHeading: { color: colors.ink, fontSize: 18, fontWeight: "700", paddingHorizontal: 20, paddingTop: 6, paddingBottom: 8 },
+  playingLine: { fontSize: 13, fontWeight: "600", paddingHorizontal: 20, paddingBottom: 6 },
   qualityRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 62, paddingHorizontal: 20 },
   qualityText: { flex: 1, minWidth: 0 },
   qualityLine: { color: colors.dim, fontSize: 13, marginTop: 2 },

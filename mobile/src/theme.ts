@@ -14,6 +14,16 @@ export const colors = {
   onAccent: "#120B24",
   hiRes: "#E7C67B",
   onHiRes: "#1B1204",
+  mutedSong: "#E8A0A0",
+};
+
+/** What's playing, in signal colours: gold for lossless, down to red for what you can hear is small. */
+export const qualityColors = {
+  lossless: colors.hiRes,
+  high: "#7FD68E",
+  good: "#B7D36B",
+  low: "#F0A05A",
+  poor: "#EF7064",
 };
 
 /** What floats over the bottom of a page: the mini player and the tab bar. */

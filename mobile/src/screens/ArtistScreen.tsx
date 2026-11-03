@@ -11,7 +11,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Card, CARD_SIZE, Cover, Shelf, TrackRow, picture } from "../components/ui";
 import { artistAlbums, artistTracks, byPlays, likedAmong, plural, RELEASE_LABEL, type LibAlbum, type Track } from "../shared";
-import { useArtistPhoto, useLibrary } from "../stores/library";
+import { likedSongIds, useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors, PAGE_END } from "../theme";
 
@@ -20,7 +20,7 @@ export function useLiked(songs: Track[]): Track[] {
   const favorites = useLibrary((s) => s.data.favorites);
   const byId = useLibrary((s) => s.byId);
   return useMemo(() => {
-    const liked = favorites.map((id) => byId.get(id)).filter((t): t is Track => !!t);
+    const liked = likedSongIds(favorites, byId).map((id) => byId.get(id)).filter((t): t is Track => !!t);
     return likedAmong(songs, liked, (id) => id);
   }, [songs, favorites, byId]);
 }
@@ -87,14 +87,14 @@ export function ArtistScreen() {
         </Text>
         <Pressable
           accessibilityLabel="Shuffle"
-          onPress={() => playTracks(songs, Math.floor(Math.random() * songs.length), name, true)}
+          onPress={() => usePlayer.getState().playAll(songs, name, true)}
           style={styles.shuffle}
         >
           <Shuffle size={24} color={colors.ink} />
         </Pressable>
         <Pressable
           accessibilityLabel={pause ? "Pause" : `Play ${name}`}
-          onPress={() => (playingHere ? toggle() : playTracks(popular, 0, name, false))}
+          onPress={() => (playingHere ? toggle() : usePlayer.getState().playAll(popular, name))}
           style={styles.play}
         >
           {pause ? <Pause size={24} color={colors.base} fill={colors.base} /> : <Play size={24} color={colors.base} fill={colors.base} />}
@@ -110,6 +110,7 @@ export function ArtistScreen() {
             track={t}
             number={i + 1}
             subtitle={plays ? plural(plays, "play", "plays") : t.artist}
+            list={{ tracks: popular, name }}
             onPress={() => playTracks(popular, i, name, false)}
           />
         );

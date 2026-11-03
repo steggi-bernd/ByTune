@@ -319,7 +319,7 @@ test("a whole session: find, connect, play a file and a server song, steer, the 
     `HTTP/1.1 200 OK\r\nLOCATION: http://8.8.8.8/desc.xml\r\n\r\n`, // never followed
   ];
   const devices = await cast.findDevices();
-  assert.deepEqual(devices, [{ id: UDN, name: "Living Room & Kitchen", model: "Acme Streamer 2" }]);
+  assert.deepEqual(devices, [{ id: UDN, name: "Living Room & Kitchen", model: "Acme Streamer 2", kind: "upnp" }]);
   assert.match(globalThis.__ssdp.sent[0].text, /^M-SEARCH \* HTTP\/1\.1\r\n/);
   assert.equal(globalThis.__ssdp.sent[0].address, "239.255.255.250");
   assert.equal(globalThis.__ssdp.sent[0].port, 1900);

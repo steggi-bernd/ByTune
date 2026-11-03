@@ -100,8 +100,8 @@ export interface UIState {
   pendingScroll: number | null;
   searchQuery: string;
   searchFilter: SearchFilter;
-  /** Right panel mode: song details (default) or the Queue sheet. */
-  rightPanel: "details" | "queue";
+  /** Right panel mode: song details (default), the Queue sheet or the devices. */
+  rightPanel: "details" | "queue" | "devices";
   /** Synced lyrics rendered in the centre pane over the current view. */
   lyricsCenter: boolean;
   nowPlayingOpen: boolean;
@@ -205,7 +205,7 @@ export const useUI = create<UIState>((set, get) => ({
   pendingScroll: null,
   searchQuery: "",
   searchFilter: "all",
-  rightPanel: "details" as "details" | "queue",
+  rightPanel: "details" as "details" | "queue" | "devices",
   lyricsCenter: false,
   nowPlayingOpen: false,
   osFullscreen: false,

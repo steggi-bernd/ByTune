@@ -80,14 +80,14 @@ export function AlbumScreen() {
             <DownloadButton tracks={album.tracks} style={styles.download} />
             <Pressable
               accessibilityLabel="Shuffle"
-              onPress={() => playTracks(album.tracks, Math.floor(Math.random() * album.tracks.length), album.title, true)}
+              onPress={() => usePlayer.getState().playAll(album.tracks, album.title, true)}
               style={styles.shuffle}
             >
               <Shuffle size={24} color={colors.ink} />
             </Pressable>
             <Pressable
               accessibilityLabel={pause ? "Pause" : "Play"}
-              onPress={() => (playingHere ? toggle() : playTracks(album.tracks, 0, album.title, false))}
+              onPress={() => (playingHere ? toggle() : usePlayer.getState().playAll(album.tracks, album.title))}
               style={styles.play}
             >
               {pause ? <Pause size={24} color={colors.base} fill={colors.base} /> : <Play size={24} color={colors.base} fill={colors.base} />}
@@ -96,7 +96,7 @@ export function AlbumScreen() {
         </View>
       }
       renderItem={({ item, index }) => (
-        <TrackRow track={item} showCover={false} onPress={() => playTracks(album.tracks, index, album.title, false)} />
+        <TrackRow track={item} showCover={false} list={{ tracks: album.tracks, name: album.title }} onPress={() => playTracks(album.tracks, index, album.title, false)} />
       )}
     />
   );

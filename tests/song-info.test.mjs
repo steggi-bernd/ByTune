@@ -105,6 +105,20 @@ test("only an artist of exactly that name counts; Genius's stand-in pictures are
   assert.equal(info.artistFromGenius(undefined, "Solo"), null);
 });
 
+test("a hit that only shares the title isn't this artist's song: nothing is told about it, and that's remembered", async () => {
+  globalThis.__find = async () => ({ id: 4242, url: "https://genius.com/y" });
+  globalThis.__get = async () => JSON.stringify({ response: { song: { ...SONG, artist_names: "Another Band" } } });
+  assert.equal(await info.songInfo("Saltwater", "Lumen Harbor"), null);
+  assert.equal(await info.songInfo("Saltwater", "Lumen Harbor"), null);
+  assert.equal(globalThis.__asked.filter((a) => a[0] === "find").length, 1);
+  // A feature is still the artist's song, spelled however the tags spell it.
+  assert.equal(info.songIsBy({ artist_names: "Daft Punk (Ft. Pharrell Williams)" }, "daft punk"), true);
+  assert.equal(info.songIsBy({ primary_artist: { name: "Beyoncé" } }, "Beyonce"), true);
+  assert.equal(info.songIsBy({ artist_names: "Another Band" }, "Daft Punk"), false);
+  // Nobody credited: no reason to doubt the search.
+  assert.equal(info.songIsBy({}, "Daft Punk"), true);
+});
+
 test("names match across case, accents, '&' and any script", () => {
   assert.equal(info.sameName("Beyoncé", "BEYONCE"), true);
   assert.equal(info.sameName("Simon & Garfunkel", "Simon and Garfunkel"), true);

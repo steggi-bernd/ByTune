@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -25,6 +26,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import kotlin.concurrent.thread
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -39,6 +41,7 @@ class QueueItem : Record {
 }
 
 private const val TICK_MS = 500L
+private const val ZONE_TICK_MS = 1000L
 
 /**
  * The player as JavaScript sees it: commands in, one state event out. The
@@ -52,6 +55,16 @@ class Media3PlayerModule : Module() {
   private var networkWatch: ConnectivityManager.NetworkCallback? = null
   private var lastNetwork: Network? = null
   private var lastNetworkState: Map<String, Boolean>? = null
+  private var output: SoundOutput? = null
+  private var sockets: LanSockets? = null
+
+  /** Timers in JavaScript stand still in the background; native events still arrive, and the zones need their once a second. */
+  private val zoneTick = object : Runnable {
+    override fun run() {
+      sendEvent("onZoneTick", emptyMap<String, Any>())
+      main.postDelayed(this, ZONE_TICK_MS)
+    }
+  }
 
   private val tick = object : Runnable {
     override fun run() {
@@ -173,13 +186,25 @@ class Media3PlayerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Media3Player")
 
-    Events("onState", "onError", "onNetwork")
+    Events("onState", "onError", "onNetwork", "onOutput", "onSocket", "onZoneTick", "onZoneControl")
 
     OnCreate {
       watchNetwork()
+      appContext.reactContext?.let { reactContext ->
+        output = SoundOutput(reactContext) { now -> sendEvent("onOutput", now) }.also { watch -> main.post { watch.start() } }
+        sockets = LanSockets(reactContext) { news -> sendEvent("onSocket", news) }
+        ZoneKeepAliveService.controls = { action -> sendEvent("onZoneControl", mapOf("action" to action)) }
+      }
     }
 
     OnDestroy {
+      output?.stop()
+      output = null
+      sockets?.closeAll()
+      sockets = null
+      main.removeCallbacks(zoneTick)
+      ZoneKeepAliveService.controls = null
+      appContext.reactContext?.let { ZoneKeepAliveService.hide(it) }
       main.removeCallbacks(tick)
       controllerFuture?.let { MediaController.releaseFuture(it) }
       controllerFuture = null
@@ -217,6 +242,52 @@ class Media3PlayerModule : Module() {
       val manager = (appContext.reactContext as Context).getSystemService(ConnectivityManager::class.java)
       networkState(manager.getNetworkCapabilities(manager.activeNetwork))
     }
+
+    AsyncFunction("getOutput") {
+      output?.current() ?: mapOf("kind" to "phone", "name" to "")
+    }
+
+    AsyncFunction("chooseOutput") {
+      output?.choose()
+    }.runOnQueue(Queues.MAIN)
+
+    /** One question to the local network and all its answers within the time; null without such a network. */
+    AsyncFunction("netAsk") { address: String, port: Int, question: String, waitMs: Int, promise: Promise ->
+      thread(isDaemon = true) {
+        runCatching { LocalNet.ask(context, address, port, Base64.decode(question, Base64.NO_WRAP), waitMs) }
+          .onSuccess { promise.resolve(it) }
+          .onFailure { promise.reject("ERR_LOCAL_NET", it.message ?: "Couldn't look around the network", it) }
+      }
+    }
+
+    AsyncFunction("socketOpen") { host: String, port: Int, promise: Promise ->
+      thread(isDaemon = true) {
+        runCatching { sockets?.connect(host, port) ?: error("The app is closing") }
+          .onSuccess { promise.resolve(it) }
+          .onFailure { promise.reject("ERR_SOCKET", it.message ?: "The device doesn't answer", it) }
+      }
+    }
+
+    AsyncFunction("socketWrite") { id: Int, data: String ->
+      sockets?.write(id, Base64.decode(data, Base64.NO_WRAP))
+    }
+
+    AsyncFunction("socketClose") { id: Int ->
+      sockets?.close(id)
+    }
+
+    /** While devices on the network play: the once a second, and with `keepAwake` the notification that keeps the app running. */
+    AsyncFunction("zonesWatch") { ticking: Boolean, keepAwake: Boolean, title: String, text: String, playing: Boolean, volume: Int ->
+      main.removeCallbacks(zoneTick)
+      if (ticking) main.postDelayed(zoneTick, ZONE_TICK_MS)
+      if (keepAwake) ZoneKeepAliveService.show(context, title, text, playing, volume)
+      else ZoneKeepAliveService.hide(context)
+    }.runOnQueue(Queues.MAIN)
+
+    /** What a gesture feels like: "arm", "charge", "charged", "commit" or "cancel". */
+    AsyncFunction("haptic") { kind: String ->
+      Haptics.play(context, kind)
+    }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("downloadStart") { url: String, headers: Map<String, String>, fileName: String, wifiOnly: Boolean ->
       SongDownloads.start(context, url, headers, fileName, wifiOnly).toDouble()
@@ -273,6 +344,10 @@ class Media3PlayerModule : Module() {
 
     AsyncFunction("addItems") { items: List<QueueItem> ->
       withPlayer { player -> player.addMediaItems(items.map { it.toMediaItem() }) }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("insertItems") { at: Int, items: List<QueueItem> ->
+      withPlayer { player -> player.addMediaItems(at, items.map { it.toMediaItem() }) }
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("removeItem") { index: Int ->

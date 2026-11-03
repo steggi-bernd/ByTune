@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { recordDeletionChanges } from "../.test-build/deletion-sync.mjs";
-import { likedInOrder, mergePlaylistDocs, sameDoc, sameLikes, songFinder, toPlaylistDoc, toWireTrack, withSyncedDeletions } from "../.test-build/playlistSync.mjs";
+import { likedInOrder, oneCopyEach, mergePlaylistDocs, sameDoc, sameLikes, songFinder, toPlaylistDoc, toWireTrack, withSyncedDeletions } from "../.test-build/playlistSync.mjs";
 
 const song = (id, extra = {}) => ({ id, title: `Song ${id}`, artist: "Band", album: "Album", duration: 200, thumb: "jfart://x", ...extra });
 const ids = (doc, playlist = "p") => doc.playlists.find((p) => p.id === playlist)?.tracks.map((t) => t.id);
@@ -201,4 +201,18 @@ test("two orders are the same when their songs stand the same", () => {
   assert.ok(sameLikes(a, [song("1"), song("2")].map(toWireTrack)));
   assert.ok(!sameLikes(a, [song("2"), song("1")].map(toWireTrack)));
   assert.ok(!sameLikes(a, a.slice(0, 1)));
+});
+
+test("a second copy of a song in the arranged order is no new like: it stands with its song and shows once", () => {
+  const a = { id: "jf:a", title: "Phantom Liberty", artist: "Dawid Podsiadło", album: "Score", duration: 347, thumb: "" };
+  const b = { id: "jf:b", title: "Phantom Liberty", artist: "Dawid Podsiadło, P.T. Adamczyk", album: "Score", duration: 347, thumb: "" };
+  const other = { id: "jf:c", title: "Quiet Dive", artist: "Øneheart", album: "Atomic Heart", duration: 195, thumb: "" };
+  const first = { id: "jf:d", title: "First", artist: "Someone", album: "One", duration: 100, thumb: "" };
+  const library = [a, b, other, first];
+  const byId = new Map(library.map((t) => [t.id, t]));
+  const order = [first, a].map(toWireTrack);
+  const list = likedInOrder(["jf:b", "jf:c", "jf:d", "jf:a"], order, songFinder(library), (id) => byId.get(id));
+  // What the order doesn't know stays on top; the other copy doesn't count as such.
+  assert.deepEqual(list, ["jf:c", "jf:d", "jf:a", "jf:b"]);
+  assert.deepEqual(oneCopyEach(list, (id) => byId.get(id)), ["jf:c", "jf:d", "jf:a"]);
 });

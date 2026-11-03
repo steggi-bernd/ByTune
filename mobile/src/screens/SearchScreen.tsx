@@ -91,7 +91,7 @@ export function SearchScreen() {
               {none && <Text style={styles.none}>Nothing in your library matches “{q}”.</Text>}
             </View>
           }
-          renderItem={({ item, index }) => <TrackRow track={item} onPress={() => playTracks(results.songs, index, "Search")} />}
+          renderItem={({ item, index }) => <TrackRow track={item} list={{ tracks: results.songs, name: "Search" }} onPress={() => playTracks(results.songs, index, "Search")} />}
         />
       ) : (
         <ExploreList />

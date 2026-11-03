@@ -10,7 +10,7 @@
  * history. Pausing or stopping on the player itself is followed here too.
  */
 import { create } from "zustand";
-import type { CastStatus } from "../../electron/cast";
+import type { CastMember, CastStatus } from "../../electron/cast";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
@@ -23,6 +23,8 @@ export interface CastDevice {
   id: string;
   name: string;
   model: string;
+  /** "echo" and "firetv" are listed but can't be sent music */
+  kind: "upnp" | "cast" | "echo" | "firetv";
 }
 
 interface CastState {
@@ -36,6 +38,8 @@ interface CastState {
   /** the player's volume 0–1; null when it can't be set from here */
   volume: number | null;
   muted: boolean;
+  /** everyone playing along, each with their own volume; the first is `active` */
+  members: CastMember[];
 }
 
 export const useCast = create<CastState>(() => ({
@@ -45,6 +49,7 @@ export const useCast = create<CastState>(() => ({
   connecting: null,
   volume: null,
   muted: false,
+  members: [],
 }));
 
 /** Copies a player can be handed: files here and songs on Jellyfin/Navidrome (cast.ts streams them). */
@@ -102,7 +107,7 @@ async function send(track: Track, position: number, play: boolean): Promise<void
     sent = { queueId: track.id, versionId: version.id };
     try {
       await requireBridge().castLoad(
-        { id: version.id, title: track.title, artist: track.artist, album: track.album ?? "", duration: track.duration },
+        { id: version.id, title: track.title, artist: track.artist, album: track.album ?? "", duration: track.duration, art: track.thumb },
         position,
         play
       );
@@ -152,9 +157,12 @@ function follow(state: ReturnType<typeof usePlayer.getState>, prev: ReturnType<t
 }
 
 function onStatus(st: CastStatus): void {
+  // The others are zones with a queue of their own (lib/zones.ts).
+  if ((st.session ?? "main") !== "main") return;
   const cast = useCast.getState();
   if (!cast.active || !st.device || st.device.id !== cast.active.id) return;
   if (st.volume !== cast.volume || st.muted !== cast.muted) useCast.setState({ volume: st.volume, muted: st.muted });
+  if (st.members && JSON.stringify(st.members) !== JSON.stringify(cast.members)) useCast.setState({ members: st.members });
   if (st.message) {
     if (++unanswered === LOST_AFTER) {
       toast(`${cast.active.name} stopped answering — the music is back on this computer, paused`, "error");
@@ -230,7 +238,7 @@ export async function castTo(device: CastDevice): Promise<void> {
     deviceState = "idle";
     unanswered = 0;
     sent = null;
-    useCast.setState({ active: status.device, volume: status.volume, muted: status.muted, connecting: null });
+    useCast.setState({ active: status.device, volume: status.volume, muted: status.muted, members: status.members ?? [], connecting: null });
     handOverToCast(follow);
     const s = usePlayer.getState();
     const cur = s.queue[s.index];
@@ -252,12 +260,42 @@ export async function stopCasting(keepPlaying = true): Promise<void> {
   sent = null;
   loadSeq += 1;
   startingSince = null;
-  useCast.setState({ active: null, volume: null, muted: false });
+  useCast.setState({ active: null, volume: null, muted: false, members: [] });
   await requireBridge()
     .castStop()
     .catch(() => undefined);
   if (!keepPlaying) usePlayer.getState().setPlaying(false);
   takeBackFromCast();
+}
+
+/** Another player plays along with the one that has the music; with none yet, it simply takes the music. */
+export async function joinCast(device: CastDevice): Promise<void> {
+  const cast = useCast.getState();
+  if (!cast.active) return castTo(device);
+  useCast.setState({ connecting: device.id });
+  try {
+    await requireBridge().castJoin("main", device.id);
+    toast(`${device.name} plays along`);
+  } catch (err) {
+    toast(ipcErrorText(err, `${device.name} can't play along`), "error");
+  } finally {
+    useCast.setState({ connecting: null });
+  }
+}
+
+/** A player stops playing along; the last one to go means the music comes back here. */
+export async function leaveCast(deviceId: string): Promise<void> {
+  const cast = useCast.getState();
+  if (cast.active?.id === deviceId && cast.members.length <= 1) return stopCasting();
+  const left = await requireBridge().castLeave("main", deviceId).catch(() => true);
+  if (!left) await stopCasting();
+}
+
+/** One player's own volume in a group. */
+export function setMemberVolume(deviceId: string, v: number): void {
+  const value = Math.min(1, Math.max(0, v));
+  useCast.setState({ members: useCast.getState().members.map((m) => (m.id === deviceId ? { ...m, volume: value } : m)) });
+  void requireBridge().castControl("volume", value, "main", deviceId).catch(() => undefined);
 }
 
 let volumeBusy = false;

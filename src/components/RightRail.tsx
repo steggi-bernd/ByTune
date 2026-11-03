@@ -25,6 +25,7 @@ import { useArtistAbout } from "../lib/artistAbout";
 import { useArtistImages, useSongInfo } from "../lib/songInfo";
 import { isLibraryTrack, leadArtist } from "../lib/libraryTracks";
 import { ArtistLinks } from "./ArtistLinks";
+import { DevicesPanel } from "./DevicesPanel";
 import { useLibrary } from "../stores/library";
 import { useSettings } from "../stores/settings";
 import { soundOf, useSound } from "../stores/sound";
@@ -805,7 +806,7 @@ export function RightRail() {
         />
       </div>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-[inherit]">
-        {mode === "queue" ? <QueuePanel onClose={closeQueue} /> : <DetailsBody />}
+        {mode === "queue" ? <QueuePanel onClose={closeQueue} /> : mode === "devices" ? <DevicesPanel onClose={closeQueue} /> : <DetailsBody />}
       </div>
     </aside>
   );

@@ -9,9 +9,10 @@ import { authHeader } from "./jellyfin";
 import { createSyncEngine, defaultSyncAddress, toPlaylistDoc, type SyncEngine, type SyncStatus } from "./shared";
 import { readJson, writeJson } from "./storage";
 import { useConnection } from "./stores/connection";
-import { useLibrary } from "./stores/library";
-import { adoptPlayback, onPlaybackActivity, playbackNote, wantsPlayback } from "./stores/player";
+import { onLikesSent, useLibrary } from "./stores/library";
+import { adoptPlayback, hearDevices, linkDevices, onPlaybackActivity, phonePresence, playbackNote, runCommand, wantsPlayback } from "./stores/player";
 import { usePlaylists } from "./stores/playlists";
+import { useDevices } from "./stores/devices";
 import { useSession } from "./stores/session";
 
 const FILE = "sync-settings.json";
@@ -46,6 +47,7 @@ let engine: SyncEngine | null = null;
 let appState: NativeEventSubscription | null = null;
 let offPlaylists: (() => void) | null = null;
 let offReach: (() => void) | null = null;
+let offMuted: (() => void) | null = null;
 let applying = false;
 
 export async function startSync(): Promise<void> {
@@ -57,7 +59,7 @@ export async function startSync(): Promise<void> {
   await usePlaylists.getState().restore();
   if (engine || !useSession.getState().session) return;
 
-  const device = { id: session.deviceId, name: "Phone" };
+  const device = { id: session.deviceId, name: phonePresence().name };
   const created = createSyncEngine({
     deviceId: session.deviceId,
     async request(method, path, body, timeoutMs = 20_000) {
@@ -93,6 +95,15 @@ export async function startSync(): Promise<void> {
     wantsPlayback,
     adoptPlayback,
     applyLikes: (tracks) => useLibrary.getState().setLikedOrder(tracks),
+    readPresence: phonePresence,
+    applyDevices: hearDevices,
+    onCommand: runCommand,
+    readMuted: () => ({ at: useLibrary.getState().mutedAt, tracks: useLibrary.getState().mutedTracks }),
+    applyMuted(doc) {
+      applying = true;
+      useLibrary.getState().applyMuted(doc.tracks, doc.at);
+      applying = false;
+    },
     onStatus: (status) => useSync.setState({ status }),
   });
   engine = created;
@@ -101,6 +112,20 @@ export async function startSync(): Promise<void> {
     if (!applying && (s.playlists !== prev.playlists || s.folders !== prev.folders)) created.playlistsChanged();
   });
   onPlaybackActivity((routine) => created.playbackChanged(routine));
+  linkDevices({
+    send: (id, command) => created.sendCommand(id, command),
+    handOver: (id) => created.handOver(id),
+    look: () => void created.checkPlayback(),
+  });
+  offMuted = useLibrary.subscribe((s, prev) => {
+    if (!applying && s.mutedAt !== prev.mutedAt) created.mutedChanged();
+  });
+  // The computer hears of a like at once, not at its next round.
+  onLikesSent(() => {
+    for (const other of useDevices.getState().others) {
+      if (other.presence.kind === "computer") void created.sendCommand(other.id, { action: "syncLikes" });
+    }
+  });
   // The server moved or came back: the service is worth looking for at once.
   offReach = useConnection.subscribe((s, prev) => {
     if (s.reach !== prev.reach) created.retryNow();
@@ -124,6 +149,10 @@ export function stopSync(): void {
   appState = null;
   offPlaylists?.();
   offPlaylists = null;
+  offMuted?.();
+  offMuted = null;
   onPlaybackActivity(null);
+  linkDevices(null);
+  onLikesSent(null);
 }
 

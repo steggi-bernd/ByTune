@@ -10,7 +10,8 @@ export type StreamChoice = { kind: "original" } | { kind: "transcode"; kbps: num
 export const ORIGINAL: StreamChoice = { kind: "original" };
 export const COMPACT_KBPS = 128;
 
-const AUTO_KBPS = [320, 192, 128, 64];
+/** Jellyfin makes no AAC above 256 kbps, whatever it's asked for. */
+const AUTO_KBPS = [256, 192, 128, 64];
 /** A connection's estimate comes from bursts; music has to keep flowing through its dips. */
 const HEADROOM = 1.5;
 /** Over mobile data the file itself would buy nothing you can hear, at five times the data. */
@@ -46,6 +47,33 @@ export function stepDown(track: { bitrate?: number }, current: StreamChoice): nu
 
 export const sameChoice = (a: StreamChoice | undefined, b: StreamChoice): boolean =>
   !!a && a.kind === b.kind && (a.kind !== "transcode" || b.kind !== "transcode" || a.kbps === b.kbps);
+
+/** How good what's playing is: lossless on top, then by the bitrate. */
+export type QualityTier = "lossless" | "high" | "good" | "low" | "poor";
+
+export function tierOf(lossless: boolean, kbps: number | undefined): QualityTier {
+  if (lossless) return "lossless";
+  // Nobody said how big: no alarm.
+  if (!kbps) return "good";
+  if (kbps >= 256) return "high";
+  if (kbps >= 160) return "good";
+  return kbps >= 96 ? "low" : "poor";
+}
+
+/** What plays right now, short enough for the player's bottom row: "FLAC 24/96", "AAC 256 kbps". */
+export function playingNow(
+  stream: StreamChoice,
+  format: { codec: string; lossless: boolean; bits?: number; rate?: number; kbps?: number } | null
+): { text: string; tier: QualityTier } | null {
+  if (stream.kind === "transcode") return { text: `AAC ${stream.kbps} kbps`, tier: tierOf(false, stream.kbps) };
+  if (stream.kind === "download" && stream.compact) return { text: "MP3 192 kbps", tier: tierOf(false, 192) };
+  if (!format) return null;
+  if (format.lossless) {
+    const resolution = format.bits && format.rate ? ` ${format.bits}/${format.rate / 1000}` : "";
+    return { text: `${format.codec}${resolution}`, tier: "lossless" };
+  }
+  return { text: format.kbps ? `${format.codec} ${format.kbps} kbps` : format.codec, tier: tierOf(false, format.kbps) };
+}
 
 /** Volume leveling, as on Spotify. Jellyfin's gains bring songs to −18 LUFS; Spotify's usual level is −14. */
 export type Leveling = "off" | "quiet" | "normal" | "loud";

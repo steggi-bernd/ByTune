@@ -1,0 +1,672 @@
+/**
+ * The devices around this phone and the music on them. The queue can play on a
+ * device or a group of them instead of here (the player store doesn't care where
+ * its commands go), and any other device can play music of its own next to that:
+ * each of those is a zone (lib/zoneEngine.ts, one copy with the computer).
+ *
+ * A device fetches its songs from the server by itself, so the phone may go to
+ * sleep; all it does is say what's next, once a second, on a tick from the native
+ * side. Devices that only pair over Bluetooth (Echo, Fire TV) are listed for what
+ * they are: no app can send them music directly.
+ */
+import { ToastAndroid } from "react-native";
+import { create } from "zustand";
+import Player, { type QueueItem } from "../../modules/media3-player";
+import { itemIdOf, streamUrl } from "../jellyfin";
+import { ORIGINAL } from "../quality";
+import {
+  castPlayer,
+  describeRenderer,
+  devicesFromMdns,
+  EndWatch,
+  isLanUrl,
+  jellyfinStreamPlan,
+  MDNS_ADDRESS,
+  MDNS_PORT,
+  mdnsQuery,
+  mimeOf,
+  parseSsdp,
+  readMdns,
+  SSDP_ADDRESS,
+  SSDP_PORT,
+  SSDP_SEARCH,
+  upnpPlayer,
+  utf8Bytes,
+  utf8Text,
+  Zone,
+  type CastSocket,
+  type DevicePlayer,
+  type MdnsService,
+  type NetDevice,
+  type Renderer,
+  type Track,
+  type ZoneDriver,
+  type ZoneMember,
+  type ZonePlayState,
+  type ZoneSong,
+} from "../shared";
+import { readJson, writeJson } from "../storage";
+import { useLibrary } from "./library";
+import { outputChanged, setPlayHook, shuffled, switchOutput, usePlayer, zoneReport, type PlayerOutput } from "./player";
+import { here, useSession } from "./session";
+
+const FILE = "devices.json";
+const SCAN_WAIT_MS = 2500;
+const ASK_ONE_WAIT_MS = 1300;
+/** A device that didn't answer this many looks in a row isn't around any more; UDP loses things. */
+const FORGET_AFTER_MISSED = 3;
+const CAST_PORT = 8009;
+/** After a pause the notification stays this long, for going on from the lock screen. */
+const PAUSED_KEEP_MS = 10 * 60_000;
+
+export interface FoundDevice extends NetDevice {
+  renderer?: Renderer;
+  /** looks it didn't answer in a row */
+  missed?: number;
+  /** added by its address: looked for by that too */
+  byHand?: string;
+}
+
+export interface ZoneView {
+  id: string;
+  /** it plays the queue; the others have music of their own */
+  main: boolean;
+  state: ZonePlayState;
+  song: ZoneSong | null;
+  error: string | null;
+  members: { id: string; name: string; volume: number | null }[];
+}
+
+interface ZonesState {
+  found: FoundDevice[];
+  scanning: boolean;
+  /** no Wi-Fi at the last look */
+  noWifi: boolean;
+  /** the device being connected to */
+  connecting: string | null;
+  names: Record<string, string>;
+  zones: ZoneView[];
+  /** the device the next song asked for goes to */
+  pickingFor: FoundDevice | null;
+}
+
+export const useZones = create<ZonesState>(() => ({ found: [], scanning: false, noWifi: false, connecting: null, names: {}, zones: [], pickingFor: null }));
+
+export const canPlay = (d: NetDevice): boolean => d.kind === "upnp" || d.kind === "cast";
+export const looksLikeTv = (d: NetDevice): boolean => d.kind === "firetv" || /\btv\b|shield|chromecast/i.test(`${d.model} ${d.name}`);
+export const deviceName = (d: { id: string; name: string }, names: Record<string, string> = useZones.getState().names): string => names[d.id] ?? d.name;
+
+function say(text: string): void {
+  ToastAndroid.show(text, ToastAndroid.SHORT);
+}
+
+const messageOf = (err: unknown, fallback: string): string => (err instanceof Error && err.message ? err.message : fallback);
+
+function saveDevices(): void {
+  const { found, names } = useZones.getState();
+  writeJson(FILE, { found, names });
+}
+
+/* ------------------------------------------------------------- bytes */
+
+function toBase64(bytes: Uint8Array): string {
+  let text = "";
+  for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+  return btoa(text);
+}
+
+function fromBase64(text: string): Uint8Array {
+  const raw = atob(text);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+/* ------------------------------------------------------------- looking around */
+
+const renderedAs = (r: Renderer): FoundDevice => ({ id: r.id, kind: "upnp", name: r.name, model: r.model, host: new URL(r.avTransport.url).hostname, port: 0, location: r.location, renderer: r });
+
+async function renderersIn(answers: { data: string }[]): Promise<FoundDevice[]> {
+  const locations = new Set<string>();
+  for (const answer of answers) {
+    const location = parseSsdp(utf8Text(fromBase64(answer.data))).location;
+    if (location && isLanUrl(location)) locations.add(location);
+  }
+  const found = await Promise.all([...locations].map((l) => describeRenderer(l).catch(() => null)));
+  return found.filter((r): r is Renderer => !!r).map(renderedAs);
+}
+
+/** What answers at one address: a description's own URL, a Cast device's address and port, or just an address. */
+async function lookAt(address: string): Promise<FoundDevice | null> {
+  const text = address.trim();
+  if (/^https?:\/\//i.test(text)) {
+    const r = await describeRenderer(text).catch(() => null);
+    return r ? { ...renderedAs(r), byHand: text } : null;
+  }
+  const [host, port] = text.split(":");
+  if (!isLanUrl(`http://${host}/`)) return null;
+  if (!port) {
+    const answers = await Player.netAsk(host, SSDP_PORT, toBase64(utf8Bytes(SSDP_SEARCH)), ASK_ONE_WAIT_MS).catch(() => null);
+    const [first] = await renderersIn(answers ?? []);
+    if (first) return { ...first, byHand: text };
+  }
+  const device: FoundDevice = { id: `cast:${text}`, kind: "cast", name: `Device at ${host}`, model: "Google Cast", host, port: Number(port) || CAST_PORT, byHand: text };
+  const player = await castPlayer(device, openCastSocket).catch(() => null);
+  if (!player) return null;
+  player.close();
+  return device;
+}
+
+let looking: Promise<void> | null = null;
+
+/** Who's on the network now. What's known shows at once and stays while the answers come. */
+export function scanDevices(): Promise<void> {
+  looking ??= look().finally(() => {
+    looking = null;
+  });
+  return looking;
+}
+
+async function look(): Promise<void> {
+  useZones.setState({ scanning: true });
+  try {
+    const [ssdp, mdns] = await Promise.all([
+      Player.netAsk(SSDP_ADDRESS, SSDP_PORT, toBase64(utf8Bytes(SSDP_SEARCH)), SCAN_WAIT_MS),
+      Player.netAsk(MDNS_ADDRESS, MDNS_PORT, toBase64(mdnsQuery()), SCAN_WAIT_MS),
+    ]);
+    if (!ssdp || !mdns) {
+      useZones.setState({ noWifi: true });
+      return;
+    }
+    const services = new Map<string, MdnsService>();
+    for (const answer of mdns) readMdns(fromBase64(answer.data), answer.from, services);
+    const known = useZones.getState().found;
+    const [renderers, others, byHand] = await Promise.all([
+      renderersIn(ssdp),
+      devicesFromMdns(services.values()),
+      Promise.all(known.filter((d) => d.byHand).map((d) => lookAt(d.byHand as string).catch(() => null))),
+    ]);
+    const answered = new Map<string, FoundDevice>();
+    for (const d of [...renderers, ...others]) answered.set(d.id, d);
+    for (const d of byHand) if (d) answered.set(d.id, { ...answered.get(d.id), ...d });
+    const inUse = new Set(useZones.getState().zones.flatMap((z) => z.members.map((m) => m.id)));
+    const stillThere = known
+      .filter((d) => !answered.has(d.id))
+      .map((d) => ({ ...d, missed: (d.missed ?? 0) + 1 }))
+      .filter((d) => d.byHand || inUse.has(d.id) || d.missed < FORGET_AFTER_MISSED);
+    useZones.setState({ found: [...answered.values(), ...stillThere], noWifi: false });
+    saveDevices();
+  } catch (err) {
+    say(messageOf(err, "Couldn't look around the network"));
+  } finally {
+    useZones.setState({ scanning: false });
+  }
+}
+
+/** A device that doesn't announce itself, say on a network that blocks that. Answers its name, or null when nothing answers there. */
+export async function addDeviceByAddress(address: string): Promise<string | null> {
+  const device = await lookAt(address).catch(() => null);
+  if (!device) return null;
+  useZones.setState((s) => ({ found: [device, ...s.found.filter((d) => d.id !== device.id)] }));
+  saveDevices();
+  return device.name;
+}
+
+export function forgetDevice(id: string): void {
+  useZones.setState((s) => ({ found: s.found.filter((d) => d.id !== id) }));
+  saveDevices();
+}
+
+export function renameDevice(d: FoundDevice, name: string): void {
+  const names = { ...useZones.getState().names };
+  const wanted = name.trim();
+  if (wanted && wanted !== d.name) names[d.id] = wanted;
+  else delete names[d.id];
+  useZones.setState({ names });
+  saveDevices();
+  publish();
+}
+
+/* ------------------------------------------------------------- connections to Cast devices */
+
+interface OpenSocket {
+  data: ((bytes: Uint8Array) => void) | null;
+  close: (() => void) | null;
+  /** what came before anybody listened */
+  early: Uint8Array[];
+  closed: boolean;
+}
+
+const sockets = new Map<number, OpenSocket>();
+
+function socketEntry(id: number): OpenSocket {
+  let entry = sockets.get(id);
+  if (!entry) {
+    entry = { data: null, close: null, early: [], closed: false };
+    sockets.set(id, entry);
+  }
+  return entry;
+}
+
+async function openCastSocket(host: string, port: number): Promise<CastSocket> {
+  const id = await Player.socketOpen(host, port);
+  const entry = socketEntry(id);
+  return {
+    write: (bytes) => void Player.socketWrite(id, toBase64(bytes)).catch(() => undefined),
+    close: () => void Player.socketClose(id).catch(() => undefined),
+    onData(listener) {
+      entry.data = listener;
+      for (const bytes of entry.early.splice(0)) listener(bytes);
+    },
+    onClose(listener) {
+      entry.close = listener;
+      if (entry.closed) listener();
+    },
+  };
+}
+
+/* ------------------------------------------------------------- zones */
+
+interface Running {
+  id: string;
+  zone: Zone;
+  main: boolean;
+}
+
+const running = new Map<string, Running>();
+let nextZone = 1;
+/** songs of the zones with music of their own, which needn't be in the library's list */
+const songsKnown = new Map<string, Track>();
+
+const mainZone = (): Running | undefined => [...running.values()].find((r) => r.main);
+
+function trackOf(id: string): Track | undefined {
+  return songsKnown.get(id) ?? useLibrary.getState().byId.get(id) ?? usePlayer.getState().queue.find((t) => t.id === id);
+}
+
+/** Where a device gets a song: from the server's address at home, by itself. */
+function whereToGet(song: ZoneSong): { url: string; mime: string; mark: string } {
+  const session = useSession.getState().session;
+  const track = trackOf(song.id);
+  if (!session || !track) throw new Error(`"${song.title}" can't be played there`);
+  const plan = jellyfinStreamPlan(track);
+  const ext = plan !== "static" ? plan : (track.container ?? "").split(",")[0].trim().toLowerCase() || "flac";
+  return { url: streamUrl({ ...session, server: session.home ?? session.server }, track, ORIGINAL), mime: mimeOf(`.${ext}`), mark: itemIdOf(track) };
+}
+
+function driverFor(player: DevicePlayer): ZoneDriver {
+  const watch = new EndWatch();
+  let playing: { song: ZoneSong; mark: string } | null = null;
+  return {
+    async load(song, position, play) {
+      const { url, mime, mark } = whereToGet(song);
+      playing = { song, mark };
+      watch.begin(position);
+      await player.load(url, { ...song, mime }, position, play);
+    },
+    play: async () => void (await player.play()),
+    pause: async () => void (await player.pause()),
+    stop: async () => void (await player.stop()),
+    async seek(sec) {
+      watch.moved(sec);
+      await player.seek(sec);
+    },
+    async status() {
+      const at = await player.status();
+      // A report about the song before (players switch over in their own time) says nothing about this one.
+      if (playing && at.uri && !at.uri.includes(playing.mark)) return { state: "loading", position: 0, duration: playing.song.duration, ended: false };
+      return watch.see(at, playing?.song.duration ?? 0);
+    },
+    setVolume: async (level) => void (await player.setVolume(level * 100)),
+    async getVolume() {
+      const v = await player.getVolume();
+      return v === null ? null : v / 100;
+    },
+    close: () => player.close(),
+  };
+}
+
+async function memberFor(d: FoundDevice): Promise<ZoneMember> {
+  let player: DevicePlayer;
+  if (d.kind === "cast") player = await castPlayer(d, openCastSocket);
+  else if (d.kind === "upnp" && (d.renderer || d.location)) {
+    const renderer = d.renderer ?? (await describeRenderer(d.location as string));
+    if (!renderer) throw new Error(`${deviceName(d)} doesn't answer`);
+    player = upnpPlayer(renderer);
+  } else throw new Error(`${deviceName(d)} can only be reached over Bluetooth`);
+  const driver = driverFor(player);
+  // Its volume stays where it is: the slider shows it, and only moving the slider changes it.
+  const volume = await driver.getVolume().catch(() => null);
+  return { deviceId: d.id, name: deviceName(d), driver, volume };
+}
+
+/** With somebody at the door the button shows a wheel; failing, it says why. */
+async function connecting<T>(d: FoundDevice, work: () => Promise<T>): Promise<T | null> {
+  useZones.setState({ connecting: d.id });
+  try {
+    return await work();
+  } catch (err) {
+    say(messageOf(err, `${deviceName(d)} doesn't answer`));
+    return null;
+  } finally {
+    useZones.setState({ connecting: null });
+  }
+}
+
+function view(r: Running): ZoneView {
+  const { state, queue, index, error } = r.zone.state;
+  return {
+    id: r.id,
+    main: r.main,
+    state,
+    song: queue[index] ?? null,
+    error,
+    members: r.zone.members.map((m) => ({ id: m.deviceId, name: useZones.getState().names[m.deviceId] ?? m.name, volume: m.volume })),
+  };
+}
+
+function reportMain(r: Running): void {
+  const s = r.zone.state;
+  zoneReport({
+    isPlaying: s.state === "playing",
+    playWhenReady: s.state === "playing" || s.state === "loading",
+    isBuffering: s.state === "loading",
+    isEnded: false,
+    index: s.index,
+    count: s.queue.length,
+    positionMs: s.position * 1000,
+    durationMs: s.duration * 1000,
+    bandwidthBps: 0,
+    audio: "",
+    repeat: s.repeat,
+  });
+  if (usePlayer.getState().error !== s.error) usePlayer.setState({ error: s.error });
+  const first = r.zone.members[0];
+  if (first) {
+    const name = useZones.getState().names[first.deviceId] ?? first.name;
+    outputChanged({ id: first.deviceId, name: r.zone.members.length > 1 ? `${name} +${r.zone.members.length - 1}` : name, tv: isTv(first.deviceId) });
+  }
+}
+
+const isTv = (id: string): boolean => {
+  const d = useZones.getState().found.find((f) => f.id === id);
+  return !!d && looksLikeTv(d);
+};
+
+/** A zone whose devices all stopped answering is over. */
+function dropEmptyZones(): void {
+  for (const r of [...running.values()]) {
+    if (r.zone.members.length) continue;
+    running.delete(r.id);
+    if (r.main) {
+      if (r.zone.state.error) say(r.zone.state.error);
+      switchOutput(null, false);
+    }
+  }
+}
+
+function publish(): void {
+  dropEmptyZones();
+  useZones.setState({ zones: [...running.values()].map(view) });
+  const main = mainZone();
+  if (main) reportMain(main);
+  keepAlive();
+}
+
+let pausedSince = 0;
+let lastKeep = "";
+
+const isOn = (r: Running): boolean => r.zone.state.state === "playing" || r.zone.state.state === "loading";
+
+/** The phone's volume keys: a group goes up and down together, each from where it is. */
+function keysSetVolume(r: Running, level: number): void {
+  const first = r.zone.members[0]?.volume;
+  if (typeof first !== "number") return;
+  const by = level - first;
+  for (const m of r.zone.members) if (m.volume !== null) void r.zone.setVolume(m.deviceId, Math.max(0, Math.min(1, m.volume + by)));
+}
+
+function keepAlive(): void {
+  const all = [...running.values()];
+  const on = all.filter(isOn);
+  if (on.length) pausedSince = 0;
+  else if (!pausedSince) pausedSince = Date.now();
+  const lead = on.find((r) => r.main) ?? on[0] ?? all.find((r) => r.main) ?? all[0];
+  const song = lead?.zone.state.queue[lead.zone.state.index];
+  const keepAwake = !!song && (on.length > 0 || Date.now() - pausedSince < PAUSED_KEEP_MS);
+  const names = lead?.zone.members.map((m) => m.name).join(" + ") ?? "";
+  const title = song?.title ?? "Songsta";
+  const text = `${on.length ? "Playing on" : "Paused on"} ${names}${on.length > 1 ? ` (${on.length} zones)` : ""}`;
+  const firstVolume = lead?.zone.members[0]?.volume;
+  const volume = typeof firstVolume === "number" ? Math.round(firstVolume * 100) : -1;
+  const key = JSON.stringify([all.length > 0, keepAwake, title, text, on.length > 0, volume]);
+  if (key === lastKeep) return;
+  lastKeep = key;
+  void Player.zonesWatch(all.length > 0, keepAwake, title, text, on.length > 0, volume).catch(() => undefined);
+}
+
+function newZone(member: ZoneMember, main: boolean): Running {
+  const r: Running = { id: `zone${nextZone++}`, main, zone: new Zone([member], publish) };
+  running.set(r.id, r);
+  return r;
+}
+
+/** How the queue's commands reach a zone: the same calls the phone's own player takes. */
+function outputOf(zone: Zone): PlayerOutput {
+  const songOf = (item: QueueItem): ZoneSong => {
+    const t = trackOf(item.id);
+    return { id: item.id, title: item.title, artist: item.artist, album: item.album, duration: t?.duration ?? 0, art: t?.thumb ? here(t.thumb) : undefined };
+  };
+  return {
+    setQueue: (items, start, startMs, play) => zone.play(items.map(songOf), start, startMs / 1000, play),
+    replaceUpcoming: async (items) => zone.setUpcoming(items.map(songOf)),
+    // A device always gets the file itself: there's no other copy to change to.
+    replaceCurrent: async () => undefined,
+    addItems: async (items) => zone.insert(zone.state.queue.length, items.map(songOf)),
+    insertItems: async (at, items) => zone.insert(at, items.map(songOf)),
+    removeItem: async (index) => zone.remove(index),
+    moveItem: async (from, to) => zone.move(from, to),
+    play: async () => {
+      if (zone.state.state !== "playing" && zone.state.state !== "loading") await zone.toggle();
+    },
+    pause: () => zone.pause(),
+    seekTo: (ms) => zone.seek(ms / 1000),
+    skipTo: (index, play) => zone.play(zone.state.queue, index, 0, play),
+    next: () => zone.next(),
+    previous: () => zone.previous(),
+    setRepeat: async (mode) => zone.setRepeat(mode),
+    setGain: async () => undefined,
+  };
+}
+
+/** The device stops what it's doing for a zone: it's about to do something else. */
+async function freeDevice(id: string): Promise<void> {
+  for (const r of [...running.values()]) {
+    if (!r.zone.members.some((m) => m.deviceId === id)) continue;
+    await r.zone.leave(id);
+    // Its last device gone, the zone is over: see dropEmptyZones.
+  }
+  publish();
+}
+
+/** One press: the music moves there and goes on from where it is. */
+export async function moveMusicTo(d: FoundDevice): Promise<void> {
+  const before = mainZone();
+  if (before?.zone.members.length === 1 && before.zone.members[0].deviceId === d.id) return;
+  await connecting(d, async () => {
+    const member = await memberFor(d);
+    // Elsewhere in a zone of its own: that ends here.
+    await freeDevice(d.id);
+    const old = mainZone();
+    if (old) {
+      running.delete(old.id);
+      void old.zone.stop();
+    }
+    const r = newZone(member, true);
+    switchOutput({ output: outputOf(r.zone), device: { id: d.id, name: deviceName(d), tv: isTv(d.id) } });
+    publish();
+  });
+}
+
+/** Back to this phone, where the device stands. */
+export function moveMusicHere(): void {
+  const main = mainZone();
+  if (!main) return;
+  running.delete(main.id);
+  switchOutput(null);
+  void main.zone.stop();
+  publish();
+}
+
+/** To another device with Songsta on it, which plays on from here. */
+export async function sendMusicToDevice(id: string, name: string): Promise<void> {
+  const { queue, sendTo } = usePlayer.getState();
+  if (!queue.length) {
+    say("Nothing to send: start a song first");
+    return;
+  }
+  const sent = await sendTo(id);
+  say(sent ? `Playing on ${name}` : `${name} can't be reached right now`);
+  const main = sent ? mainZone() : undefined;
+  if (main) {
+    running.delete(main.id);
+    switchOutput(null, false);
+    void main.zone.stop();
+    publish();
+  }
+}
+
+/** Another device plays along in a zone: the same song, from where the others are. */
+export async function playAlong(zoneId: string, d: FoundDevice): Promise<void> {
+  const r = running.get(zoneId);
+  if (!r) return;
+  await connecting(d, async () => {
+    const member = await memberFor(d);
+    await freeDevice(d.id);
+    await r.zone.join(member);
+    publish();
+  });
+}
+
+export async function stopPlayingAlong(zoneId: string, deviceId: string): Promise<void> {
+  const r = running.get(zoneId);
+  if (!r) return;
+  if (r.zone.members.length === 1) {
+    if (r.main) moveMusicHere();
+    else await zoneStop(zoneId);
+    return;
+  }
+  await r.zone.leave(deviceId);
+  publish();
+}
+
+export async function zoneStop(zoneId: string): Promise<void> {
+  const r = running.get(zoneId);
+  if (!r) return;
+  if (r.main) {
+    moveMusicHere();
+    return;
+  }
+  running.delete(zoneId);
+  await r.zone.stop();
+  publish();
+}
+
+export function zoneToggle(zoneId: string): void {
+  const r = running.get(zoneId);
+  if (r?.main) usePlayer.getState().toggle();
+  else void r?.zone.toggle();
+}
+
+export function zoneNext(zoneId: string): void {
+  const r = running.get(zoneId);
+  if (r?.main) usePlayer.getState().next();
+  else void r?.zone.next();
+}
+
+export function zonePrevious(zoneId: string): void {
+  const r = running.get(zoneId);
+  if (r?.main) usePlayer.getState().previous();
+  else void r?.zone.previous();
+}
+
+export function zoneVolume(zoneId: string, deviceId: string, level: number): void {
+  void running.get(zoneId)?.zone.setVolume(deviceId, Math.max(0, Math.min(1, level)));
+}
+
+/* ------------------------------------------------------------- music of its own */
+
+async function startOwnMusic(d: FoundDevice, tracks: Track[], start: number, shuffle: boolean): Promise<void> {
+  const { muted } = useLibrary.getState();
+  const asked = tracks[Math.max(0, Math.min(start, tracks.length - 1))];
+  const open = tracks.filter((t) => t === asked || !muted.has(t.id));
+  const list = shuffle ? [asked, ...shuffled(open.filter((t) => t !== asked))] : open;
+  for (const t of list) songsKnown.set(t.id, t);
+  const songs = list.map((t): ZoneSong => ({ id: t.id, title: t.title, artist: t.artist, album: t.album ?? "", duration: t.duration, art: t.thumb ? here(t.thumb) : undefined }));
+  await connecting(d, async () => {
+    const already = [...running.values()].find((r) => !r.main && r.zone.members.some((m) => m.deviceId === d.id));
+    const r = already ?? newZone(await memberForFreed(d), false);
+    await r.zone.play(songs, list.indexOf(asked));
+    publish();
+    say(`Playing on ${deviceName(d)}`);
+  });
+}
+
+async function memberForFreed(d: FoundDevice): Promise<ZoneMember> {
+  const member = await memberFor(d);
+  await freeDevice(d.id);
+  return member;
+}
+
+/** The next song or list asked for anywhere in the app goes to this device. */
+export function pickMusicFor(d: FoundDevice | null): void {
+  useZones.setState({ pickingFor: d });
+  setPlayHook(
+    d
+      ? (tracks, start, shuffle) => {
+          useZones.setState({ pickingFor: null });
+          setPlayHook(null);
+          void startOwnMusic(d, tracks, start, shuffle);
+          return true;
+        }
+      : null
+  );
+}
+
+/* ------------------------------------------------------------- for the app's lifetime */
+
+export function watchZones(): void {
+  void readJson<{ found?: FoundDevice[]; names?: Record<string, string> }>(FILE).then((saved) => {
+    if (saved) useZones.setState({ found: saved.found ?? [], names: saved.names ?? {} });
+  });
+  Player.addListener("onSocket", ({ id, data, closed }) => {
+    const entry = socketEntry(id);
+    if (data) {
+      const bytes = fromBase64(data);
+      if (entry.data) entry.data(bytes);
+      else entry.early.push(bytes);
+    }
+    if (closed) {
+      entry.closed = true;
+      entry.close?.();
+      sockets.delete(id);
+    }
+  });
+  Player.addListener("onZoneTick", () => {
+    for (const r of running.values()) void r.zone.tick();
+    keepAlive();
+  });
+  Player.addListener("onZoneControl", ({ action }) => {
+    const lead = [...running.values()].find((r) => r.main && isOn(r)) ?? [...running.values()].find(isOn) ?? mainZone() ?? [...running.values()][0];
+    if (!lead) return;
+    if (action.startsWith("volume:")) keysSetVolume(lead, Number(action.slice(7)) / 100);
+    else if (action === "toggle") zoneToggle(lead.id);
+    else if (action === "next") zoneNext(lead.id);
+    else zonePrevious(lead.id);
+  });
+  // Signed out: nothing plays on anybody's behalf any more.
+  useSession.subscribe((s, prev) => {
+    if (s.session || !prev.session) return;
+    for (const r of [...running.values()]) void zoneStop(r.id);
+  });
+}

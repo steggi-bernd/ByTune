@@ -51,6 +51,15 @@ const query = (params: Record<string, string | number | undefined>): string =>
     .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
     .join("&");
 
+/** No answer at all, as opposed to the server saying no. */
+function noAnswer(message: string): Error {
+  const err = new Error(message);
+  err.name = "NoAnswer";
+  return err;
+}
+
+export const isNoAnswer = (err: unknown): boolean => err instanceof Error && err.name === "NoAnswer";
+
 async function request(
   server: string,
   path: string,
@@ -59,8 +68,10 @@ async function request(
 ): Promise<any> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
+  let res: Response;
+  let text: string;
   try {
-    const res = await fetch(`${server}${path}`, {
+    res = await fetch(`${server}${path}`, {
       method: init.method ?? "GET",
       headers: {
         Authorization: authHeader(deviceId, init.token),
@@ -69,17 +80,18 @@ async function request(
       body: init.body ? JSON.stringify(init.body) : undefined,
       signal: ctrl.signal,
     });
-    if (res.status === 401) throw new Error("The server rejected the login: check the user name and password");
-    if (!res.ok) throw new Error(`The server answered HTTP ${res.status}`);
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") throw new Error("The server did not answer in time");
-    if (err instanceof TypeError) throw new Error("Can't reach the server: check the address");
-    throw err;
+    text = await res.text();
+  } catch {
+    // Whatever went wrong on the way, this fetch has its own words for it: no answer came.
+    throw noAnswer(ctrl.signal.aborted ? "The server did not answer in time" : "Can't reach the server: check the address");
   } finally {
     clearTimeout(timer);
   }
+  if (res.status === 401) throw new Error("The server rejected the login: check the user name and password");
+  // A tunnel or proxy answering for a server that's down.
+  if (res.status >= 500) throw noAnswer(`The server answered HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`The server answered HTTP ${res.status}`);
+  return text ? JSON.parse(text) : null;
 }
 
 export async function signIn(serverInput: string, username: string, password: string): Promise<Session> {

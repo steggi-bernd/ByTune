@@ -144,7 +144,7 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
                 navigate({ name: "playlist", param: playlist.id });
                 return;
               }
-              usePlayer.getState().playQueue(playlist.tracks, 0);
+              usePlayer.getState().playAll(playlist.tracks);
             }}
           />
         </div>
@@ -426,7 +426,7 @@ export function LibraryView() {
   const shufflePlay = (tracks: Track[]): void => {
     if (!tracks.length) return;
     usePlayer.setState({ shuffle: true });
-    playQueue(tracks, Math.floor(Math.random() * tracks.length));
+    usePlayer.getState().playAll(tracks, true);
   };
 
   return (
@@ -565,7 +565,7 @@ export function LibraryView() {
           {liked.length ? (
             <>
               <div className="flex items-center gap-2">
-                <Btn variant="white" size="md" icon={Play} onClick={() => playQueue(liked, 0)}>
+                <Btn variant="white" size="md" icon={Play} onClick={() => usePlayer.getState().playAll(liked)}>
                   Play all
                 </Btn>
                 <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(liked)}>
@@ -607,7 +607,7 @@ export function LibraryView() {
           {downloadedTracks.length ? (
             <>
               <div className="flex items-center gap-2">
-                <Btn variant="white" size="md" icon={Play} onClick={() => playQueue(downloadedTracks, 0)}>
+                <Btn variant="white" size="md" icon={Play} onClick={() => usePlayer.getState().playAll(downloadedTracks)}>
                   Play all
                 </Btn>
                 <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(downloadedTracks)}>

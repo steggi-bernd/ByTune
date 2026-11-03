@@ -499,3 +499,142 @@ test("the computer's order of Liked Songs reaches the phone, and only one way", 
   await new Promise((resolve) => setTimeout(resolve, 400));
   assert.equal(pushes, 3, "the first computer doesn't answer back");
 });
+
+/* ------------------------------------------------------------ devices and commands */
+
+test("devices say what they're doing, and each hears of the others through the long poll", async () => {
+  const token = "ben";
+  const before = await call("GET", "/v1/changes?since=-1&wait=0&device=phone-1", { token });
+  assert.equal(before.body.inbox, 0);
+  const seq = before.body.seq;
+  const waiting = call("GET", `/v1/changes?since=${seq}&wait=10&device=phone-1`, { token });
+  const put = await call("PUT", "/v1/devices/pc-1", { token, body: { doc: { name: "PC", kind: "computer", playing: true } } });
+  assert.equal(put.status, 200);
+  const news = await waiting;
+  assert.ok(news.body.seq > seq);
+  assert.ok(news.body.revs.devices > before.body.revs.devices);
+  const list = await call("GET", "/v1/devices", { token });
+  const pc = list.body.devices.find((d) => d.id === "pc-1");
+  assert.equal(pc.doc.name, "PC");
+  assert.ok(list.body.now >= pc.updatedAt);
+  // Somebody else's devices are none of this user's business.
+  assert.ok(!(await call("GET", "/v1/devices", { token: "anna" })).body.devices.some((d) => d.id === "pc-1"));
+});
+
+test("a command waits for its device and is handed over once", async () => {
+  const token = "ben";
+  const { body } = await call("GET", "/v1/changes?since=-1&wait=0&device=pc-2", { token });
+  const waiting = call("GET", `/v1/changes?since=${body.seq}&wait=10&device=pc-2`, { token });
+  assert.equal((await call("POST", "/v1/devices/pc-2/commands", { token, body: { command: { action: "pause" } } })).status, 200);
+  assert.equal((await waiting).body.inbox, 1);
+  // It keeps saying so until the device has fetched it, also to a poll that's up to date.
+  const again = await call("GET", "/v1/changes?since=-1&wait=0&device=pc-2", { token });
+  assert.equal(again.body.inbox, 1);
+  assert.deepEqual((await call("GET", "/v1/devices/pc-2/commands", { token })).body.commands, [{ action: "pause" }]);
+  assert.deepEqual((await call("GET", "/v1/devices/pc-2/commands", { token })).body.commands, []);
+  assert.equal((await call("GET", "/v1/changes?since=-1&wait=0&device=pc-2", { token })).body.inbox, 0);
+  assert.equal((await call("POST", "/v1/devices/pc-2/commands", { token, body: {} })).status, 400);
+});
+
+function deviceEngine(id, token, extra = {}) {
+  const heard = { devices: [], commands: [], muted: [], adopted: [] };
+  const presence = { name: id, kind: "phone", playing: false, positionMs: 0, durationMs: 0, track: null };
+  const mutedDoc = { at: 0, tracks: [] };
+  const engine = createSyncEngine({
+    deviceId: id,
+    request: (method, url, body) => call(method, url, { token, body }),
+    readPlaylists: () => toPlaylistDoc({ playlists: [], folders: [], deletionSync: undefined }),
+    applyPlaylists: () => undefined,
+    readPlayback: () => extra.readPlayback?.() ?? null,
+    wantsPlayback: () => false,
+    adoptPlayback: (note, queue) => heard.adopted.push({ note, queue }),
+    readPresence: () => presence,
+    applyDevices: (list) => (heard.devices = list),
+    onCommand: (command) => heard.commands.push(command),
+    readMuted: () => mutedDoc,
+    applyMuted: (doc) => {
+      Object.assign(mutedDoc, doc);
+      heard.muted.push(doc);
+    },
+  });
+  return { engine, heard, presence, mutedDoc };
+}
+
+function freshLogin() {
+  const token = "pair-" + Math.random().toString(36).slice(2);
+  TOKENS[token] = Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32);
+  return token;
+}
+
+test("one device sees what the other plays and steers it", async (t) => {
+  const token = freshLogin();
+  const pc = deviceEngine("pc", token);
+  const phone = deviceEngine("phone", token);
+  t.after(() => {
+    pc.engine.stop();
+    phone.engine.stop();
+  });
+  pc.engine.start();
+  phone.engine.start();
+  await until(() => phone.heard.devices.some((d) => d.id === "pc") && pc.heard.devices.some((d) => d.id === "phone"), "both to see each other");
+  assert.ok(!phone.heard.devices.some((d) => d.id === "phone"), "a device isn't listed to itself");
+
+  pc.presence.playing = true;
+  pc.presence.track = { id: "jf:1", title: "Song", artist: "Band", duration: 100 };
+  pc.engine.presenceChanged();
+  await until(() => phone.heard.devices.find((d) => d.id === "pc")?.presence.playing === true, "the phone to see the computer play");
+  assert.equal(phone.heard.devices.find((d) => d.id === "pc").presence.track.title, "Song");
+
+  assert.equal(await phone.engine.sendCommand("pc", { action: "pause" }), true);
+  await until(() => pc.heard.commands.some((c) => c.action === "pause"), "the computer to hear the command");
+  assert.equal(await phone.engine.sendCommand("pc", { action: "seek", positionMs: 5000 }), true);
+  await until(() => pc.heard.commands.some((c) => c.action === "seek" && c.positionMs === 5000), "the computer to seek");
+});
+
+test("a device takes over from another: where that one stands, then playing", async (t) => {
+  const token = freshLogin();
+  const song = { id: "jf:9", title: "Handed over", artist: "Band", duration: 200 };
+  const pc = deviceEngine("pc", token, {
+    readPlayback: () => ({
+      note: { device: { id: "pc", name: "PC" }, at: Date.now(), playing: true, positionMs: 12000, track: song, queueId: "q1" },
+      queue: () => ({ id: "q1", tracks: [song] }),
+    }),
+  });
+  const phone = deviceEngine("phone", token);
+  t.after(() => {
+    pc.engine.stop();
+    phone.engine.stop();
+  });
+  pc.engine.start();
+  phone.engine.start();
+  await until(() => pc.heard.devices.some((d) => d.id === "phone"), "the computer to see the phone");
+  assert.equal(await pc.engine.handOver("phone"), true);
+  await until(() => phone.heard.commands.some((c) => c.action === "takeOver"), "the phone to take over");
+  assert.equal(phone.heard.adopted[0].note.positionMs, 12000);
+  assert.equal(phone.heard.adopted[0].queue.tracks[0].title, "Handed over");
+});
+
+test("muted songs are one list for all devices: the newer one wins", async (t) => {
+  const token = freshLogin();
+  const pc = deviceEngine("pc", token);
+  const phone = deviceEngine("phone", token);
+  t.after(() => {
+    pc.engine.stop();
+    phone.engine.stop();
+  });
+  // Muted while nobody listened: it goes out when the device arrives.
+  phone.mutedDoc.at = 1000;
+  phone.mutedDoc.tracks = [{ id: "jf:1", title: "Not this one", artist: "Band", duration: 100 }];
+  phone.engine.start();
+  await until(async () => (await call("GET", "/v1/docs/muted", { token })).body.doc?.at === 1000, "the list to reach the service");
+  pc.engine.start();
+  await until(() => pc.heard.muted.length === 1, "the computer to get the list");
+  assert.equal(pc.mutedDoc.tracks[0].title, "Not this one");
+
+  // Changed on the computer: back to the phone.
+  pc.mutedDoc.at = 2000;
+  pc.mutedDoc.tracks = [];
+  pc.engine.mutedChanged();
+  await until(() => phone.mutedDoc.at === 2000, "the phone to get the newer list");
+  assert.deepEqual(phone.mutedDoc.tracks, []);
+});

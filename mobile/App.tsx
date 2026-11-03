@@ -12,12 +12,14 @@ import { watchConnection } from "./src/stores/connection";
 import { useDownloads } from "./src/stores/downloads";
 import { useLibrary } from "./src/stores/library";
 import { usePlayer, watchPlayer } from "./src/stores/player";
+import { watchZones } from "./src/stores/zones";
 import { usePlaylists } from "./src/stores/playlists";
 import { useSession } from "./src/stores/session";
 import { startSync, stopSync } from "./src/sync";
 import { colors } from "./src/theme";
 
 watchPlayer();
+watchZones();
 watchConnection();
 
 /** Keeps the clock and icons readable while a page scrolls under them. */

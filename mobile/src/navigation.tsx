@@ -11,6 +11,7 @@ import { BottomBar } from "./components/BottomBar";
 import { AlbumScreen } from "./screens/AlbumScreen";
 import { ArtistScreen } from "./screens/ArtistScreen";
 import { CollectionScreen } from "./screens/CollectionScreen";
+import { DevicesScreen } from "./screens/DevicesScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
 import { LyricsScreen } from "./screens/LyricsScreen";
@@ -64,6 +65,7 @@ export function AppNavigation() {
       <Root.Navigator screenOptions={pageOptions}>
         <Root.Screen name="Main" component={Main} />
         <Root.Screen name="Lyrics" component={LyricsScreen} options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
+        <Root.Screen name="Devices" component={DevicesScreen} options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
         <Root.Screen
           name="Queue"
           component={QueueScreen}

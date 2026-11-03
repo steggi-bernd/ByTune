@@ -7,16 +7,16 @@
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronLeft, EllipsisVertical, Pause, Play, Shuffle } from "lucide-react-native";
+import { ChevronLeft, EllipsisVertical, Pause, Play, Search, Shuffle, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NameDialog } from "../components/PlaylistSheets";
 import { DownloadButton, useSongMenu } from "../components/SongMenu";
 import { picture as pictureSource, TrackRow } from "../components/ui";
-import { artistTracks, fmtTime, plural, type Track } from "../shared";
+import { artistTracks, fmtTime, matchesQuery, plural, type Track } from "../shared";
 import { sizeLine, useDownloads } from "../stores/downloads";
-import { useArtistPhoto, useLibrary } from "../stores/library";
+import { likedSongIds, useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { playlistTracks, usePlaylists, type PlaylistTrack } from "../stores/playlists";
 import { colors, PAGE_END } from "../theme";
@@ -33,6 +33,7 @@ export function CollectionScreen() {
   const mixes = useLibrary((s) => s.mixes);
   const genres = useLibrary((s) => s.genres);
   const playTracks = usePlayer((s) => s.playTracks);
+  const playAll = usePlayer((s) => s.playAll);
   const toggle = usePlayer((s) => s.toggle);
   const playWhenReady = usePlayer((s) => s.playWhenReady);
 
@@ -58,7 +59,7 @@ export function CollectionScreen() {
       case "playlist":
         return { title: playlist?.name ?? "Playlist", tracks: playlist ? playlistTracks(playlist) : [] };
       case "liked":
-        return { title: "Liked Songs", tracks: data.favorites.map((id) => byId.get(id)).filter((t): t is Track => !!t) };
+        return { title: "Liked Songs", tracks: likedSongIds(data.favorites, byId).map((id) => byId.get(id)).filter((t): t is Track => !!t) };
       case "downloads":
         return {
           title: "Downloads",
@@ -78,6 +79,11 @@ export function CollectionScreen() {
   }, [params, playlist, data.tracks, data.favorites, byId, mixes, genres, artistLiked, kept, onItsWay]);
   // What can play: a playlist's song this library doesn't have stays in the list only.
   const tracks = useMemo(() => shown.filter((t) => !t.missing), [shown]);
+  // Looking for one song: it still plays on through the whole list from there.
+  const [finding, setFinding] = useState(false);
+  const [query, setQuery] = useState("");
+  const found = useMemo(() => (finding && query.trim() ? shown.filter((t) => matchesQuery(t, query)) : shown), [finding, query, shown]);
+  const swipeList = useMemo(() => ({ tracks, name: title }), [tracks, title]);
 
   // Exactly this list playing: its button pauses, not while an album plays one of its songs.
   const playingHere = usePlayer((s) => s.context === title && tracks.some((t) => t.id === s.queue[s.index]?.id));
@@ -94,9 +100,10 @@ export function CollectionScreen() {
     <>
       <FlatList
         style={styles.root}
-        data={shown}
+        data={found}
         keyExtractor={(t, i) => `${t.id}-${i}`}
         initialNumToRender={12}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: PAGE_END + insets.bottom }}
         ListHeaderComponent={
           <View style={styles.hero}>
@@ -121,24 +128,45 @@ export function CollectionScreen() {
             <View style={styles.controls}>
               {params.kind !== "downloads" && <DownloadButton tracks={tracks} size={20} style={styles.roundWide} />}
               <Pressable
+                accessibilityLabel={finding ? "Stop looking in this list" : "Find a song in this list"}
+                onPress={() => {
+                  setFinding(!finding);
+                  setQuery("");
+                }}
+                style={styles.round}
+              >
+                {finding ? <X size={18} color={colors.ink} /> : <Search size={18} color={colors.ink} />}
+              </Pressable>
+              <Pressable
                 accessibilityLabel="Shuffle"
-                onPress={() => tracks.length && playTracks(tracks, Math.floor(Math.random() * tracks.length), title, true)}
+                onPress={() => playAll(tracks, title, true)}
                 style={styles.round}
               >
                 <Shuffle size={18} color={colors.ink} />
               </Pressable>
-              <Pressable onPress={() => (playingHere ? toggle() : tracks.length && playTracks(tracks, 0, title, false))} style={styles.pill}>
+              <Pressable onPress={() => (playingHere ? toggle() : playAll(tracks, title))} style={styles.pill}>
                 {pause ? <Pause size={18} color={colors.ink} fill={colors.ink} /> : <Play size={18} color={colors.ink} fill={colors.ink} />}
                 <Text style={styles.pillText}>{pause ? "Pause" : "Play"}</Text>
               </Pressable>
             </View>
+            {finding && (
+              <TextInput
+                autoFocus
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Find in this list"
+                placeholderTextColor={colors.dim}
+                returnKeyType="search"
+                style={styles.find}
+              />
+            )}
           </View>
         }
-        ListEmptyComponent={<Text style={styles.empty}>No songs here yet.</Text>}
-        renderItem={({ item, index }) => (
+        ListEmptyComponent={<Text style={styles.empty}>{query.trim() ? "Nothing in this list by that name." : "No songs here yet."}</Text>}
+        renderItem={({ item }) => (
           <TrackRow
             track={item}
-            number={index + 1}
+            list={swipeList}
             missing={item.missing}
             onLongPress={
               playlist
@@ -244,5 +272,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.45)",
   },
   pillText: { color: colors.ink, fontSize: 14.5, fontWeight: "600" },
+  find: { alignSelf: "stretch", height: 42, marginTop: 14, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.chip, color: colors.ink, fontSize: 15 },
   empty: { color: colors.dim, fontSize: 14, textAlign: "center", marginTop: 24 },
 });

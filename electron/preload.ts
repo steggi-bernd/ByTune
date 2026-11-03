@@ -7,7 +7,7 @@ import type { JellyfinStatus, JellyfinTrack, JellyfinUser } from "./jellyfin";
 import type { SubsonicTrack } from "./subsonic";
 import type { ArchiveImport } from "./archive-import";
 import type { M3uEntry } from "./m3u";
-import type { CastStatus } from "./cast";
+import type { CastStatus, FoundDevice } from "./cast";
 import type { ArtistImages, SongInfo } from "./song-info";
 import type { ArtistPicture } from "./wikimedia";
 import type { Listen, MomentScore } from "./listens";
@@ -169,7 +169,7 @@ const api = {
   // The sync service: playlists and where playback stopped (lib/homeSync.ts); the login stays in the main process
   homeSyncInfo: () => ipcRenderer.invoke("homeSync:info") as Promise<HomeSyncInfo>,
   homeSyncSetAddress: (address: string) => ipcRenderer.invoke("homeSync:setAddress", address) as Promise<HomeSyncInfo>,
-  homeSyncRequest: (method: "GET" | "PUT", path: string, body?: unknown, timeoutMs?: number) =>
+  homeSyncRequest: (method: "GET" | "PUT" | "POST", path: string, body?: unknown, timeoutMs?: number) =>
     ipcRenderer.invoke("homeSync:request", method, path, body, timeoutMs) as Promise<{ status: number; body: any }>,
   // Server sync: favorites ↔ Liked Songs, plays reported (what to change is decided in the renderer)
   jellyfinUsers: () => ipcRenderer.invoke("jellyfin:users") as Promise<JellyfinUser[]>,
@@ -306,12 +306,15 @@ const api = {
   revealPath: (p: string) => ipcRenderer.invoke("app:revealPath", p),
   openPath: (p: string) => ipcRenderer.invoke("app:openPath", p),
   /** Casting to a network player (electron/cast.ts): find, start, load a song, steer, stop. */
-  castFind: () => ipcRenderer.invoke("cast:find") as Promise<{ id: string; name: string; model: string }[]>,
-  castStart: (id: string) => ipcRenderer.invoke("cast:start", id) as Promise<CastStatus>,
-  castLoad: (song: { id: string; title: string; artist: string; album?: string; duration: number }, position: number, play: boolean) =>
-    ipcRenderer.invoke("cast:load", song, position, play) as Promise<void>,
-  castControl: (action: "play" | "pause" | "seek" | "volume" | "mute", value = 0) => ipcRenderer.invoke("cast:control", action, value) as Promise<void>,
-  castStop: () => ipcRenderer.invoke("cast:stop") as Promise<void>,
+  castFind: () => ipcRenderer.invoke("cast:find") as Promise<FoundDevice[]>,
+  castStart: (id: string, session?: string) => ipcRenderer.invoke("cast:start", id, session) as Promise<CastStatus>,
+  castLoad: (song: { id: string; title: string; artist: string; album?: string; duration: number; art?: string }, position: number, play: boolean, session?: string) =>
+    ipcRenderer.invoke("cast:load", song, position, play, session) as Promise<void>,
+  castControl: (action: "play" | "pause" | "seek" | "volume" | "mute", value = 0, session?: string, device?: string) =>
+    ipcRenderer.invoke("cast:control", action, value, session, device) as Promise<void>,
+  castJoin: (session: string, device: string) => ipcRenderer.invoke("cast:join", session, device) as Promise<void>,
+  castLeave: (session: string, device: string) => ipcRenderer.invoke("cast:leave", session, device) as Promise<boolean>,
+  castStop: (session?: string) => ipcRenderer.invoke("cast:stop", session) as Promise<void>,
   onCastStatus: (listener: (s: CastStatus) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, s: CastStatus): void => listener(s);
     ipcRenderer.on("cast:status", handler);

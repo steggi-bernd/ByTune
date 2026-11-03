@@ -122,15 +122,35 @@ The Discord desktop app has to be running; Songsta connects as soon as it starts
 The Android app in [`mobile/`](mobile/README.md) plays the music on your Jellyfin server, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work.
 
 - **Away from home:** give your server a second address, a tunnel or proxy, in the app's settings. The app takes the direct way at home and the other one anywhere else, and a song under way goes on from there.
-- **Downloads:** the ⋮ on a song, or the arrow on an album or playlist, with each song's progress on its row. The app fetches them, also with the screen off, as the file itself or as a 192 kbps MP3; over mobile data only if you allow it.
+- **The player:** the name of what's playing leads to its album, the artist to the artist, "Playing from" back to where it started. Under it lie the lyrics, what comes next, and about the song and the artist, as in the desktop app's side panel.
+- **Swipes:** pull a song left in any list: let go quickly and it joins the queue; hold it a moment and it branches off, with the rest of its list behind it, as in the desktop app. Pull it right to mute it.
+- **Devices:** the speaker in the mini player or the player opens them, see [below](#your-devices-in-one-place).
+- **Downloads:** the arrow in the player, the ⋮ on a song, or the arrow on an album or playlist, with each song's progress on its row. The app fetches them, also with the screen off, as the file itself or as a 192 kbps MP3; over mobile data only if you allow it.
 - **Without a connection** the app opens from what it remembers: the library, playlists, covers and the lyrics it has shown. Downloaded songs play, the rest is greyed out.
-- **Quality:** tap the format line in the player. *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, over mobile data up to 320 kbps.
+- **Quality:** the player shows what really plays, gold for lossless and down to red for a small copy; tap it to choose. *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, over mobile data up to AAC 256 kbps.
 
 The app is young and has run in an emulator far more than on real phones. There is no APK on the Releases page yet; [mobile/README.md](mobile/README.md) says how to build one.
 
 ## The same on all your devices
 
-Which songs you like and how often they played go through your server's own favorites and play counts (**Settings → Server sync**). Playlists, where you stopped and the order of Liked Songs need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login. With it running, a playlist made on one device arrives on the others within moments, the phone lists Liked Songs in the order you have them on the computer, and a device that isn't playing picks up where another one stopped, paused until you press play.
+Which songs you like and how often they played go through your server's own favorites and play counts (**Settings → Server sync**). Playlists, where you stopped and the order of Liked Songs need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login. With it running, a playlist made on one device arrives on the others within moments, the phone lists Liked Songs in the order you have them on the computer, and muted songs stay muted everywhere.
+
+A device that isn't playing shows what another one plays and steers it, itself silent, like Spotify Connect: pause on the phone, and the computer pauses. Start a song on it and it plays by itself again. With no device playing, one picks up where another stopped, paused until you press play.
+
+## Your devices in one place
+
+The speaker button next to the volume on the computer, and in the mini player or the player on the phone, opens a small smart-home room for everything that can make sound:
+
+- **One press moves the music:** to this device and its outputs (Bluetooth speakers, headphones), to your other computers and phones with Songsta on them, or to anything on your network that plays by itself: receivers and network speakers over UPnP/DLNA, Chromecast, Google TV and Nest speakers over Cast. It goes on from the same place in the song.
+- **Several at once:** the plus lets another device play along, each with its own volume.
+- **Different music per device:** a device's menu has *Play something else here*. Whatever you start next plays there, with its own queue and controls, while your own music goes on. On the phone it keeps running with the screen off, with a notification to steer it.
+- **Rename** anything. On the phone a device that doesn't announce itself can be added by its address.
+
+A group of separate devices isn't sample-exact: each one fetches and buffers by itself, which you can hear between two speakers in one room. A Cast group made in Google's own app is exact, and shows up here as one device. Amazon lets no app send music to an Echo or Fire TV directly, so those are listed with how to pair them over Bluetooth.
+
+## Muting songs
+
+Pull a song right on the phone, or choose *Mute song* in its menu on either app, and it's greyed out with a red name and skipped in every album, playlist and shuffle. It plays only when you ask for it by name, tap it or put it in the queue. The same way unmutes it.
 
 ## Install
 
@@ -202,7 +222,7 @@ Shortcuts never fire while you're typing in a text field.
 
 - **No account, no sign-in, no ads, no analytics.** Your library, likes, playlists and listening history stay on your own devices, and on your own server if you run the sync service.
 - **Passwords aren't stored:** Jellyfin keeps a session token (or your API key), Navidrome a salt/token pair — sealed by Windows (on Linux, your desktop's keyring) through Electron's safeStorage.
-- **What goes online:** your own servers; the open-database lookups above, paced to MusicBrainz's one request per second and cached; lyrics providers for songs without lyrics of their own; the AutoEQ index when you search for headphones; and, only if you switch it on, the animated canvas behind the player (a community index and TIDAL's public search).
+- **What goes online:** your own servers; the devices on your own network, which fetch songs from your server or this computer themselves; the open-database lookups above, paced to MusicBrainz's one request per second and cached; lyrics providers for songs without lyrics of their own, on the phone LRCLIB; Genius for what's known about a song; the AutoEQ index when you search for headphones; and, only if you switch it on, the animated canvas behind the player (a community index and TIDAL's public search).
 - **Discord status** talks to the Discord app on your computer, not to the internet.
 
 ## Credits and license
