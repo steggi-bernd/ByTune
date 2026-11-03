@@ -402,7 +402,100 @@ test("a refused login isn't asked again at once", async (t) => {
 
 test("the service is looked for on Jellyfin's host", () => {
   assert.equal(defaultSyncAddress("http://192.168.1.20:8096"), "http://192.168.1.20:8196");
-  assert.equal(defaultSyncAddress("https://music.example.org/jellyfin"), "https://music.example.org:8196");
+  assert.equal(defaultSyncAddress("HTTP://nas:8096"), "http://nas:8196");
   assert.equal(defaultSyncAddress("http://[fe80::1]:8096"), "http://[fe80::1]:8196");
   assert.equal(defaultSyncAddress("nonsense"), null);
+});
+
+test("behind https it shares Jellyfin's name: a tunnel has one door", () => {
+  assert.equal(defaultSyncAddress("https://music.example.org"), "https://music.example.org/songsta-sync");
+  assert.equal(defaultSyncAddress("https://music.example.org/jellyfin"), "https://music.example.org/songsta-sync");
+  assert.equal(defaultSyncAddress("https://music.example.org:8443"), "https://music.example.org:8443/songsta-sync");
+});
+
+test("the service answers under that path as well", async () => {
+  assert.equal((await call("GET", "/songsta-sync/health", { token: null })).body.service, "songsta-sync");
+  const token = "prefix-" + Math.random().toString(36).slice(2);
+  TOKENS[token] = "c".repeat(32);
+  const put = await call("PUT", "/songsta-sync/v1/docs/position", { token, body: { doc: { at: 7 } } });
+  assert.equal(put.status, 200);
+  assert.equal((await call("GET", "/v1/docs/position", { token })).body.doc.at, 7);
+  assert.equal((await call("GET", "/songsta-syncs/v1/docs/position", { token })).status, 404);
+});
+
+test("a service from before the likes document is no reason to stop syncing", async (t) => {
+  const token = "old-" + Math.random().toString(36).slice(2);
+  TOKENS[token] = Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32);
+  let status = null;
+  let asked = 0;
+  const engine = createSyncEngine({
+    deviceId: "pc",
+    async request(method, url, body) {
+      if (url.includes("likes")) {
+        asked += 1;
+        return { status: 404, body: { error: "No such document" } };
+      }
+      const reply = await call(method, url, { token, body });
+      if (url.startsWith("/v1/changes")) delete reply.body.revs.likes;
+      return reply;
+    },
+    readPlaylists: () => toPlaylistDoc({ playlists: [], folders: [] }),
+    applyPlaylists() {},
+    readPlayback: () => null,
+    wantsPlayback: () => false,
+    adoptPlayback() {},
+    readLikes: () => [toWireTrack(song("a"))],
+    onStatus: (s) => (status = s),
+  });
+  t.after(() => engine.stop());
+  engine.start();
+  await until(() => status === "connected", "connected");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(status, "connected");
+  assert.equal(asked, 0);
+  engine.likesChanged();
+});
+
+test("the computer's order of Liked Songs reaches the phone, and only one way", async (t) => {
+  const token = "likes-" + Math.random().toString(36).slice(2);
+  TOKENS[token] = Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32);
+  const liked = [song("a"), song("b"), song("c")];
+  let pushes = 0;
+  const host = (id, extra) => ({
+    deviceId: id,
+    async request(method, url, body) {
+      if (method === "PUT" && url.includes("likes")) pushes += 1;
+      return call(method, url, { token, body });
+    },
+    readPlaylists: () => toPlaylistDoc({ playlists: [], folders: [] }),
+    applyPlaylists() {},
+    readPlayback: () => null,
+    wantsPlayback: () => false,
+    adoptPlayback() {},
+    ...extra,
+  });
+  const pc = createSyncEngine(host("pc", { readLikes: () => liked.map(toWireTrack) }));
+  let order = null;
+  const phone = createSyncEngine(host("phone", { applyLikes: (tracks) => (order = tracks.map((x) => x.id)) }));
+  t.after(() => {
+    pc.stop();
+    phone.stop();
+  });
+  pc.start();
+  phone.start();
+  await until(() => order?.join() === "a,b,c", "the order on the phone");
+
+  liked.unshift(liked.pop());
+  pc.likesChanged();
+  await until(() => order?.join() === "c,a,b", "the new order on the phone");
+  assert.equal(pushes, 2, "nothing to say when nothing changed");
+
+  // A second computer with its own order doesn't start a quarrel.
+  const other = [song("x")];
+  const second = createSyncEngine(host("pc2", { readLikes: () => other.map(toWireTrack) }));
+  t.after(() => second.stop());
+  second.start();
+  await until(() => order?.join() === "x", "the second computer's order");
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(pushes, 3, "the first computer doesn't answer back");
 });

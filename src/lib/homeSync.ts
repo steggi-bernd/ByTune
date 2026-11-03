@@ -198,6 +198,7 @@ export function watchHomeSync(): () => void {
       readPlayback,
       wantsPlayback,
       adoptPlayback,
+      readLikes: () => useLibrary.getState().liked.map(toWireTrack),
       onStatus: (status) => useHomeSync.setState({ status }),
     });
     engine.start();
@@ -208,6 +209,7 @@ export function watchHomeSync(): () => void {
 
   // What the stores read from disk at the start isn't anything somebody just did.
   const offLibrary = useLibrary.subscribe((s, prev) => {
+    if (s.liked !== prev.liked && useLibrary.persist.hasHydrated()) engine?.likesChanged();
     if (!applying && useLibrary.persist.hasHydrated() && (s.playlists !== prev.playlists || s.folders !== prev.folders)) engine?.playlistsChanged();
   });
   let playerRead = usePlayer.persist.hasHydrated();

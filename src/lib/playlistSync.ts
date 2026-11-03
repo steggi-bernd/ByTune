@@ -81,6 +81,31 @@ export function toPlaylistDoc(state: unknown): PlaylistDoc {
   };
 }
 
+/**
+ * Liked Songs as one device arranged them, newest first. The servers' favorites
+ * say which songs are liked; only this says in what order.
+ */
+export interface LikesDoc {
+  tracks: WireTrack[];
+}
+
+export const sameLikes = (a: WireTrack[], b: WireTrack[]): boolean => a.length === b.length && a.every((t, i) => t.id === b[i].id);
+
+/**
+ * The favorites in the arranged order. What the order doesn't know yet, liked
+ * somewhere a moment ago, stands on top like any new like.
+ */
+export function likedInOrder(favorites: string[], order: WireTrack[], find: (wire: WireTrack) => { id: string } | undefined): string[] {
+  const rank = new Map<string, number>();
+  order.forEach((wire, i) => {
+    const id = find(wire)?.id;
+    if (id !== undefined && !rank.has(id)) rank.set(id, i);
+  });
+  const fresh = favorites.filter((id) => !rank.has(id));
+  const known = favorites.filter((id) => rank.has(id)).sort((a, b) => (rank.get(a) as number) - (rank.get(b) as number));
+  return [...fresh, ...known];
+}
+
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const byId = <T extends { id: string }>(list: T[]): T[] => [...list].sort((a, b) => compare(a.id, b.id));
 

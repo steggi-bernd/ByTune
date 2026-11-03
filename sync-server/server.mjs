@@ -24,6 +24,7 @@ const DOCS = {
   playlists: { merged: true, keepVersions: 20 },
   queue: {},
   position: {},
+  likes: {},
 };
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const IDENTITY_TTL_MS = 5 * 60_000;
@@ -222,17 +223,19 @@ export function createSyncServer({ dataDir, jellyfinUrl }) {
 
   async function handle(req, res) {
     const url = new URL(req.url, "http://service");
-    if (req.method === "GET" && url.pathname === "/health") {
+    // Behind a proxy or tunnel it shares Jellyfin's name, under this path.
+    const pathname = url.pathname.replace(/^\/songsta-sync(?=\/)/, "");
+    if (req.method === "GET" && pathname === "/health") {
       return send(res, 200, { ok: true, service: "songsta-sync", api: 1 });
     }
 
-    const docMatch = /^\/v1\/docs\/([a-z]+)$/.exec(url.pathname);
-    if (url.pathname !== "/v1/changes" && !docMatch) throw new HttpError(404, "Not found");
+    const docMatch = /^\/v1\/docs\/([a-z]+)$/.exec(pathname);
+    if (pathname !== "/v1/changes" && !docMatch) throw new HttpError(404, "Not found");
     if (docMatch && !Object.hasOwn(DOCS, docMatch[1])) throw new HttpError(404, "No such document");
 
     const user = await userState(await authenticate(req));
 
-    if (url.pathname === "/v1/changes") {
+    if (pathname === "/v1/changes") {
       if (req.method !== "GET") throw new HttpError(405, "Method not allowed");
       const since = Number(url.searchParams.get("since"));
       const wait = Math.min(MAX_WAIT_SEC, Math.max(0, Number(url.searchParams.get("wait")) || 0));

@@ -10,7 +10,7 @@
  *    newer note from another one, paused, so it picks up where that stopped.
  *  - changes: a long poll, so other devices hear within moments.
  */
-import { mergePlaylistDocs, sameDoc, toPlaylistDoc, type PlaylistDoc, type WireTrack } from "./playlistSync";
+import { mergePlaylistDocs, sameDoc, sameLikes, toPlaylistDoc, type PlaylistDoc, type WireTrack } from "./playlistSync";
 
 export interface SyncReply {
   status: number;
@@ -29,6 +29,8 @@ export interface PlaybackNote {
   track: WireTrack;
   queueId: string;
   context?: string;
+  /** what the player is doing with the sound, for a look when something sounds off */
+  audio?: string;
 }
 
 export interface QueueDoc {
@@ -51,6 +53,10 @@ export interface SyncHost {
   wantsPlayback(note: PlaybackNote): boolean;
   /** Take it over, paused. `queue` is null when the note's queue is no longer there. */
   adoptPlayback(note: PlaybackNote, queue: QueueDoc | null): void;
+  /** Liked Songs as arranged here, on the device where they are arranged. */
+  readLikes?(): WireTrack[];
+  /** The order arranged on another device, on a device that follows it. */
+  applyLikes?(tracks: WireTrack[]): void;
   onStatus?(status: SyncStatus): void;
 }
 
@@ -63,6 +69,7 @@ const REJECTED_RETRY_MS = 5 * 60_000;
 const PLAYLISTS_AFTER_CHANGE_MS = 1500;
 const PLAYBACK_AFTER_CHANGE_MS = 800;
 const PLAYBACK_WHILE_PLAYING_MS = 30_000;
+const LIKES_AFTER_CHANGE_MS = 3000;
 const MERGE_ATTEMPTS = 4;
 
 function readNote(doc: unknown): PlaybackNote | null {
@@ -79,7 +86,7 @@ export function createSyncEngine(host: SyncHost) {
   let session = 0;
   let status: SyncStatus = "off";
   let seq = -1;
-  const known = { playlists: -1, position: -1 };
+  const known = { playlists: -1, position: -1, likes: -1 };
   let sentQueueId: string | null = null;
   /** the note last sent or taken over: nothing newer, nothing to say */
   let sentAt = 0;
@@ -87,6 +94,7 @@ export function createSyncEngine(host: SyncHost) {
   let playlistsAgain = false;
   let playlistsTimer: ReturnType<typeof setTimeout> | null = null;
   let playbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let likesTimer: ReturnType<typeof setTimeout> | null = null;
   let lastPlaybackAt = 0;
   let wakeSleep: (() => void) | null = null;
 
@@ -174,6 +182,26 @@ export function createSyncEngine(host: SyncHost) {
     host.adoptPlayback(note, matching);
   }
 
+  async function pullLikes(): Promise<void> {
+    const got = await host.request("GET", "/v1/docs/likes", undefined, REQUEST_TIMEOUT_MS);
+    if (got.status !== 200) throw refused(got);
+    known.likes = got.body.rev;
+    if (Array.isArray(got.body.doc?.tracks)) host.applyLikes?.(got.body.doc.tracks);
+  }
+
+  /** Only when something changed here or this device just arrived: two computers can't keep answering each other. */
+  async function pushLikes(): Promise<void> {
+    const mine = host.readLikes?.();
+    if (!mine) return;
+    const got = await host.request("GET", "/v1/docs/likes", undefined, REQUEST_TIMEOUT_MS);
+    if (got.status !== 200) throw refused(got);
+    known.likes = got.body.rev;
+    if (sameLikes(mine, Array.isArray(got.body.doc?.tracks) ? got.body.doc.tracks : [])) return;
+    const put = await host.request("PUT", "/v1/docs/likes", { doc: { tracks: mine } }, REQUEST_TIMEOUT_MS);
+    if (put.status !== 200) throw refused(put);
+    known.likes = put.body.rev;
+  }
+
   function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
       const timer = setTimeout(done, ms);
@@ -202,6 +230,12 @@ export function createSyncEngine(host: SyncHost) {
         const revs = reply.body.revs ?? {};
         if (!synced || revs.playlists !== known.playlists) await syncPlaylists();
         if (!synced || revs.position !== known.position) await checkPlayback();
+        // A service from before this document doesn't list it.
+        if (revs.likes !== undefined) {
+          if (host.applyLikes) {
+            if (!synced || revs.likes !== known.likes) await pullLikes();
+          } else if (!synced) await pushLikes();
+        }
         synced = true;
       } catch (err) {
         if (!running || mine !== session) return;
@@ -223,6 +257,7 @@ export function createSyncEngine(host: SyncHost) {
       seq = -1;
       known.playlists = -1;
       known.position = -1;
+      known.likes = -1;
       setStatus("connecting");
       void run(session);
     },
@@ -240,13 +275,24 @@ export function createSyncEngine(host: SyncHost) {
       session += 1;
       if (playlistsTimer) clearTimeout(playlistsTimer);
       if (playbackTimer) clearTimeout(playbackTimer);
-      playlistsTimer = playbackTimer = null;
+      if (likesTimer) clearTimeout(likesTimer);
+      playlistsTimer = playbackTimer = likesTimer = null;
       wakeSleep?.();
       setStatus("off");
     },
 
     /** Something changed in the playlists here. */
     playlistsChanged: playlistsSoon,
+
+    /** Liked Songs changed here: what was added, taken back or arranged anew. */
+    likesChanged(): void {
+      if (!enabled) return;
+      if (likesTimer) clearTimeout(likesTimer);
+      likesTimer = setTimeout(() => {
+        likesTimer = null;
+        void pushLikes().catch(() => undefined);
+      }, LIKES_AFTER_CHANGE_MS);
+    },
 
     /**
      * Something happened in playback here. `routine` is the tick while a song
@@ -285,8 +331,12 @@ export function createSyncEngine(host: SyncHost) {
 
 export type SyncEngine = ReturnType<typeof createSyncEngine>;
 
-/** Where the service is unless told otherwise: on Jellyfin's host, port 8196. */
+/**
+ * Where the service is unless told otherwise. At home on Jellyfin's host, port
+ * 8196; behind https (a proxy or tunnel, with one door) under Jellyfin's name.
+ */
 export function defaultSyncAddress(server: string): string | null {
-  const match = /^(https?:\/\/)(\[[^\]]+\]|[^/:]+)/i.exec(server);
-  return match ? `${match[1]}${match[2]}:8196` : null;
+  const match = /^(https?):\/\/(\[[^\]]+\]|[^/:]+)(:\d+)?/i.exec(server);
+  if (!match) return null;
+  return match[1].toLowerCase() === "https" ? `https://${match[2]}${match[3] ?? ""}/songsta-sync` : `http://${match[2]}:8196`;
 }

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { recordDeletionChanges } from "../.test-build/deletion-sync.mjs";
-import { mergePlaylistDocs, sameDoc, songFinder, toPlaylistDoc, toWireTrack, withSyncedDeletions } from "../.test-build/playlistSync.mjs";
+import { likedInOrder, mergePlaylistDocs, sameDoc, sameLikes, songFinder, toPlaylistDoc, toWireTrack, withSyncedDeletions } from "../.test-build/playlistSync.mjs";
 
 const song = (id, extra = {}) => ({ id, title: `Song ${id}`, artist: "Band", album: "Album", duration: 200, thumb: "jfart://x", ...extra });
 const ids = (doc, playlist = "p") => doc.playlists.find((p) => p.id === playlist)?.tracks.map((t) => t.id);
@@ -177,4 +177,28 @@ test("a local file in a desktop playlist finds its server copy on the phone", ()
   assert.equal(find({ id: "local:abc", title: "Night Ferry", artist: "band", album: "night ferry", duration: 200 })?.id, "jf:1");
   assert.equal(find({ id: "local:abc", title: "Night Ferry", artist: "band", album: "night ferry", duration: 260 }), undefined, "another recording");
   assert.equal(find({ id: "local:zzz", title: "Unknown", artist: "band", duration: 200 }), undefined);
+});
+
+test("Liked Songs stand in the order the computer arranged", () => {
+  const library = [song("jf:1"), song("jf:2"), song("jf:3"), song("jf:4")];
+  const find = songFinder(library);
+  // The server lists its favorites by artist and album; the order says otherwise.
+  const order = [song("jf:3"), song("jf:1"), song("jf:2")].map(toWireTrack);
+  assert.deepEqual(likedInOrder(["jf:1", "jf:2", "jf:3"], order, find), ["jf:3", "jf:1", "jf:2"]);
+  // Liked a moment ago: on top. Taken back here: gone, whatever the order remembers.
+  assert.deepEqual(likedInOrder(["jf:1", "jf:3", "jf:4"], order, find), ["jf:4", "jf:3", "jf:1"]);
+  assert.deepEqual(likedInOrder(["jf:2", "jf:1"], [], find), ["jf:2", "jf:1"]);
+});
+
+test("a song liked on the computer as its own file is the same like here", () => {
+  const library = [{ ...song("jf:1"), title: "Night Ferry", album: "Night" }, song("jf:2")];
+  const local = { id: "local:abc", title: "Night Ferry", artist: "Band", album: "Night", duration: 200 };
+  assert.deepEqual(likedInOrder(["jf:2", "jf:1"], [local, toWireTrack(song("jf:2"))], songFinder(library)), ["jf:1", "jf:2"]);
+});
+
+test("two orders are the same when their songs stand the same", () => {
+  const a = [song("1"), song("2")].map(toWireTrack);
+  assert.ok(sameLikes(a, [song("1"), song("2")].map(toWireTrack)));
+  assert.ok(!sameLikes(a, [song("2"), song("1")].map(toWireTrack)));
+  assert.ok(!sameLikes(a, a.slice(0, 1)));
 });
