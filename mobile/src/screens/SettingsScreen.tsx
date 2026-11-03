@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Reach } from "../addresses";
+import type { Leveling } from "../quality";
 import { NameDialog } from "../components/PlaylistSheets";
 import { Chip } from "../components/ui";
 import { plural, type SyncStatus } from "../shared";
@@ -24,6 +25,13 @@ const SYNC_LINE: Record<SyncStatus, string> = {
   unreachable: "Not found. Is it running there?",
   rejected: "It refused this login",
 };
+
+const LEVELS: { value: Leveling; label: string; line: string }[] = [
+  { value: "off", label: "Off", line: "Every song as loud as it was mastered" },
+  { value: "quiet", label: "Quiet", line: "Loud songs come down to about −18 LUFS" },
+  { value: "normal", label: "Normal", line: "Loud songs come down to about −14 LUFS, as on Spotify" },
+  { value: "loud", label: "Loud", line: "Loud songs come down to about −11 LUFS" },
+];
 
 const REACH_LINE: Record<Reach, string> = {
   home: "Connected at home",
@@ -51,6 +59,10 @@ export function SettingsScreen() {
   const quality = useDownloads((s) => s.quality);
   const overMobile = useDownloads((s) => s.overMobile);
   const keep24Bit = usePlayer((s) => s.keep24Bit);
+  const leveling = usePlayer((s) => s.leveling);
+  const lastProblem = useDownloads((s) => s.lastProblem);
+  const failedCount = useDownloads((s) => Object.values(s.loading).filter((song) => song.failed).length);
+  const loadingCount = useDownloads((s) => Object.values(s.loading).filter((song) => !song.failed).length);
   const [editingSync, setEditingSync] = useState(false);
   const [editingServer, setEditingServer] = useState<"home" | "away" | null>(null);
 
@@ -120,6 +132,16 @@ export function SettingsScreen() {
 
       <Text style={styles.section}>PLAYBACK</Text>
       <View style={styles.group}>
+        <View style={styles.row}>
+          <Text style={styles.rowTitle}>Volume leveling</Text>
+          <View style={styles.chips}>
+            {LEVELS.map((level) => (
+              <Chip key={level.value} label={level.label} active={leveling === level.value} onPress={() => usePlayer.getState().setLeveling(level.value)} />
+            ))}
+          </View>
+          <Text style={styles.rowSub}>{LEVELS.find((level) => level.value === leveling)?.line}</Text>
+        </View>
+        <View style={styles.divider} />
         <View style={styles.switchRow}>
           <View style={styles.switchText}>
             <Text style={styles.rowTitle}>24-bit output</Text>
@@ -131,6 +153,17 @@ export function SettingsScreen() {
 
       <Text style={styles.section}>DOWNLOADS</Text>
       <View style={styles.group}>
+        {!!(loadingCount || failedCount) && (
+          <>
+            <View style={styles.row}>
+              <Text style={styles.rowTitle}>
+                {waitingForWifi ? `${plural(waitingForWifi, "song waits", "songs wait")} for Wi-Fi` : loadingCount ? `Downloading ${plural(loadingCount, "song", "songs")}` : `${plural(failedCount, "song", "songs")} didn't download`}
+              </Text>
+              {!!failedCount && !!lastProblem && <Text style={[styles.rowSub, { color: "#FF9D9D" }]}>{lastProblem}</Text>}
+            </View>
+            <View style={styles.divider} />
+          </>
+        )}
         <View style={styles.row}>
           <Text style={styles.rowTitle}>Quality of new downloads</Text>
           <View style={styles.chips}>
@@ -143,7 +176,6 @@ export function SettingsScreen() {
         <View style={styles.switchRow}>
           <View style={styles.switchText}>
             <Text style={styles.rowTitle}>Download over mobile data</Text>
-            {!!waitingForWifi && <Text style={styles.rowSub}>{plural(waitingForWifi, "song waits", "songs wait")} for Wi-Fi</Text>}
           </View>
           <Switch
             accessibilityLabel="Download over mobile data"

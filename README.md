@@ -122,7 +122,7 @@ The Discord desktop app has to be running; Songsta connects as soon as it starts
 The Android app in [`mobile/`](mobile/README.md) plays the music on your Jellyfin server, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work.
 
 - **Away from home:** give your server a second address, a tunnel or proxy, in the app's settings. The app takes the direct way at home and the other one anywhere else, and a song under way goes on from there.
-- **Downloads:** hold a song, or use the arrow on an album or playlist. Android's download service fetches them, also with the app closed, as the file itself or as a 192 kbps MP3; over mobile data only if you allow it.
+- **Downloads:** the ⋮ on a song, or the arrow on an album or playlist, with each song's progress on its row. The app fetches them, also with the screen off, as the file itself or as a 192 kbps MP3; over mobile data only if you allow it.
 - **Without a connection** the app opens from what it remembers: the library, playlists, covers and the lyrics it has shown. Downloaded songs play, the rest is greyed out.
 - **Quality:** tap the format line in the player. *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, over mobile data up to 320 kbps.
 

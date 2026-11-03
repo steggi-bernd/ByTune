@@ -40,8 +40,12 @@ export interface NetworkState {
 export interface DownloadJob {
   job: number;
   status: "waiting" | "wifi" | "running" | "done" | "failed";
+  /** the server's HTTP status when it refused */
+  reason: number;
+  /** what went wrong, in words */
+  problem: string;
   loaded: number;
-  /** -1 while the server hasn't said */
+  /** -1 when the server doesn't say */
   total: number;
 }
 
@@ -54,10 +58,11 @@ type Events = {
 declare class Media3PlayerModule extends NativeModule<Events> {
   setAuth(server: string, headers: Record<string, string>, addresses: string[]): Promise<void>;
   setKeep24Bit(on: boolean, restart: boolean): Promise<void>;
+  setGain(gainDb: number): Promise<void>;
   getNetwork(): Promise<NetworkState>;
-  downloadStart(url: string, headers: Record<string, string>, fileName: string, title: string, artist: string, wifiOnly: boolean): Promise<number>;
+  downloadStart(url: string, headers: Record<string, string>, fileName: string, wifiOnly: boolean): Promise<number>;
   downloadQuery(jobs: number[]): Promise<DownloadJob[]>;
-  downloadFinish(job: number, fileName: string): Promise<{ file: string; bytes: number } | null>;
+  downloadFinish(job: number): Promise<{ file: string; bytes: number } | null>;
   downloadCancel(job: number): Promise<void>;
   downloadDelete(path: string): Promise<void>;
   downloadExisting(paths: string[]): Promise<string[]>;

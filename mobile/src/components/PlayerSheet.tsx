@@ -1,10 +1,8 @@
 /**
- * The player: one surface over the tabs. Collapsed it is the mini player above
- * the tab bar, opened it fills the screen. One number runs the whole way
- * between the two, `progress` from 0 to 1, and everything hangs on it on the
- * native side, so the motion stays smooth whatever JavaScript is doing: the
- * surface rises, the little cover grows into the big one, the mini row fades
- * out and the page fades in. A finger moves the same number.
+ * The player, moving as on Spotify: the mini player and the tabs stay where they
+ * are, and the whole page slides up over them, complete and solid, and back down.
+ * One number runs the way, `progress` from 0 to 1, on the native side, so the
+ * motion stays smooth whatever JavaScript is doing. A finger moves the same number.
  */
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,7 +22,7 @@ import { useDownloadAction } from "./SongMenu";
 import { TrackStrip, useTrackSwipe } from "./TrackStrip";
 import { Cover } from "./ui";
 
-const SPRING = { stiffness: 260, damping: 32, mass: 1, overshootClamping: true, useNativeDriver: true };
+const SPRING = { stiffness: 300, damping: 34, mass: 1, overshootClamping: true, useNativeDriver: true };
 
 const MINI_MARGIN = 8;
 const MINI_COVER = 40;
@@ -119,8 +117,8 @@ export function PlayerSheet({
   const download = useDownloadAction(track);
 
   const collapsedY = height - TAB_BAR_HEIGHT - insets.bottom - MINI_PLAYER_HEIGHT;
-  const geometry = useRef({ collapsedY, pageMax: 0 });
-  geometry.current.collapsedY = collapsedY;
+  const geometry = useRef({ travel: height, pageMax: 0 });
+  geometry.current.travel = height;
   const isOpen = useRef(false);
   /** where the page came to rest: at the top, or down at the cards */
   const pageRest = useRef(0);
@@ -162,7 +160,7 @@ export function PlayerSheet({
           pageY.stopAnimation((value) => (from.current.page = value));
         },
         onPanResponderMove: (_, g) => {
-          const { collapsedY: travel, pageMax } = geometry.current;
+          const { travel, pageMax } = geometry.current;
           const dy = caught.current + g.dy;
           if (from.current.page < -0.5) {
             // Down at the cards this drag only scrolls, back to the top at most.
@@ -175,7 +173,7 @@ export function PlayerSheet({
           pageY.setValue(pageAt((1 - sheet) * travel, pageMax));
         },
         onPanResponderRelease: (_, g) => {
-          const { collapsedY: travel, pageMax } = geometry.current;
+          const { travel, pageMax } = geometry.current;
           const dy = caught.current + g.dy;
           const sheet = from.current.sheet - dy / travel;
           if (from.current.page < -0.5 || sheet > 1) {
@@ -213,35 +211,15 @@ export function PlayerSheet({
   const coverSize = Math.max(120, Math.min(width - COVER_SIDE * 2, coverArea.height));
   const coverTop = coverArea.y + (coverArea.height - coverSize) / 2;
 
-  const motion = useMemo(() => {
-    const smallest = MINI_COVER / coverSize;
-    const middle = (smallest + 1) / 2;
-    const clamp = "clamp" as const;
-    return {
-      y: progress.interpolate({ inputRange: [0, 1], outputRange: [collapsedY, 0] }),
-      miniOpacity: progress.interpolate({ inputRange: [0, 0.14], outputRange: [1, 0], extrapolate: clamp }),
-      backOpacity: progress.interpolate({ inputRange: [0, 0.06], outputRange: [0, 1], extrapolate: clamp }),
-      // As wide as the mini player when it starts, and with its corners.
-      backScale: progress.interpolate({ inputRange: [0, 0.2], outputRange: [(width - MINI_MARGIN * 2) / width, 1], extrapolate: clamp }),
-      backRadius: progress.interpolate({ inputRange: [0, 0.2, 1], outputRange: [8, 14, 0] }),
-      pageOpacity: progress.interpolate({ inputRange: [0.4, 0.9], outputRange: [0, 1], extrapolate: clamp }),
-      coverX: progress.interpolate({ inputRange: [0, 1], outputRange: [MINI_MARGIN * 2 + MINI_COVER / 2 - width / 2, 0] }),
-      coverY: progress.interpolate({ inputRange: [0, 1], outputRange: [(MINI_ROW - MINI_COVER) / 2 + MINI_COVER / 2 - coverTop - coverSize / 2, 0] }),
-      coverScale: progress.interpolate({ inputRange: [0, 1], outputRange: [smallest, 1] }),
-      // The radius scales with the picture: bigger while it is small, to look the same.
-      coverRadius: progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [MINI_RADIUS / smallest, COVER_RADIUS / middle, COVER_RADIUS] }),
-    };
-  }, [progress, collapsedY, width, coverSize, coverTop]);
+  const pageTop = useMemo(() => progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }), [progress, height]);
 
   const renderCover = useCallback(
     (t: Track) => (
       <View style={styles.coverPage}>
-        <Animated.View style={{ width: coverSize, height: coverSize, overflow: "hidden", borderRadius: motion.coverRadius }}>
-          <Cover uri={t.thumb} size={coverSize} radius={0} />
-        </Animated.View>
+        <Cover uri={t.thumb} size={coverSize} radius={COVER_RADIUS} />
       </View>
     ),
-    [coverSize, motion.coverRadius]
+    [coverSize]
   );
 
   const open = useCallback(() => settle(true), [settle]);
@@ -260,66 +238,53 @@ export function PlayerSheet({
 
   return (
     <>
-      <Animated.View
-        {...pan.panHandlers}
-        pointerEvents={expanded ? "auto" : "box-none"}
-        style={[StyleSheet.absoluteFill, { transform: [{ translateY: motion.y }] }]}
-      >
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.back, { opacity: motion.backOpacity, borderRadius: motion.backRadius, transform: [{ scaleX: motion.backScale }] }]}
+      <View {...pan.panHandlers} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <View
+          pointerEvents={expanded ? "none" : "box-none"}
+          importantForAccessibility={expanded ? "no-hide-descendants" : "auto"}
+          accessibilityElementsHidden={expanded}
+          style={[styles.miniLayer, { top: collapsedY }]}
         >
-          <LinearGradient colors={[tinted(color, 0.24), tinted(color, 0.16), "#121212"]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
-        </Animated.View>
+          <MiniPlayer width={width} onOpen={open} />
+        </View>
 
         <Animated.View
           pointerEvents={expanded ? "auto" : "none"}
           importantForAccessibility={expanded ? "auto" : "no-hide-descendants"}
           accessibilityElementsHidden={!expanded}
-          style={[styles.page, { opacity: motion.pageOpacity, transform: [{ translateY: pageY }] }]}
+          style={[StyleSheet.absoluteFill, { transform: [{ translateY: pageTop }] }]}
         >
-          <PlayerPage
-            height={height - PEEK}
-            expanded={expanded}
-            swipe={swipe.panHandlers}
-            onClose={close}
-            onMenu={() => setMenu(true)}
-            onQuality={() => setQualityOpen(true)}
-            onArtist={(t) => openPage("Artist", { name: leadArtist(t.artist) })}
-            onCoverArea={(y, h) => setCoverArea((a) => (a.y === y && a.height === h ? a : { y, height: h }))}
-            onCardsHeight={(h) => {
-              geometry.current.pageMax = Math.max(0, h - PEEK);
-              if (pageRest.current < -geometry.current.pageMax) settlePage(-geometry.current.pageMax);
-            }}
-          />
-        </Animated.View>
+          <View pointerEvents="none" style={styles.back}>
+            <LinearGradient colors={[tinted(color, 0.24), tinted(color, 0.16), "#121212"]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+          </View>
 
-        <Animated.View
-          {...swipe.panHandlers}
-          pointerEvents={expanded ? "auto" : "none"}
-          importantForAccessibility="no-hide-descendants"
-          accessibilityElementsHidden
-          style={[
-            styles.flight,
-            {
-              top: coverTop,
-              height: coverSize,
-              transform: [{ translateX: motion.coverX }, { translateY: motion.coverY }, { translateY: pageY }, { scale: motion.coverScale }],
-            },
-          ]}
-        >
-          <TrackStrip width={width}>{renderCover}</TrackStrip>
-        </Animated.View>
+          <Animated.View style={[styles.page, { transform: [{ translateY: pageY }] }]}>
+            <PlayerPage
+              height={height - PEEK}
+              expanded={expanded}
+              swipe={swipe.panHandlers}
+              onClose={close}
+              onMenu={() => setMenu(true)}
+              onQuality={() => setQualityOpen(true)}
+              onArtist={(t) => openPage("Artist", { name: leadArtist(t.artist) })}
+              onCoverArea={(y, h) => setCoverArea((a) => (a.y === y && a.height === h ? a : { y, height: h }))}
+              onCardsHeight={(h) => {
+                geometry.current.pageMax = Math.max(0, h - PEEK);
+                if (pageRest.current < -geometry.current.pageMax) settlePage(-geometry.current.pageMax);
+              }}
+            />
+          </Animated.View>
 
-        <Animated.View
-          pointerEvents={expanded ? "none" : "box-none"}
-          importantForAccessibility={expanded ? "no-hide-descendants" : "auto"}
-          accessibilityElementsHidden={expanded}
-          style={[styles.miniLayer, { opacity: motion.miniOpacity }]}
-        >
-          <MiniPlayer width={width} onOpen={open} />
+          <Animated.View
+            {...swipe.panHandlers}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={[styles.bigCover, { top: coverTop, height: coverSize, transform: [{ translateY: pageY }] }]}
+          >
+            <TrackStrip width={width}>{renderCover}</TrackStrip>
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      </View>
 
       <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
         <Pressable style={styles.menuBack} onPress={() => setMenu(false)}>
@@ -395,11 +360,11 @@ export function PlayerSheet({
 }
 
 const styles = StyleSheet.create({
-  back: { ...StyleSheet.absoluteFill, overflow: "hidden", backgroundColor: "#121212" },
+  back: { ...StyleSheet.absoluteFill, backgroundColor: "#121212" },
   page: { position: "absolute", left: 0, right: 0, top: 0 },
-  flight: { position: "absolute", left: 0, right: 0, overflow: "hidden" },
+  bigCover: { position: "absolute", left: 0, right: 0, overflow: "hidden" },
   coverPage: { flex: 1, alignItems: "center" },
-  miniLayer: { position: "absolute", left: 0, right: 0, top: 0 },
+  miniLayer: { position: "absolute", left: 0, right: 0 },
   mini: { marginHorizontal: MINI_MARGIN, borderRadius: 8, overflow: "hidden" },
   miniRow: { flexDirection: "row", alignItems: "center", height: MINI_ROW, paddingRight: 4 },
   miniStrip: { flex: 1, minWidth: 0, height: MINI_ROW, overflow: "hidden" },

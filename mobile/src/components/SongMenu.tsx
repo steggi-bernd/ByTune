@@ -4,6 +4,7 @@ import { Alert, Modal, Pressable, StyleSheet, Text, View, type ViewStyle } from 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { plural, type Track } from "../shared";
+import { useConnection } from "../stores/connection";
 import { downloadOf, useDownloads } from "../stores/downloads";
 import { usePlaylists } from "../stores/playlists";
 import { colors } from "../theme";
@@ -30,16 +31,40 @@ export const useSongMenu = create<SongMenuState>((set) => ({
   close: () => set({ track: null, extras: [], plain: false }),
 }));
 
-const DOWNLOAD_LABEL = { kept: "Remove download", loading: "Stop downloading", failed: "Try downloading again" } as const;
+const DOWNLOAD_LABEL = { kept: "Remove download", loading: "Stop downloading", wifi: "Stop waiting for Wi-Fi", failed: "Try downloading again" } as const;
+
+/** On mobile data the question comes up at once: nothing that silently waits for a Wi-Fi nobody has in mind. */
+export function startDownload(tracks: Track[]): void {
+  const { add, overMobile, setOverMobile, quality } = useDownloads.getState();
+  if (!useConnection.getState().metered || overMobile) {
+    add(tracks);
+    return;
+  }
+  Alert.alert(
+    "You're on mobile data",
+    quality === "original" ? "Downloading the files themselves takes about 10 MB a minute of music, or wait for Wi-Fi." : "Downloading takes about 1.5 MB a minute of music, or wait for Wi-Fi.",
+    [
+      { text: "Wait for Wi-Fi", onPress: () => add(tracks) },
+      {
+        text: "Use mobile data",
+        onPress: () => {
+          setOverMobile(true);
+          add(tracks);
+        },
+      },
+    ],
+    { cancelable: true }
+  );
+}
 
 /** One song's download, the same words wherever it is offered. */
 export function useDownloadAction(track: Track | null | undefined): { label: string; run(): void } | null {
   const state = useDownloads((s) => (track ? downloadOf(s, track.id) : null));
   if (!track) return null;
-  const { add, remove } = useDownloads.getState();
+  const { remove } = useDownloads.getState();
   return {
     label: state ? DOWNLOAD_LABEL[state] : "Download",
-    run: () => (state === "kept" || state === "loading" ? remove([track]) : add([track])),
+    run: () => (state === "kept" || state === "loading" || state === "wifi" ? remove([track]) : startDownload([track])),
   };
 }
 
@@ -95,7 +120,7 @@ export function DownloadButton({ tracks, size = 24, style }: { tracks: Track[]; 
   });
   const [kept, loading] = counts.split("/").map(Number);
   const all = tracks.length > 0 && kept === tracks.length;
-  const { add, remove } = useDownloads.getState();
+  const { remove } = useDownloads.getState();
   const label = all ? "Remove download" : loading ? "Downloading" : "Download";
   return (
     <Pressable
@@ -107,7 +132,7 @@ export function DownloadButton({ tracks, size = 24, style }: { tracks: Track[]; 
             { text: "Cancel", style: "cancel" },
             { text: "Remove", style: "destructive", onPress: () => remove(tracks) },
           ]);
-        } else add(tracks);
+        } else startDownload(tracks);
       }}
       style={[styles.button, style]}
     >

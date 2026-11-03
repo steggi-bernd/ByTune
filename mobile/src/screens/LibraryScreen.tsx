@@ -46,6 +46,7 @@ export function LibraryScreen() {
   const playingAlbum = usePlayer((s) => s.queue[s.index]?.albumId);
   const kept = useDownloads((s) => s.kept);
   const loadingCount = useDownloads((s) => Object.values(s.loading).filter((song) => !song.failed).length);
+  const wifiCount = useDownloads((s) => Object.values(s.loading).filter((song) => song.wantsWifi).length);
 
   const rows = useMemo<Row[]>(() => {
     const lastOf = (tracks: Track[]): number => Math.max(0, ...tracks.map((t) => data.counts[t.id]?.lastAt ?? 0));
@@ -87,14 +88,16 @@ export function LibraryScreen() {
             {
               kind: "downloads",
               key: "downloads",
-              line: loadingCount
+              line: wifiCount
+                ? `${plural(wifiCount, "song waits", "songs wait")} for Wi-Fi`
+                : loadingCount
                 ? `Downloading ${plural(loadingCount, "song", "songs")}…`
                 : `${plural(keptSongs.length, "song", "songs")} · ${sizeLine(keptSongs.reduce((sum, k) => sum + k.bytes, 0))}`,
             },
           ]
         : [];
     return [...liked, ...downloads, ...rest];
-  }, [data, albums, artists, mixes, playlists, filter, kept, loadingCount]);
+  }, [data, albums, artists, mixes, playlists, filter, kept, loadingCount, wifiCount]);
 
   const chip = (label: string, value: Exclude<Filter, null>) => (
     <Chip label={label} active={filter === value} onPress={() => setFilter(filter === value ? null : value)} />

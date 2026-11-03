@@ -2,7 +2,7 @@
 // transcode, Automatic the best the connection carries, and never a transcode bigger than the file.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chooseStream, COMPACT_KBPS, ORIGINAL, sameChoice, stepDown } from "../.test-build/phone-quality.mjs";
+import { chooseStream, COMPACT_KBPS, levelGain, ORIGINAL, sameChoice, stepDown } from "../.test-build/phone-quality.mjs";
 
 const flac = { bitrate: 1_000_000 };
 const hiRes = { bitrate: 3_000_000 };
@@ -82,4 +82,22 @@ test("choices compare by what they fetch", () => {
   assert.ok(!sameChoice({ kind: "transcode", kbps: 192 }, { kind: "transcode", kbps: 128 }));
   assert.ok(!sameChoice(ORIGINAL, { kind: "transcode", kbps: 128 }));
   assert.ok(!sameChoice(undefined, ORIGINAL));
+});
+
+test("volume leveling goes to Spotify's level: a song at -7 LUFS comes down to -14, not to -18", () => {
+  // Jellyfin's gain for -7 LUFS is -11 dB: down to its own -18.
+  assert.equal(levelGain(-11, "quiet"), -11);
+  assert.equal(levelGain(-11, "normal"), -7);
+  assert.equal(levelGain(-11, "loud"), -4);
+});
+
+test("volume leveling only turns down", () => {
+  // A quiet song, at -15 LUFS.
+  assert.equal(levelGain(-3, "normal"), 0);
+  assert.equal(levelGain(2, "loud"), 0);
+});
+
+test("without leveling or a measurement the song stays as it is", () => {
+  assert.equal(levelGain(-11, "off"), undefined);
+  assert.equal(levelGain(undefined, "normal"), undefined);
 });

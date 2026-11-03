@@ -1,11 +1,11 @@
 /**
- * What stays over every page: the player and the three tabs. They share this
- * slot so the tabs can lie on top of the rising player and slide away under it.
+ * What stays over every page: the three tabs and the player. They share this
+ * slot so the player's page can slide up over the tabs, which stay where they are.
  */
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { House, Library, Search } from "lucide-react-native";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, TAB_BAR_HEIGHT } from "../theme";
@@ -21,19 +21,11 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const progress = useRef(new Animated.Value(0, { useNativeDriver: true })).current;
   const [expanded, setExpanded] = useState(false);
-  const tabsHeight = TAB_BAR_HEIGHT + insets.bottom;
-  const tabsY = useMemo(() => progress.interpolate({ inputRange: [0, 1], outputRange: [0, tabsHeight] }), [progress, tabsHeight]);
   const shownTab = state.routes[state.index].name;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <PlayerSheet
-        progress={progress}
-        expanded={expanded}
-        setExpanded={setExpanded}
-        goTo={(screen, params) => navigation.navigate(shownTab, { screen, params })}
-      />
-      <Animated.View pointerEvents={expanded ? "none" : "box-none"} style={[styles.tabsLayer, { transform: [{ translateY: tabsY }] }]}>
+      <View pointerEvents={expanded ? "none" : "box-none"} style={styles.tabsLayer}>
         <LinearGradient colors={["rgba(0,0,0,0.72)", colors.base]} locations={[0, 0.5]} style={{ paddingBottom: insets.bottom }}>
           <View style={styles.tabs} accessibilityRole="tablist">
             {TABS.map(({ label, Icon }, i) => {
@@ -59,7 +51,13 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
             })}
           </View>
         </LinearGradient>
-      </Animated.View>
+      </View>
+      <PlayerSheet
+        progress={progress}
+        expanded={expanded}
+        setExpanded={setExpanded}
+        goTo={(screen, params) => navigation.navigate(shownTab, { screen, params })}
+      />
     </View>
   );
 }

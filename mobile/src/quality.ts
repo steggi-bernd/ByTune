@@ -46,3 +46,13 @@ export function stepDown(track: { bitrate?: number }, current: StreamChoice): nu
 
 export const sameChoice = (a: StreamChoice | undefined, b: StreamChoice): boolean =>
   !!a && a.kind === b.kind && (a.kind !== "transcode" || b.kind !== "transcode" || a.kbps === b.kbps);
+
+/** Volume leveling, as on Spotify. Jellyfin's gains bring songs to −18 LUFS; Spotify's usual level is −14. */
+export type Leveling = "off" | "quiet" | "normal" | "loud";
+const LEVEL_LUFS: Record<Exclude<Leveling, "off">, number> = { quiet: -18, normal: -14, loud: -11 };
+
+/** The gain in dB for a song the server measured. It only ever turns down, so nothing clips; undefined leaves the song as it is. */
+export function levelGain(trackGainDb: number | undefined, leveling: Leveling): number | undefined {
+  if (leveling === "off" || trackGainDb === undefined) return undefined;
+  return Math.min(0, trackGainDb + LEVEL_LUFS[leveling] + 18);
+}

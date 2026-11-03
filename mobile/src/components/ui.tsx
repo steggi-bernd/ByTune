@@ -1,13 +1,13 @@
 /** The small parts every screen is built from: covers, chips, shelves, song rows. */
 import { Image } from "expo-image";
-import { CircleArrowDown, Heart, Music2 } from "lucide-react-native";
+import { CircleArrowDown, EllipsisVertical, Heart, Music2 } from "lucide-react-native";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PixelRatio, Pressable, ScrollView, StyleSheet, Text, View, type ImageStyle, type ViewStyle } from "react-native";
 import { withoutServer } from "../addresses";
 import type { Track } from "../shared";
 import { readJson, writeJson } from "../storage";
 import { useConnection } from "../stores/connection";
-import { downloadOf, useDownloads } from "../stores/downloads";
+import { downloadOf, percentOf, useDownloads } from "../stores/downloads";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { here, useSession } from "../stores/session";
@@ -212,13 +212,20 @@ export function TrackRow({
   const current = usePlayer((s) => s.queue[s.index]?.id === track.id);
   const playing = usePlayer((s) => s.isPlaying);
   const download = useDownloads((s) => downloadOf(s, track.id));
+  const percent = useDownloads((s) => percentOf(s, track.id));
   // Without a way to the server only what's on the phone can play.
   const outOfReach = useConnection((s) => s.reach === "offline") && download !== "kept";
+  const openMenu = onLongPress ?? (() => useSongMenu.getState().open(track));
+  let line = subtitle ?? track.artist;
+  if (missing) line = "Not on this server";
+  else if (download === "wifi") line = "Waiting for Wi-Fi";
+  else if (download === "failed") line = "Didn't download";
+  else if (download === "loading") line = percent === null ? "Waiting to download" : percent < 0 ? "Downloading…" : `Downloading ${percent}%`;
   return (
     <Pressable
       disabled={missing && !onLongPress}
       onPress={missing || outOfReach ? undefined : onPress}
-      onLongPress={onLongPress ?? (() => useSongMenu.getState().open(track))}
+      onLongPress={openMenu}
       style={[styles.row, !showCover && styles.rowPlain, (missing || outOfReach) && styles.rowMissing]}
     >
       {number !== undefined && (
@@ -232,15 +239,25 @@ export function TrackRow({
           {track.title}
         </Text>
         <View style={styles.rowSubline}>
-          {(download === "kept" || download === "loading") && (
+          {(download === "kept" || download === "loading" || download === "wifi") && (
             <CircleArrowDown size={13} color={download === "kept" ? colors.onAccent : colors.dim} fill={download === "kept" ? colors.accent : "transparent"} accessibilityLabel={download === "kept" ? "Downloaded" : "Downloading"} />
           )}
           <Text numberOfLines={1} style={styles.rowSubtitle}>
-            {missing ? "Not on this server" : subtitle ?? track.artist}
+            {line}
           </Text>
         </View>
+        {download === "loading" && percent !== null && percent >= 0 && (
+          <View style={styles.rowBar}>
+            <View style={[styles.rowBarFill, { width: `${percent}%` }]} />
+          </View>
+        )}
       </View>
       {!missing && <LikeButton track={track} />}
+      {(!missing || !!onLongPress) && (
+        <Pressable onPress={openMenu} hitSlop={4} accessibilityLabel={`More options for ${track.title}`} style={styles.rowMore}>
+          <EllipsisVertical size={20} color={colors.dim} />
+        </Pressable>
+      )}
     </Pressable>
   );
 }
@@ -259,7 +276,7 @@ const styles = StyleSheet.create({
   cardSubtitle: { color: colors.dim, fontSize: 12.5, marginTop: 2 },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   eq: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 14 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, height: 62, paddingLeft: 16, paddingRight: 6 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, height: 62, paddingLeft: 16, paddingRight: 2 },
   rowPlain: { height: 60 },
   rowMissing: { opacity: 0.45 },
   rowNumber: { width: 18, alignItems: "center" },
@@ -268,4 +285,7 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.ink, fontSize: 15, fontWeight: "500" },
   rowSubline: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
   rowSubtitle: { flexShrink: 1, color: colors.dim, fontSize: 13 },
+  rowBar: { height: 2, marginTop: 4, borderRadius: 1, backgroundColor: colors.hairline, overflow: "hidden" },
+  rowBarFill: { height: 2, backgroundColor: colors.accent },
+  rowMore: { width: 36, height: 44, alignItems: "center", justifyContent: "center" },
 });

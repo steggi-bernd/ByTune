@@ -12,11 +12,11 @@ import { create } from "zustand";
 import Player, { type PlaybackState, type QueueItem, type RepeatMode } from "../../modules/media3-player";
 import { streamUrl, type Session } from "../jellyfin";
 import { withoutServer } from "../addresses";
-import { chooseStream, ORIGINAL, sameChoice, stepDown, type QualityMode, type StreamChoice } from "../quality";
+import { chooseStream, levelGain, ORIGINAL, sameChoice, stepDown, type Leveling, type QualityMode, type StreamChoice } from "../quality";
 import { playCreditSeconds, toWireTrack, type PlaybackNote, type QueueDoc, type Track } from "../shared";
 import { readJson, writeJson } from "../storage";
 import { useConnection } from "./connection";
-import { useDownloads } from "./downloads";
+import { downloadsLine, useDownloads } from "./downloads";
 import { useLibrary } from "./library";
 import { findSong } from "./playlists";
 import { here, useSession } from "./session";
@@ -61,6 +61,8 @@ interface PlayerState {
   /** 24-bit files keep their resolution up to the system's mixer */
   keep24Bit: boolean;
   setKeep24Bit(on: boolean): void;
+  leveling: Leveling;
+  setLeveling(leveling: Leveling): void;
   setQuality(mode: QualityMode): void;
   playTracks(tracks: Track[], start: number, context: string, shuffle?: boolean): void;
   toggle(): void;
@@ -99,7 +101,7 @@ function toItem(t: Track): QueueItem {
     artist: t.artist,
     album: t.album ?? "",
     artworkUrl: t.thumb ? useDownloads.getState().covers[withoutServer(t.thumb)] ?? here(t.thumb) : undefined,
-    gainDb: t.rg?.trackGain,
+    gainDb: levelGain(t.rg?.trackGain, usePlayer.getState().leveling),
   };
 }
 
@@ -132,20 +134,31 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   stream: ORIGINAL,
   audio: "",
   keep24Bit: false,
+  leveling: "normal",
 
   setQuality(mode) {
     capKbps = null;
     jumpedAt = Date.now();
     set({ quality: mode });
-    writeJson(QUALITY_FILE, { mode, keep24Bit: get().keep24Bit });
+    writeJson(QUALITY_FILE, { mode, keep24Bit: get().keep24Bit, leveling: get().leveling });
     refreshStreams(true);
   },
 
   setKeep24Bit(keep24Bit) {
     set({ keep24Bit });
-    writeJson(QUALITY_FILE, { mode: get().quality, keep24Bit });
+    writeJson(QUALITY_FILE, { mode: get().quality, keep24Bit, leveling: get().leveling });
     jumpedAt = Date.now();
     void Player.setKeep24Bit(keep24Bit, true);
+  },
+
+  setLeveling(leveling) {
+    set({ leveling });
+    writeJson(QUALITY_FILE, { mode: get().quality, keep24Bit: get().keep24Bit, leveling });
+    const { queue, index } = get();
+    const current = queue[index];
+    if (!current) return;
+    void Player.setGain(levelGain(current.rg?.trackGain, leveling) ?? 0);
+    void Player.replaceUpcoming(queue.slice(index + 1).map(toItem));
   },
 
   playTracks(all, start, context, shuffle = get().shuffle) {
@@ -289,8 +302,9 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   async restore() {
-    const savedQuality = await readJson<{ mode?: QualityMode; keep24Bit?: boolean }>(QUALITY_FILE);
+    const savedQuality = await readJson<{ mode?: QualityMode; keep24Bit?: boolean; leveling?: Leveling }>(QUALITY_FILE);
     if (savedQuality?.mode) set({ quality: savedQuality.mode });
+    if (savedQuality?.leveling) set({ leveling: savedQuality.leveling });
     if (savedQuality?.keep24Bit) {
       set({ keep24Bit: true });
       await Player.setKeep24Bit(true, false);
@@ -558,7 +572,7 @@ export function playbackNote(device: PlaybackNote["device"]): { note: PlaybackNo
   if (!queueId) queueId = String(activityAt);
   const id = queueId;
   return {
-    note: { device, at: activityAt, playing: isPlaying, positionMs, track: toWireTrack(track), queueId: id, context, audio: [usePlayer.getState().audio, rateOff].filter(Boolean).join(" · ") },
+    note: { device, at: activityAt, playing: isPlaying, positionMs, track: toWireTrack(track), queueId: id, context, audio: [usePlayer.getState().audio, rateOff, downloadsLine()].filter(Boolean).join(" · ") },
     queue: () => ({
       id,
       context,

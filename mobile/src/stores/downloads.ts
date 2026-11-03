@@ -1,8 +1,8 @@
 /**
- * Songs kept on the phone. Android's download service fetches them
- * (SongDownloads.kt); this store knows which song lies where, hands over the
- * next ones and follows how they stand. A kept song brings its cover and lyrics
- * along, so it has them without any connection.
+ * Songs kept on the phone. The native side fetches them (SongDownloads.kt), one
+ * or two at a time, also with the app out of sight; this store knows which song
+ * lies where, hands over what's asked for and follows how they stand. A kept
+ * song brings its cover and lyrics along, so it has them without any connection.
  */
 import { Directory, File, Paths } from "expo-file-system";
 import { create } from "zustand";
@@ -17,9 +17,9 @@ import { useLibrary } from "./library";
 import { here, useSession } from "./session";
 
 const FILE = "downloads.json";
-/** Handed to the download service at a time: it goes on with those while the app is closed. */
-const AT_ONCE = 12;
-const FOLLOW_EVERY_MS = 2000;
+/** Handed over at a time: the native side works through them while timers here stand still in the background. */
+const AT_ONCE = 500;
+const FOLLOW_EVERY_MS = 1000;
 const TRIES = 3;
 
 export interface KeptSong {
@@ -30,7 +30,7 @@ export interface KeptSong {
 }
 
 export interface LoadingSong {
-  /** the download service's number; null while it waits for its turn */
+  /** the native side's number; null while it waits for its turn */
   job: number | null;
   fileName: string;
   compact: boolean;
@@ -38,6 +38,13 @@ export interface LoadingSong {
   /** waits for Wi-Fi because mobile data isn't allowed */
   wantsWifi: boolean;
   failed: boolean;
+}
+
+/** How far a song is that's being fetched right now. */
+export interface SongProgress {
+  loaded: number;
+  /** -1 when the server doesn't say, as for a copy it makes on the way */
+  total: number;
 }
 
 interface Saved {
@@ -53,10 +60,14 @@ interface DownloadsState {
   kept: Record<string, KeptSong>;
   /** by song, in the order they were asked for */
   loading: Record<string, LoadingSong>;
+  /** the ones being fetched right now, by song: changes all the time, so it stays apart and isn't saved */
+  progress: Record<string, SongProgress>;
   /** a cover's file by what identifies the picture */
   covers: Record<string, string>;
   quality: DownloadQuality;
   overMobile: boolean;
+  /** what went wrong last, in words */
+  lastProblem: string | null;
   restore(): Promise<void>;
   add(tracks: Track[]): void;
   remove(tracks: Track[]): void;
@@ -68,9 +79,11 @@ interface DownloadsState {
 export const useDownloads = create<DownloadsState>((set, get) => ({
   kept: {},
   loading: {},
+  progress: {},
   covers: {},
   quality: "original",
   overMobile: false,
+  lastProblem: null,
 
   async restore() {
     const saved = await readJson<Saved>(FILE);
@@ -194,7 +207,7 @@ function dropUnusedCovers(): void {
 }
 
 async function finished(id: string, song: LoadingSong): Promise<void> {
-  const done = await Player.downloadFinish(song.job as number, song.fileName).catch(() => null);
+  const done = await Player.downloadFinish(song.job as number).catch(() => null);
   if (!done) {
     retry(id, song);
     return;
@@ -227,10 +240,11 @@ async function handOver(): Promise<void> {
     }
     const plan = downloadPlan(session, track, quality);
     try {
-      const job = await Player.downloadStart(plan.url, { Authorization: authHeader(session.deviceId, session.token) }, plan.fileName, track.title, track.artist, !overMobile);
+      const job = await Player.downloadStart(plan.url, { Authorization: authHeader(session.deviceId, session.token) }, plan.fileName, !overMobile);
       patch(id, { job, fileName: plan.fileName, compact: plan.compact });
       running += 1;
-    } catch {
+    } catch (err) {
+      useDownloads.setState({ lastProblem: err instanceof Error ? err.message : "The download didn't start" });
       retry(id, song);
     }
   }
@@ -248,13 +262,28 @@ async function follow(): Promise<void> {
       .map((song) => song.job)
       .filter((job): job is number => job !== null);
     const report = new Map((await Player.downloadQuery(jobs).catch(() => [])).map((row) => [row.job, row]));
+    const progress: Record<string, SongProgress> = {};
     for (const [id, song] of Object.entries(before)) {
       if (song.job === null) continue;
       const row = report.get(song.job);
-      if (!row || row.status === "failed") retry(id, song);
+      if (row?.status === "running") progress[id] = { loaded: row.loaded, total: row.total };
+      if (!row) {
+        // Handed over before the app was last closed: what's fetched so far is still there.
+        void Player.downloadCancel(song.job);
+        patch(id, { job: null, wantsWifi: false });
+      } else if (row.status === "failed") {
+        useDownloads.setState({ lastProblem: row.problem || "The download stopped" });
+        retry(id, song);
+      }
       else if (row.status === "done") await finished(id, song);
-      else if ((row.status === "wifi") !== song.wantsWifi) patch(id, { wantsWifi: row.status === "wifi" });
+      else {
+        // Android often just leaves it pending on mobile data rather than say so.
+        const { overMobile } = useDownloads.getState();
+        const wantsWifi = row.status === "wifi" || (row.status === "waiting" && useConnection.getState().metered && !overMobile);
+        if (wantsWifi !== song.wantsWifi) patch(id, { wantsWifi });
+      }
     }
+    useDownloads.setState({ progress });
     await handOver();
     if (useDownloads.getState().loading !== before) save();
   } finally {
@@ -281,10 +310,27 @@ export function sizeLine(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
-export type SongDownload = "kept" | "loading" | "failed" | null;
+/** Whole percent of a song being fetched; -1 when nobody knows how big it is; null when it isn't being fetched right now. */
+export function percentOf(s: DownloadsState, id: string): number | null {
+  const now = s.progress[id];
+  if (!now) return null;
+  return now.total > 0 ? Math.min(100, Math.floor((now.loaded / now.total) * 100)) : -1;
+}
+
+export type SongDownload = "kept" | "loading" | "wifi" | "failed" | null;
 
 export function downloadOf(s: DownloadsState, id: string): SongDownload {
   if (s.kept[id]) return "kept";
   const song = s.loading[id];
-  return song ? (song.failed ? "failed" : "loading") : null;
+  if (!song) return null;
+  return song.failed ? "failed" : song.wantsWifi ? "wifi" : "loading";
+}
+
+/** How the downloads stand, in short: goes out with the playback note, for a look from afar. */
+export function downloadsLine(): string {
+  const { kept, loading, overMobile, lastProblem } = useDownloads.getState();
+  const songs = Object.values(loading);
+  if (!songs.length && !lastProblem) return "";
+  const count = (test: (song: LoadingSong) => boolean): number => songs.filter(test).length;
+  return `downloads ${Object.keys(kept).length} kept, ${count((song) => !song.failed)} loading, ${count((song) => song.wantsWifi)} for wifi, ${count((song) => song.failed)} failed${overMobile ? ", mobile data allowed" : ""}${lastProblem ? `, ${lastProblem}` : ""}`;
 }

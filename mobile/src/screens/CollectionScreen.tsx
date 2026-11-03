@@ -41,6 +41,8 @@ export function CollectionScreen() {
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const kept = useDownloads((s) => s.kept);
+  // What's on its way stands on top, with how far it is.
+  const onItsWay = useDownloads((s) => Object.keys(s.loading).join("|"));
   // Deleted here or on another device: nothing left to show.
   useEffect(() => {
     if (playlistId && !playlist && nav.canGoBack()) nav.goBack();
@@ -58,7 +60,10 @@ export function CollectionScreen() {
       case "liked":
         return { title: "Liked Songs", tracks: data.favorites.map((id) => byId.get(id)).filter((t): t is Track => !!t) };
       case "downloads":
-        return { title: "Downloads", tracks: Object.keys(kept).map((id) => byId.get(id)).filter((t): t is Track => !!t) };
+        return {
+          title: "Downloads",
+          tracks: [...onItsWay.split("|"), ...Object.keys(kept)].map((id) => byId.get(id)).filter((t): t is Track => !!t),
+        };
       case "mix": {
         const mix = mixes.find((m) => m.id === params.id);
         return { title: mix?.title ?? "Mix", tracks: mix?.tracks ?? [] };
@@ -70,7 +75,7 @@ export function CollectionScreen() {
       case "artistLiked":
         return { title: `Liked songs by ${params.name}`, tracks: artistLiked };
     }
-  }, [params, playlist, data.tracks, data.favorites, byId, mixes, genres, artistLiked, kept]);
+  }, [params, playlist, data.tracks, data.favorites, byId, mixes, genres, artistLiked, kept, onItsWay]);
   // What can play: a playlist's song this library doesn't have stays in the list only.
   const tracks = useMemo(() => shown.filter((t) => !t.missing), [shown]);
 

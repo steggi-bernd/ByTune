@@ -9,8 +9,9 @@ Android first, built with Expo and React Native. It connects to your Jellyfin se
 
 - **Sync:** playlists, where you stopped and the order of Liked Songs stay the same as on the desktop, through the [sync service](../sync-server/README.md).
 - **Quality** (tap the format line in the player): *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, measured while data flows, and over mobile data up to 320 kbps. The line at the bottom of that sheet says what the sound goes through: decoder, output, speed. *24-bit output* in the settings keeps the full resolution of 24-bit files up to the phone's mixer; it is off by default, because one phone played songs far too fast and this may be why.
+- **Volume leveling** (Settings): Jellyfin measures every song; the app brings loud ones down to −14 LUFS, Spotify's usual level, or −18 or −11 if you prefer. It only ever turns down.
 - **Away from home** (Settings): a second address for your server, say a tunnel or proxy. The app asks both when the network changes and takes the direct way when it can; songs under way go on from the other address.
-- **Downloads:** hold a song, or use the arrow on an album or playlist. Android's download service fetches them, also with the app closed; a kept song brings its cover and lyrics. Settings choose the file itself or a 192 kbps MP3, and whether mobile data may be used.
+- **Downloads:** the ⋮ on a song, or the arrow on an album or playlist. Each song's row shows how far it is. The app fetches them itself, over the same way as the player, also with the screen off, and goes on where it stopped when a connection breaks. A kept song brings its cover and lyrics. Settings choose the file itself or a 192 kbps MP3, and whether mobile data may be used.
 - **Without a connection** the app opens from what it remembers: the library, playlists, the small covers it fetched on Wi-Fi, lyrics it has shown. Downloaded songs play, the rest is greyed out.
 
 ## Running it

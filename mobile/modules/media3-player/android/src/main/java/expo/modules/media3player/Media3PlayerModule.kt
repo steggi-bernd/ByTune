@@ -25,6 +25,8 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import kotlin.math.min
+import kotlin.math.pow
 
 class QueueItem : Record {
   @Field var id: String = ""
@@ -140,7 +142,8 @@ class Media3PlayerModule : Module() {
     networkWatch = watch
   }
 
-  private fun downloads(): SongDownloads = SongDownloads(appContext.reactContext as Context)
+  private val context: Context
+    get() = appContext.reactContext as Context
 
   /** After a failed stream the player stands idle, and seeking alone would not start it again. */
   private fun prepareIfIdle(player: Player) {
@@ -205,33 +208,38 @@ class Media3PlayerModule : Module() {
       }
     }.runOnQueue(Queues.MAIN)
 
+    /** The playing song's gain now; each next song brings its own. */
+    AsyncFunction("setGain") { gainDb: Double ->
+      withPlayer { player -> player.volume = min(1.0, 10.0.pow(gainDb / 20.0)).toFloat() }
+    }.runOnQueue(Queues.MAIN)
+
     AsyncFunction("getNetwork") {
       val manager = (appContext.reactContext as Context).getSystemService(ConnectivityManager::class.java)
       networkState(manager.getNetworkCapabilities(manager.activeNetwork))
     }
 
-    AsyncFunction("downloadStart") { url: String, headers: Map<String, String>, fileName: String, title: String, artist: String, wifiOnly: Boolean ->
-      downloads().start(url, headers, fileName, title, artist, wifiOnly).toDouble()
+    AsyncFunction("downloadStart") { url: String, headers: Map<String, String>, fileName: String, wifiOnly: Boolean ->
+      SongDownloads.start(context, url, headers, fileName, wifiOnly).toDouble()
     }
 
     AsyncFunction("downloadQuery") { jobs: List<Double> ->
-      downloads().query(jobs.map { it.toLong() })
+      SongDownloads.query(jobs.map { it.toLong() })
     }
 
-    AsyncFunction("downloadFinish") { job: Double, fileName: String ->
-      downloads().finish(job.toLong(), fileName)
+    AsyncFunction("downloadFinish") { job: Double ->
+      SongDownloads.finish(job.toLong())
     }
 
     AsyncFunction("downloadCancel") { job: Double ->
-      downloads().cancel(job.toLong())
+      SongDownloads.cancel(context, job.toLong())
     }
 
     AsyncFunction("downloadDelete") { path: String ->
-      downloads().delete(path)
+      SongDownloads.delete(context, path)
     }
 
     AsyncFunction("downloadExisting") { paths: List<String> ->
-      downloads().existing(paths)
+      SongDownloads.existing(paths)
     }
 
     AsyncFunction("setQueue") { items: List<QueueItem>, startIndex: Int, startMs: Double, play: Boolean ->
