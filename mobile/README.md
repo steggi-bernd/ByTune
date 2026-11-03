@@ -1,6 +1,6 @@
 # The phone app
 
-Android first, built with Expo and React Native. It connects to your Jellyfin server; the music stays there.
+Android first, built with Expo and React Native. It connects to your Jellyfin server; the music stays there. To just use it, take `Songsta.apk` from the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest); the rest of this page is for building it yourself.
 
 - `src/`: the screens and stores. What albums, artists and mixes are comes from the desktop app's own code (`../src/lib`, `src/shared.ts` names what is used), so both apps agree.
 - `modules/media3-player/`: the audio engine, a small native module around Google's Media3: background playback, lock screen and headset controls, songs in a row without a gap.

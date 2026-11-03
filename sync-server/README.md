@@ -6,7 +6,7 @@ It holds no music and has no accounts of its own: a client signs in with its Jel
 
 ## Running it
 
-On the machine with your Jellyfin container:
+On the machine with your Jellyfin container, in this folder or the unpacked `songsta-sync.zip` from the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest):
 
 ```bash
 JELLYFIN_NETWORK=<network Jellyfin is on> DATA_PATH=/path/for/its/data docker compose up -d --build

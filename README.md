@@ -5,7 +5,7 @@
 <h1 align="center">Songsta</h1>
 
 <p align="center">
-  <b>A local music player for the music you own — Windows and Linux, with an app for your Android phone.</b><br>
+  <b>A music player for the music you own — on Windows, Linux and your Android phone, kept the same everywhere by a small service on your own server.</b><br>
   Local folders, Jellyfin and Navidrome in one library — Hi-Res playback, synced lyrics and a home page built from your own listening. No account, no ads.
 </p>
 
@@ -13,6 +13,8 @@
   <a href="#install">Install</a> ·
   <a href="#features">Features</a> ·
   <a href="#on-your-phone">Phone app</a> ·
+  <a href="#the-same-on-all-your-devices">Sync</a> ·
+  <a href="#your-devices-in-one-place">Devices</a> ·
   <a href="#spotify-import">Spotify import</a> ·
   <a href="#discord-status-optional">Discord</a> ·
   <a href="#build-from-source">Build</a> ·
@@ -21,13 +23,24 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%C2%B7%20Linux-1f6f5c" alt="Platform: Windows 10/11 · Linux">
+  <a href="https://github.com/steggi-bernd/Songsta/releases/latest"><img src="https://img.shields.io/github/v/release/steggi-bernd/Songsta?label=release&color=7c5cd6" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%C2%B7%20Linux%20%C2%B7%20Android-1f6f5c" alt="Platform: Windows 10/11 · Linux · Android">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-a8324a" alt="License: GPL-3.0"></a>
 </p>
 
 ![Songsta: an album page with its track list; the library panel with two pinned rows over what played last; the right panel with what's next and the song's tempo and key; the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
 
 Songsta is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the open-source YouTube Music desktop app, rebuilt into a player for your own collection. YouTube and the account screens are gone: the app opens in your library, plays from your disk first and streams from your own server only when a file isn't there.
+
+Songsta comes in three parts. The desktop app stands on its own; the other two build on your Jellyfin server.
+
+| | What it's for | What it needs |
+|---|---|---|
+| **Desktop app** (Windows, Linux) | Your whole library, from local folders and servers, and everything under [Features](#features) | Nothing |
+| **[Android app](#on-your-phone)** | Your server's music on your phone, downloads for when there's no connection, and steering the speakers at home | A Jellyfin server |
+| **[Sync service](#the-same-on-all-your-devices)** | Playlists, where you stopped, muted songs and the order of Liked Songs the same everywhere, and devices that see and steer each other | Docker next to Jellyfin |
+
+All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest); [Install](#install) says how to set each of them up.
 
 > [!NOTE]
 > The screenshots show a **made-up demo library** — artists, songs, covers and lyrics were invented for this page. The app around them is the real build.
@@ -119,7 +132,9 @@ The Discord desktop app has to be running; Songsta connects as soon as it starts
 
 ## On your phone
 
-The Android app in [`mobile/`](mobile/README.md) plays the music on your Jellyfin server, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work.
+![The phone app: Home with your mixes, the player with its quality in gold, and the devices with a group of speakers and a second room playing something else](docs/screenshots/phone/phone.jpg)
+
+The Android app plays the music on your Jellyfin server, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work. [Install](#android) says how to get it.
 
 - **Away from home:** give your server a second address, a tunnel or proxy, in the app's settings. The app takes the direct way at home and the other one anywhere else, and a song under way goes on from there.
 - **The player:** the name of what's playing leads to its album, the artist to the artist, "Playing from" back to where it started. Under it lie the lyrics, what comes next, and about the song and the artist, as in the desktop app's side panel.
@@ -129,15 +144,17 @@ The Android app in [`mobile/`](mobile/README.md) plays the music on your Jellyfi
 - **Without a connection** the app opens from what it remembers: the library, playlists, covers and the lyrics it has shown. Downloaded songs play, the rest is greyed out.
 - **Quality:** the player shows what really plays, gold for lossless and down to red for a small copy; tap it to choose. *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, over mobile data up to AAC 256 kbps.
 
-The app is young and has run in an emulator far more than on real phones. There is no APK on the Releases page yet; [mobile/README.md](mobile/README.md) says how to build one.
+The app is young and has run in an emulator far more than on real phones. [mobile/README.md](mobile/README.md) has more on all of this, and how to build it yourself.
 
 ## The same on all your devices
 
-Which songs you like and how often they played go through your server's own favorites and play counts (**Settings → Server sync**). Playlists, where you stopped and the order of Liked Songs need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login. With it running, a playlist made on one device arrives on the others within moments, the phone lists Liked Songs in the order you have them on the computer, and muted songs stay muted everywhere.
+Which songs you like and how often they played go through your server's own favorites and play counts (**Settings → Server sync**). Playlists, where you stopped and the order of Liked Songs need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login ([how to set it up](#sync-service)). With it running, a playlist made on one device arrives on the others within moments, the phone lists Liked Songs in the order you have them on the computer, and muted songs stay muted everywhere.
 
 A device that isn't playing shows what another one plays and steers it, itself silent, like Spotify Connect: pause on the phone, and the computer pauses. Start a song on it and it plays by itself again. With no device playing, one picks up where another stopped, paused until you press play.
 
 ## Your devices in one place
+
+![The devices in the side panel: this computer, a phone with Songsta on it, a speaker playing the app's music and another one with a song of its own](docs/screenshots/local/devices.jpg)
 
 The speaker button next to the volume on the computer, and in the mini player or the player on the phone, opens a small smart-home room for everything that can make sound:
 
@@ -153,6 +170,8 @@ A group of separate devices isn't sample-exact: each one fetches and buffers by 
 Pull a song right on the phone, or choose *Mute song* in its menu on either app, and it's greyed out with a red name and skipped in every album, playlist and shuffle. It plays only when you ask for it by name, tap it or put it in the queue. The same way unmutes it.
 
 ## Install
+
+### Windows and Linux
 
 **Windows 10 / 11 (64-bit).** Get `Songsta-Setup.exe` from the [Releases page](https://github.com/steggi-bernd/Songsta/releases) or [build it yourself](#build-from-source). The installer isn't code-signed, so SmartScreen asks once: *More info → Run anyway*.
 
@@ -180,7 +199,23 @@ chmod +x Songsta-x86_64.AppImage
 
 The Linux packages are built by GitHub Actions for every release; this edition is developed and tested on Windows. The macOS build targets from upstream are still in the project, but untested.
 
-**Android:** see [On your phone](#on-your-phone).
+### Android
+
+For Android 7 or newer on a 64-bit phone, which is nearly all of them. Get `Songsta.apk` from the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest) and open it on the phone; Android asks once whether your browser may install apps. At the first start, enter your Jellyfin server's address and your login. A new version installs over the old one the same way.
+
+- The app isn't on a store. Google Play Protect may ask whether you trust it: *More details → Install anyway*.
+- It's signed with the standard development key, not one of its own. That's fine for your own phone, but should a later version get a real key, it needs one fresh install.
+- It plays from Jellyfin only; local folders and Navidrome are the desktop app's.
+
+### Sync service
+
+On the machine with your Jellyfin container, from `songsta-sync.zip` on the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest) or the [`sync-server`](sync-server) folder here:
+
+```bash
+JELLYFIN_NETWORK=<network Jellyfin is on> DATA_PATH=/path/for/its/data docker compose up -d --build
+```
+
+The apps then find it by themselves on your Jellyfin server's host, port 8196, and sign in with your Jellyfin login. [sync-server/README.md](sync-server/README.md) has the settings and how to reach it from outside your home.
 
 ## Build from source
 
@@ -229,4 +264,4 @@ Shortcuts never fire while you're typing in a text field.
 
 Songsta is a fork of [ByTune](https://github.com/rishiteja21/ByTune) by [rishiteja21](https://github.com/rishiteja21), which began as a desktop port of the BitChord Android player. Like both, it is licensed under the **GNU GPL v3** — see [LICENSE](LICENSE). Thanks to everyone who built them in the open.
 
-Built with Electron, React, TypeScript, Tailwind CSS, Zustand and music-metadata. Songsta is not affiliated with Spotify, Discord, Jellyfin or Navidrome.
+Built with Electron, React, TypeScript, Tailwind CSS, Zustand and music-metadata, the phone app with Expo, React Native and Media3. Songsta is not affiliated with Spotify, Discord, Jellyfin or Navidrome.
