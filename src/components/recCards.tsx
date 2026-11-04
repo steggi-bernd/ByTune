@@ -12,6 +12,7 @@ import { playSource } from "../lib/recs/playback";
 import { pastelFor, type HomeSection } from "../lib/recs/sections";
 import { tintHoverHandlers } from "../stores/ui";
 import { Artwork, PlayOverlay } from "./primitives";
+import { T } from "../lib/i18n";
 
 /* Same hover-only tile as the Cards.tsx shelf cards (keep the two in sync):
    transparent at rest, translucent box fades in on hover, 8px inset —
@@ -31,7 +32,7 @@ export function MixCard({ item }: { item: MixItem }) {
       onClick={() => void playSource(item.source)}
       {...tintHoverHandlers(item.thumb ?? null)}
       className={CARD}
-      aria-label={`Play ${item.name}`}
+      aria-label={T("Play {name}", { name: item.name })}
     >
       <div className="relative overflow-hidden rounded-xl">
         <Artwork
@@ -46,7 +47,7 @@ export function MixCard({ item }: { item: MixItem }) {
         >
           <span className="truncate text-[14px] font-extrabold tracking-[-0.01em] text-black/[0.82]">{item.name}</span>
         </div>
-        <PlayOverlay onClick={() => void playSource(item.source)} title={`Play ${item.name}`} />
+        <PlayOverlay onClick={() => void playSource(item.source)} title={T("Play {name}", { name: item.name })} />
       </div>
       <div className="mt-2.5">
         <div className={CARD_TITLE}>{item.name}</div>
@@ -63,14 +64,14 @@ export function RadioCard({ item }: { item: RadioItem }) {
       onClick={() => void playSource(item.source)}
       {...tintHoverHandlers(item.thumb ?? null)}
       className={CARD}
-      aria-label={`Play the ${item.name} radio`}
+      aria-label={T("Play the {name} radio", { name: item.name })}
     >
       <div
         className="relative aspect-square overflow-hidden rounded-xl"
         style={{ background: `linear-gradient(155deg, ${c1} 20%, ${c2})` }}
       >
         <Radio className="absolute left-3 top-3 w-4 h-4 text-black/65" aria-hidden />
-        <span className="absolute right-3 top-3 text-[10.5px] font-extrabold tracking-[0.2em] text-black/70">RADIO</span>
+        <span className="absolute right-3 top-3 text-[10.5px] font-extrabold tracking-[0.2em] text-black/70">{T("RADIO")}</span>
         <Artwork
           src={item.thumb ?? undefined}
           className="absolute left-1/2 top-[45%] w-[56%] aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full shadow-float transition-transform duration-300 ease-out group-hover:scale-[1.04]"
@@ -80,7 +81,7 @@ export function RadioCard({ item }: { item: RadioItem }) {
         <div className="absolute bottom-0 left-0 right-0 px-3 pb-2.5">
           <span className="block truncate text-[15.5px] font-extrabold tracking-[-0.01em] text-black/[0.82]">{item.name}</span>
         </div>
-        <PlayOverlay onClick={() => void playSource(item.source)} title={`Play the ${item.name} radio`} />
+        <PlayOverlay onClick={() => void playSource(item.source)} title={T("Play the {name} radio", { name: item.name })} />
       </div>
       <div className="mt-2.5">
         <div className={CARD_SUB}>{item.caption}</div>
@@ -100,7 +101,7 @@ export function EyebrowHeader({
   return (
     <div className="flex items-end justify-between gap-4 mb-4">
       <div className="flex min-w-0 items-center gap-3.5">
-        <button onClick={onOpen} title={`Open ${eyebrow.name}`} className="shrink-0 cursor-pointer">
+        <button onClick={onOpen} title={T("Open {name}", { name: eyebrow.name })} className="shrink-0 cursor-pointer">
           <Artwork src={eyebrow.thumb ?? undefined} className="w-14 h-14" rounded="rounded-full" iconClassName="w-5 h-5" alt="" />
         </button>
         <div className="min-w-0">
@@ -116,9 +117,7 @@ export function EyebrowHeader({
       <button
         onClick={onOpen}
         className="shrink-0 text-[13px] font-bold text-ink-faint hover:text-ink-hi transition-colors cursor-pointer"
-      >
-        Show all
-      </button>
+      >{T("Show all")}</button>
     </div>
   );
 }

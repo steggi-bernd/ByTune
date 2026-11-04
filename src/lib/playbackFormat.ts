@@ -16,6 +16,7 @@
  */
 import { jellyfinStreamPlan } from "../../electron/jellyfin-stream";
 import type { Track } from "../types";
+import { T } from "./i18n";
 
 export interface PlaybackFormat {
   /** "FLAC", "MP3", "AAC", "ALAC", "DSD64" … */
@@ -88,10 +89,10 @@ export function describePlayback(t: Track): PlaybackFormat | null {
   if (source === "jellyfin") {
     const plan = jellyfinStreamPlan(t);
     if (plan === "mp3") {
-      return { codec: "MP3", lossless: false, hiRes: false, kbps: 320, note: `${id.name} transcoded to MP3 by Jellyfin` };
+      return { codec: "MP3", lossless: false, hiRes: false, kbps: 320, note: T("{name} transcoded to MP3 by Jellyfin", { name: id.name }) };
     }
     if (plan === "flac") {
-      if (id.kind === "dsd") return { codec: "DSD", lossless: true, hiRes: true, note: "DSD converted to FLAC by Jellyfin" };
+      if (id.kind === "dsd") return { codec: "DSD", lossless: true, hiRes: true, note: T("DSD converted to FLAC by Jellyfin") };
       const bits = t.bitsPerSample;
       return {
         codec: id.name,
@@ -99,12 +100,12 @@ export function describePlayback(t: Track): PlaybackFormat | null {
         hiRes: isHiRes(true, bits, t.sampleRate),
         bits,
         rate: t.sampleRate,
-        note: `${id.name} converted to FLAC by Jellyfin — nothing is lost`,
+        note: T("{name} converted to FLAC by Jellyfin — nothing is lost", { name: id.name }),
       };
     }
   }
   if (source === "subsonic" && SUBSONIC_TRANSCODED.has((t.container ?? "").toLowerCase())) {
-    return { codec: "MP3", lossless: false, hiRes: false, kbps: 320, note: `${id.name} transcoded to MP3 by Navidrome` };
+    return { codec: "MP3", lossless: false, hiRes: false, kbps: 320, note: T("{name} transcoded to MP3 by Navidrome", { name: id.name }) };
   }
 
   if (id.kind === "dsd") {
@@ -112,7 +113,7 @@ export function describePlayback(t: Track): PlaybackFormat | null {
     const multiple = t.sampleRate ? Math.round(t.sampleRate / 44100) : 0;
     const name = multiple >= 64 ? `DSD${multiple}` : "DSD";
     if (source === "local") {
-      return { codec: name, lossless: true, hiRes: true, bits: 24, rate: 176400, note: `${name} converted to 24-bit / 176.4 kHz PCM` };
+      return { codec: name, lossless: true, hiRes: true, bits: 24, rate: 176400, note: T("{name} converted to 24-bit / 176.4 kHz PCM", { name }) };
     }
     return { codec: name, lossless: true, hiRes: true };
   }
@@ -130,7 +131,7 @@ export function describePlayback(t: Track): PlaybackFormat | null {
     bits,
     rate,
     kbps,
-    note: converted ? `converted to FLAC for playback${lossless ? " — nothing is lost" : ""}` : undefined,
+    note: converted ? T("converted to FLAC for playback{value}", { value: lossless ? T(" — nothing is lost") : "" }) : undefined,
   };
 }
 

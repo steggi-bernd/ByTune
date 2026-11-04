@@ -18,6 +18,7 @@ import { castHeard, castTrackEnded, handOverToCast, takeBackFromCast } from "./a
 import { requireBridge } from "./bridge";
 import { ipcErrorText } from "./ipcError";
 import { playableVersions } from "./librarySource";
+import { T } from "./i18n";
 
 export interface CastDevice {
   id: string;
@@ -91,7 +92,7 @@ function command(action: "play" | "pause" | "seek", value = 0): void {
   if (action === "seek") lastSeekAt = lastCommandAt;
   requireBridge()
     .castControl(action, value)
-    .catch((err: unknown) => toast(ipcErrorText(err, `${playerName()} didn't take that`), "error"));
+    .catch((err: unknown) => toast(ipcErrorText(err, T("{playerName} didn't take that", { playerName: playerName() })), "error"));
 }
 
 /** Puts `track` on the player at `position`, its local file first, then a server's copy. */
@@ -126,7 +127,7 @@ async function send(track: Track, position: number, play: boolean): Promise<void
   sent = null;
   startingSince = null;
   usePlayer.getState()._setBuffering(false);
-  toast(ipcErrorText(failure, `"${track.title}" can't play on ${playerName()}`), "error");
+  toast(ipcErrorText(failure, T("\"{title}\" can't play on {playerName}", { title: track.title, playerName: playerName() })), "error");
   adopt(() => usePlayer.getState().setPlaying(false));
 }
 
@@ -165,7 +166,7 @@ function onStatus(st: CastStatus): void {
   if (st.members && JSON.stringify(st.members) !== JSON.stringify(cast.members)) useCast.setState({ members: st.members });
   if (st.message) {
     if (++unanswered === LOST_AFTER) {
-      toast(`${cast.active.name} stopped answering — the music is back on this computer, paused`, "error");
+      toast(T("{name} stopped answering — the music is back on this computer, paused", { name: cast.active.name }), "error");
       void stopCasting(false);
     }
     return;
@@ -182,9 +183,7 @@ function onStatus(st: CastStatus): void {
     startingSince = null;
     player._setBuffering(false);
     toast(
-      st.fetched
-        ? `${cast.active.name} doesn't start "${cur.title}" — it may not play this kind of file`
-        : `${cast.active.name} can't reach this computer — let Songsta through the firewall for private networks`,
+      st.fetched ? T("{name} doesn't start \"{title}\" — it may not play this kind of file", { name: cast.active.name, title: cur.title }) : T("{name} can't reach this computer — let Songsta through the firewall for private networks", { name: cast.active.name }),
       "error"
     );
     adopt(() => usePlayer.getState().setPlaying(false));
@@ -219,7 +218,7 @@ export async function searchCastDevices(): Promise<CastDevice[]> {
     useCast.setState({ devices });
     return devices;
   } catch (err) {
-    toast(ipcErrorText(err, "Couldn't look for players on the network"), "error");
+    toast(ipcErrorText(err, T("Couldn't look for players on the network")), "error");
     return useCast.getState().devices;
   } finally {
     useCast.setState({ searching: false });
@@ -243,12 +242,12 @@ export async function castTo(device: CastDevice): Promise<void> {
     const s = usePlayer.getState();
     const cur = s.queue[s.index];
     if (cur) await send(cur, s.position, s.playing);
-    toast(`Playing on ${device.name}`);
+    toast(T("Playing on {name}", { name: device.name }));
   } catch (err) {
     offStatus?.();
     offStatus = null;
     useCast.setState({ connecting: null });
-    toast(ipcErrorText(err, `Couldn't connect to ${device.name}`), "error");
+    toast(ipcErrorText(err, T("Couldn't connect to {name}", { name: device.name })), "error");
   }
 }
 
@@ -275,9 +274,9 @@ export async function joinCast(device: CastDevice): Promise<void> {
   useCast.setState({ connecting: device.id });
   try {
     await requireBridge().castJoin("main", device.id);
-    toast(`${device.name} plays along`);
+    toast(T("{name} plays along", { name: device.name }));
   } catch (err) {
-    toast(ipcErrorText(err, `${device.name} can't play along`), "error");
+    toast(ipcErrorText(err, T("{name} can't play along", { name: device.name })), "error");
   } finally {
     useCast.setState({ connecting: null });
   }
@@ -328,7 +327,7 @@ export function toggleCastMute(): void {
   useCast.setState({ muted });
   void requireBridge()
     .castControl("mute", muted ? 1 : 0)
-    .catch((err: unknown) => toast(ipcErrorText(err, `${playerName()} didn't take that`), "error"));
+    .catch((err: unknown) => toast(ipcErrorText(err, T("{playerName} didn't take that", { playerName: playerName() })), "error"));
 }
 
 /**
@@ -344,8 +343,10 @@ export interface VolumeTarget {
   toggleMute(): void;
 }
 
-function targetFor(casting: boolean, castVolume: number | null, castMuted: boolean, volume: number, muted: boolean): VolumeTarget {
+function targetFor(casting: boolean, castVolume: number | null, castMuted: boolean, volume: number, muted: boolean, remoteVolume: number | null): VolumeTarget {
   const p = usePlayer.getState();
+  // Following another device: its volume, moved from here (stores/player.ts takes care of where it goes).
+  if (!casting && remoteVolume !== null) return { value: remoteVolume, muted: remoteVolume === 0, fixed: false, setVolume: p.setVolume, toggleMute: p.toggleMute };
   if (!casting) return { value: volume, muted, fixed: false, setVolume: p.setVolume, toggleMute: p.toggleMute };
   if (castVolume == null) return { value: volume, muted: false, fixed: true, setVolume: () => undefined, toggleMute: () => undefined };
   return { value: castVolume, muted: castMuted, fixed: false, setVolume: setCastVolume, toggleMute: toggleCastMute };
@@ -354,7 +355,7 @@ function targetFor(casting: boolean, castVolume: number | null, castMuted: boole
 export function volumeTarget(): VolumeTarget {
   const c = useCast.getState();
   const p = usePlayer.getState();
-  return targetFor(c.active !== null, c.volume, c.muted, p.volume, p.muted);
+  return targetFor(c.active !== null, c.volume, c.muted, p.volume, p.muted, p.remoteVolume);
 }
 
 export function useVolumeTarget(): VolumeTarget {
@@ -363,5 +364,6 @@ export function useVolumeTarget(): VolumeTarget {
   const castMuted = useCast((s) => s.muted);
   const volume = usePlayer((s) => s.volume);
   const muted = usePlayer((s) => s.muted);
-  return targetFor(casting, castVolume, castMuted, volume, muted);
+  const remoteVolume = usePlayer((s) => s.remoteVolume);
+  return targetFor(casting, castVolume, castMuted, volume, muted, remoteVolume);
 }

@@ -12,11 +12,12 @@
  * (see LyricsCenter.tsx), not here.
  */
 import { useEffect, useRef, useState } from "react";
-import { Music2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Music2, Split, X } from "lucide-react";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import { useAvailabilityCheck } from "../stores/availability";
 import { Artwork, EqBars, IconBtn } from "./primitives";
+import { handRows } from "../lib/queueSections";
 import { upgradeArtwork, wideArtwork } from "../lib/artwork";
 import { draggedTrack, dragHasQueueRow, dragHasTrack, readQueueIndex, readTrack, useDrag } from "../lib/dnd";
 import { branchOffAfterDrop } from "../lib/trackActions";
@@ -31,6 +32,7 @@ import { useSettings } from "../stores/settings";
 import { soundOf, useSound } from "../stores/sound";
 import { keyName } from "../../electron/sound-analysis";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 /** The queue's "Now playing" row — draggable like every other song row. */
 function QueueCurrentRow({ track, playing }: { track: Track; playing: boolean }) {
@@ -87,7 +89,7 @@ function TrackRow({
       onClick={available ? onPlay : undefined}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      title={available ? undefined : "Not available right now — its drive or server can't be reached"}
+      title={available ? undefined : T("Not available right now — its drive or server can't be reached")}
       className={`group relative flex items-center gap-3 h-12 px-2 rounded-lg select-none transition-colors ${
         available ? "cursor-pointer" : "cursor-default"
       } ${isCurrent ? "bg-ink-hi/[0.14]" : "hover:bg-ink-hi/[0.05]"} ${drag.dragging || !available ? "opacity-40" : ""}`}
@@ -117,9 +119,9 @@ function TrackRow({
             e.stopPropagation();
             onRemove();
           }}
-          title="Remove from queue"
-          aria-label="Remove from queue"
-          className="p-1 rounded-md text-ink-hi/45 hover:text-red-400 hover:bg-ink-hi/[0.06] opacity-0 group-hover:opacity-100 transition-all shrink-0"
+          title={T("Remove from queue")}
+          aria-label={T("Remove from queue")}
+          className="p-1 rounded-md text-ink-hi/45 hover:text-red-400 hover:bg-ink-hi/[0.06] transition-all shrink-0"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -168,10 +170,10 @@ function useQueueDrop(tail: () => number) {
     const from = drag?.from && drag.track.id === track.id ? drag.from : null;
     const branch = from && from.index < from.tracks.length - 1 ? from : null;
     useUI.getState().toast(
-      `Added “${track.title}” to the queue`,
+      T("Added “{title}” to the queue", { title: track.title }),
       "info",
       branch ? 7000 : 4600,
-      branch ? { label: "Branch off", run: () => branchOffAfterDrop(branch) } : undefined
+      branch ? { label: T("Branch off"), run: () => branchOffAfterDrop(branch) } : undefined
     );
   };
   const rowDragOver = (at: number) => (e: React.DragEvent): void => {
@@ -212,7 +214,6 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
   const queue = usePlayer((s) => s.queue);
   const index = usePlayer((s) => s.index);
   const playing = usePlayer((s) => s.playing);
-  const playAt = usePlayer((s) => s.playQueue);
   const removeAt = usePlayer((s) => s.removeAt);
   const history = useLibrary((s) => s.history);
   const playTrack = usePlayer((s) => s.playTrack);
@@ -220,6 +221,12 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
 
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
+  const lineEnd = usePlayer((s) => s.lineEnd);
+  const branches = usePlayer((s) => s.branches);
+  const [openBranches, setOpenBranches] = useState<ReadonlySet<string>>(new Set());
+  const handEnd = Math.min(queue.length, Math.max(index + 1, lineEnd));
+  const hand = handRows(queue, index, lineEnd, branches, openBranches);
+  const fromTheList = queue.slice(handEnd);
 
   const { drop, setDrop, accepts, moveTo, dropSong, rowDragOver, rowDrop, slotAt } = useQueueDrop(() => queue.length - 1);
   // Row keys must not depend on the current queue index: embedding `index`
@@ -232,6 +239,27 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
     occurrence.set(id, n + 1);
     return `${id}#${n}`;
   };
+
+  const queueRow = (t: Track, at: number) => (
+    <TrackRow
+      key={stableKey(t.id)}
+      track={t}
+      queueIndex={at}
+      available={available(t)}
+      dropEdge={drop?.index === at ? (drop.before ? "before" : "after") : null}
+      onDragOver={rowDragOver(at)}
+      onDrop={rowDrop(at)}
+      onPlay={() => usePlayer.getState().jumpTo(at)}
+      onRemove={() => {
+        // Removing a row shifts the list up under a stationary
+        // pointer — the row now under it never fires mouseenter,
+        // so clear the hover wash here (navigate() does the same
+        // for view changes).
+        useUI.getState().setTintThumb(null);
+        removeAt(at);
+      }}
+    />
+  );
 
   const TabBtn = ({
     id,
@@ -261,12 +289,12 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
     <>
       {/* Header — Queue / Recently played tabs + close back to details. */}
       <div className="h-14 shrink-0 flex items-center gap-5 px-5 border-b border-ink-hi/[0.08]">
-        <TabBtn id="queue" label="Queue" />
-        <TabBtn id="recent" label="Recently played" />
+        <TabBtn id="queue" label={T("Queue")} />
+        <TabBtn id="recent" label={T("Recently played")} />
         <div className="ml-auto">
           <IconBtn
             icon={X}
-            title="Close queue"
+            title={T("Close queue")}
             onClick={onClose}
             className="rounded-full text-ink-hi/55 hover:text-ink-hi"
           />
@@ -276,32 +304,25 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
       {tab === "queue" ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <span className="micro-label text-ink-hi/55">Now playing</span>
+            <span className="micro-label text-ink-hi/55">{T("Now playing")}</span>
             {upcoming.length > 0 && (
               <button
                 onClick={() => usePlayer.getState().clearUpcoming()}
                 className="text-[13px] font-semibold text-ink-hi/75 hover:text-ink-hi transition-colors"
-                title="Clear upcoming"
-              >
-                Clear
-              </button>
+                title={T("Clear upcoming")}
+              >{T("Clear")}</button>
             )}
           </div>
           <div className="px-2 pb-2">
             {current ? (
               <QueueCurrentRow track={current} playing={playing} />
             ) : (
-              <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">
-                Nothing playing — start a track to see your queue here.
-              </div>
+              <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">{T("Nothing playing — start a track to see your queue here.")}</div>
             )}
           </div>
 
-          <div className="px-4 pt-2 pb-1">
-            <h2 className="text-[20px] font-extrabold tracking-[-0.4px] text-ink-hi">Next up</h2>
-          </div>
           <div
-            className="flex-1 min-h-0 overflow-y-auto scroll-center px-2 pb-3 space-y-0.5"
+            className="flex-1 min-h-0 overflow-y-auto scroll-center px-2 pt-1 pb-3 space-y-0.5"
             onDragOver={(e) => {
               if (!accepts(e) || (dragHasQueueRow(e) && !upcoming.length)) return;
               e.preventDefault();
@@ -321,41 +342,68 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
               else dropSong(e, insertAt);
             }}
           >
-            {upcoming.length === 0 ? (
-              <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">Your queue is empty.</div>
-            ) : (
-              upcoming.map((t, i) => {
-                const at = index + 1 + i;
-                return (
-                  <TrackRow
-                    key={stableKey(t.id)}
-                    track={t}
-                    queueIndex={at}
-                    available={available(t)}
-                    dropEdge={drop?.index === at ? (drop.before ? "before" : "after") : null}
-                    onDragOver={rowDragOver(at)}
-                    onDrop={rowDrop(at)}
-                    onPlay={() => playAt(queue, at)}
-                    onRemove={() => {
-                      // Removing a row shifts the list up under a stationary
-                      // pointer — the row now under it never fires mouseenter,
-                      // so clear the hover wash here (navigate() does the same
-                      // for view changes).
-                      useUI.getState().setTintThumb(null);
-                      removeAt(at);
-                    }}
-                  />
-                );
-              })
+            {hand.length > 0 && (
+              <div className="mb-2 rounded-xl bg-ink-hi/[0.05] p-1.5 pt-2">
+                <div className="flex items-center justify-between px-2 pb-1.5">
+                  <span className="min-w-0 truncate text-[12.5px] font-bold text-accent">{T("Next in queue")}</span>
+                  <button onClick={() => usePlayer.getState().clearLine()} className="shrink-0 ml-2 text-[12px] font-semibold text-ink-hi/65 hover:text-ink-hi transition-colors">{T("Clear")}</button>
+                </div>
+                <div className="space-y-0.5">
+                  {hand.map((row) => {
+                    const openOrClose = (name: string): void => {
+                      const next = new Set(openBranches);
+                      if (!next.delete(name)) next.add(name);
+                      setOpenBranches(next);
+                    };
+                    if (row.kind === "song") return queueRow(row.track, row.at);
+                    if (row.kind === "more") {
+                      return (
+                        <button
+                          key={`more:${row.branch}`}
+                          onClick={() => openOrClose(row.branch)}
+                          className="w-full flex items-center gap-2 h-8 pl-[60px] pr-2 rounded-lg text-left text-[12.5px] font-semibold text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.05] transition-colors"
+                        >
+                          <span className="truncate">{T("{count} more", { count: row.count })}</span>
+                          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                        </button>
+                      );
+                    }
+                    const open = openBranches.has(row.branch);
+                    return (
+                      <div key={`branch:${row.branch}`} className="flex items-center gap-1 h-8 pl-2 pr-1 mt-1 first:mt-0">
+                        <button
+                          onClick={() => row.folds && openOrClose(row.branch)}
+                          title={row.folds ? (open ? T("Show less") : T("Show all")) : undefined}
+                          className={`flex-1 min-w-0 flex items-center gap-2 text-left text-[12.5px] font-semibold text-ink-hi/80 transition-colors ${row.folds ? "hover:text-ink-hi" : "cursor-default"}`}
+                        >
+                          <Split className="w-3.5 h-3.5 shrink-0 text-accent" />
+                          <span className="truncate">{row.branch}</span>
+                          <span className="shrink-0 font-normal text-ink-hi/50 tabular-nums">{row.count}</span>
+                          {row.folds && (open ? <ChevronUp className="w-3.5 h-3.5 shrink-0 text-ink-hi/50" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0 text-ink-hi/50" />)}
+                        </button>
+                        <button
+                          onClick={() => usePlayer.getState().cancelBranch(row.branch)}
+                          title={T("Undo branch")}
+                          aria-label={T("Undo branch")}
+                          className="p-1 rounded-md text-ink-hi/45 hover:text-red-400 hover:bg-ink-hi/[0.06] transition-all shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
+            {(fromTheList.length > 0 || !hand.length) && <h2 className="px-2 pt-1 pb-1 text-[20px] font-extrabold tracking-[-0.4px] text-ink-hi">{T("Next up")}</h2>}
+            {upcoming.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">{T("Your queue is empty.")}</div>}
+            {fromTheList.map((t, i) => queueRow(t, handEnd + i))}
           </div>
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto scroll-center px-2 py-2 space-y-0.5">
           {history.length === 0 ? (
-            <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">
-              Nothing here yet — tracks you play land in Recently played.
-            </div>
+            <div className="px-3 py-6 text-center text-[13px] text-ink-hi/45">{T("Nothing here yet — tracks you play land in Recently played.")}</div>
           ) : (
             history.slice(0, 50).map((t, i) => (
               <TrackRow key={`${t.id}-${i}`} track={t} onPlay={() => playTrack(t)} />
@@ -381,8 +429,8 @@ function DetailsBody() {
           <div className="w-14 h-14 rounded-2xl bg-ink-hi/[0.05] grid place-items-center mx-auto mb-4">
             <Music2 className="w-5 h-5 text-ink-hi/35" />
           </div>
-          <p className="text-[14px] font-semibold text-ink-hi">Nothing playing</p>
-          <p className="text-[12.5px] text-ink-hi/55 mt-1">Song details will show up here.</p>
+          <p className="text-[14px] font-semibold text-ink-hi">{T("Nothing playing")}</p>
+          <p className="text-[12.5px] text-ink-hi/55 mt-1">{T("Song details will show up here.")}</p>
         </div>
       </div>
     );
@@ -420,7 +468,7 @@ function DetailsBody() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") openAlbum();
                 }}
-                title={track.album ? `Go to ${track.album}` : undefined}
+                title={track.album ? T("Go to {album}", { album: track.album }) : undefined}
                 className="cursor-pointer hover:underline"
               >
                 {track.title}
@@ -460,7 +508,7 @@ function NextUpCard() {
   if (!next.length) return null;
   return (
     <section
-      aria-label="Next up"
+      aria-label={T("Next up")}
       data-next-up
       onDragOver={(e) => {
         if (!accepts(e)) return;
@@ -483,13 +531,11 @@ function NextUpCard() {
       className="rounded-xl bg-ink-hi/[0.04] px-1.5 pt-3 pb-1.5 animate-fade-in"
     >
       <div className="flex items-center justify-between gap-3 px-2 pb-1.5">
-        <h3 className="text-[15px] font-bold text-ink-hi">Next up</h3>
+        <h3 className="text-[15px] font-bold text-ink-hi">{T("Next up")}</h3>
         <button
           onClick={() => useUI.getState().toggleQueue()}
           className="text-[12.5px] font-semibold text-ink-hi/65 hover:text-ink-hi transition-colors"
-        >
-          Open queue
-        </button>
+        >{T("Open queue")}</button>
       </div>
       {next.map((t, i) => {
         const at = index + 1 + i;
@@ -530,33 +576,31 @@ function AboutSongCard({ track }: { track: Track }) {
   const credits = !info ? [] : open ? info.credits : info.credits.slice(0, 4);
   const more = !!info && ((info.description?.length ?? 0) > 260 || info.credits.length > 4 || info.samples.length > 0 || !!info.recordedAt);
   return (
-    <section aria-label="About the song" className="rounded-xl bg-ink-hi/[0.04] p-3.5 animate-fade-in">
+    <section aria-label={T("About the song")} className="rounded-xl bg-ink-hi/[0.04] p-3.5 animate-fade-in">
       <div className="flex items-center justify-between gap-3 min-h-[28px]">
-        <h3 className="text-[15px] font-bold text-ink-hi">About the song</h3>
+        <h3 className="text-[15px] font-bold text-ink-hi">{T("About the song")}</h3>
         {info && (
           <button
             onClick={() => window.open(info.url, "_blank")}
-            title="Open the song on Genius"
+            title={T("Open the song on Genius")}
             className="shrink-0 h-7 px-3 rounded-full border border-ink-hi/30 text-[12px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
-          >
-            Genius
-          </button>
+          >{T("Genius")}</button>
         )}
       </div>
       {info && (info.released || info.album) && (
         <div className="text-[12.5px] text-ink-hi/55 mt-1 truncate">{[info.released, info.album].filter(Boolean).join(" · ")}</div>
       )}
       {(tempo || key) && (
-        <dl className="mt-2.5 flex gap-7" title="Measured from the audio by the sound analysis">
+        <dl className="mt-2.5 flex gap-7" title={T("Measured from the audio by the sound analysis")}>
           {tempo && (
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Tempo</dt>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">{T("Tempo")}</dt>
               <dd className="text-[13px] text-ink-hi/85 mt-0.5 tabular-nums">{tempo}</dd>
             </div>
           )}
           {key && (
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Key</dt>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">{T("Key")}</dt>
               <dd className="text-[13px] text-ink-hi/85 mt-0.5">{key}</dd>
             </div>
           )}
@@ -577,7 +621,7 @@ function AboutSongCard({ track }: { track: Track }) {
           ))}
           {open && info.samples.length > 0 && (
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Samples</dt>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">{T("Samples")}</dt>
               {info.samples.map((x, i) => (
                 <dd key={i} className="text-[13px] text-ink-hi/85 mt-0.5">
                   {x.title}
@@ -588,7 +632,7 @@ function AboutSongCard({ track }: { track: Track }) {
           )}
           {open && info.recordedAt && (
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">Recorded at</dt>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">{T("Recorded at")}</dt>
               <dd className="text-[13px] text-ink-hi/85 mt-0.5">{info.recordedAt}</dd>
             </div>
           )}
@@ -596,7 +640,7 @@ function AboutSongCard({ track }: { track: Track }) {
       )}
       {more && (
         <button onClick={() => setOpen(!open)} className="mt-2.5 text-[12.5px] font-semibold text-ink-hi/65 hover:text-ink-hi transition-colors">
-          {open ? "Show less" : "Show more"}
+          {open ? T("Show less") : T("Show more")}
         </button>
       )}
     </section>
@@ -641,8 +685,8 @@ function AboutArtistCard({ track }: { track: Track }) {
       onKeyDown={(e) => {
         if (e.key === "Enter") showInLibrary();
       }}
-      title={`Show ${about.name} in your library`}
-      aria-label={`About the artist — show ${about.name} in your library`}
+      title={T("Show {name} in your library", { name: about.name })}
+      aria-label={T("About the artist — show {name} in your library", { name: about.name })}
       className="group rounded-xl bg-ink-hi/[0.04] overflow-hidden text-left cursor-pointer hover:bg-ink-hi/[0.06] transition-colors animate-fade-in"
     >
       {/* Photo header with the label over its top edge, Spotify-style — a tall
@@ -651,10 +695,10 @@ function AboutArtistCard({ track }: { track: Track }) {
         <div className="relative aspect-[3/2] bg-ink-hi/[0.06]">
           <img src={wideArtwork(photo)} alt="" className="w-full h-full object-cover object-top art-hairline" />
           <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/10 to-transparent" />
-          <div className="absolute top-2.5 left-3.5 text-[15px] font-bold text-ink-hi">About the artist</div>
+          <div className="absolute top-2.5 left-3.5 text-[15px] font-bold text-ink-hi">{T("About the artist")}</div>
         </div>
       ) : (
-        <h3 className="px-3.5 pt-3.5 text-[15px] font-bold text-ink-hi">About the artist</h3>
+        <h3 className="px-3.5 pt-3.5 text-[15px] font-bold text-ink-hi">{T("About the artist")}</h3>
       )}
 
       <div className={photo ? "p-3.5 pt-3" : "p-3.5 pt-2"}>
@@ -665,7 +709,7 @@ function AboutArtistCard({ track }: { track: Track }) {
 
         <div className="flex items-center justify-between gap-3 mt-2.5">
           <span className="text-[13px] text-ink-hi/70 truncate" title={about.facts ?? undefined}>
-            {about.facts ?? "Artist"}
+            {about.facts ?? T("Artist")}
           </span>
           {about.wikiUrl && (
             <button
@@ -675,9 +719,7 @@ function AboutArtistCard({ track }: { track: Track }) {
                 window.open(about.wikiUrl as string, "_blank");
               }}
               className="shrink-0 h-8 px-4 rounded-full border border-ink-hi/30 text-[13px] font-bold text-ink-hi hover:border-ink-hi/60 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
-            >
-              Wikipedia
-            </button>
+            >{T("Wikipedia")}</button>
           )}
         </div>
 
@@ -778,13 +820,13 @@ export function RightRail() {
       }}
       onDrop={stopSpring}
       className="relative shrink-0 flex flex-col glass-pill rounded-2xl"
-      aria-label="Now playing panel"
+      aria-label={T("Now playing panel")}
     >
       {/* The resize grip lives in the gap to the page; a double click goes back to the standard width. */}
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize the side panel"
+        aria-label={T("Resize the side panel")}
         aria-valuenow={width}
         aria-valuemin={RAIL_MIN}
         tabIndex={0}
@@ -796,7 +838,7 @@ export function RightRail() {
             setSaved(railClamp(width + (e.key === "ArrowLeft" ? 16 : -16)));
           }
         }}
-        title="Drag to resize · double-click for the standard width"
+        title={T("Drag to resize · double-click for the standard width")}
         className="group/grip absolute -left-[7px] top-0 bottom-0 z-20 w-[8px] cursor-col-resize outline-none"
       >
         <span

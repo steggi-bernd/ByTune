@@ -10,6 +10,7 @@ import { TrackList } from "../components/TrackList";
 import { EmptyState, ShelfScroller } from "../components/primitives";
 import { genresOf, newestFirst, useLibraryGenres, useLibraryIndex } from "../lib/catalogIndex";
 import { plural } from "../lib/format";
+import { T } from "../lib/i18n";
 
 export function GenreView({ param }: { param: string }) {
   const { albums, loaded } = useLibraryIndex();
@@ -36,19 +37,19 @@ export function GenreView({ param }: { param: string }) {
   }, [genre, own]);
 
   if (!loaded) return null;
-  if (!genre) return <EmptyState icon={Tags} title="No songs in this genre" body="None of the songs in your library carry this genre anymore." />;
+  if (!genre) return <EmptyState icon={Tags} title={T("No songs in this genre")} body={T("None of the songs in your library carry this genre anymore.")} />;
 
   return (
     <div className="space-y-7">
       <CollectionHeader
-        label="Genre"
+        label={T("Genre")}
         title={genre.name}
-        subtitle={`${plural(genre.artistCount, "artist", "artists")} · ${plural(own.length, "album", "albums")}`}
+        subtitle={`${plural(genre.artistCount, T("artist"), T("artists"))} · ${plural(own.length, T("album"), T("albums"))}`}
         tracks={songs}
       />
       {own.length > 1 && (
         <section>
-          <h2 className="text-[22px] font-bold tracking-[-0.4px] text-ink-hi mb-3">Albums</h2>
+          <h2 className="text-[22px] font-bold tracking-[-0.4px] text-ink-hi mb-3">{T("Albums")}</h2>
           <ShelfScroller>
             {own.map((a) => (
               <AlbumTile key={a.key} album={a} />
@@ -56,7 +57,7 @@ export function GenreView({ param }: { param: string }) {
           </ShelfScroller>
         </section>
       )}
-      <TrackList tracks={songs} showAlbum sourceName={genre.name} emptyLabel="No songs." />
+      <TrackList tracks={songs} showAlbum sourceName={genre.name} emptyLabel={T("No songs.")} />
     </div>
   );
 }

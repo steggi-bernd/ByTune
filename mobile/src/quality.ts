@@ -1,3 +1,4 @@
+import { T } from "./shared";
 /**
  * Which copy of a song to ask the server for: the file itself, or a smaller
  * transcode. Original always takes the file, Compact a small one, and Automatic
@@ -65,8 +66,8 @@ export function playingNow(
   stream: StreamChoice,
   format: { codec: string; lossless: boolean; bits?: number; rate?: number; kbps?: number } | null
 ): { text: string; tier: QualityTier } | null {
-  if (stream.kind === "transcode") return { text: `AAC ${stream.kbps} kbps`, tier: tierOf(false, stream.kbps) };
-  if (stream.kind === "download" && stream.compact) return { text: "MP3 192 kbps", tier: tierOf(false, 192) };
+  if (stream.kind === "transcode") return { text: T("AAC {kbps} kbps", { kbps: stream.kbps }), tier: tierOf(false, stream.kbps) };
+  if (stream.kind === "download" && stream.compact) return { text: T("MP3 192 kbps"), tier: tierOf(false, 192) };
   if (!format) return null;
   if (format.lossless) {
     const resolution = format.bits && format.rate ? ` ${format.bits}/${format.rate / 1000}` : "";

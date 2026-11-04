@@ -16,6 +16,7 @@ import { newSmartPlaylist } from "../stores/smartPlaylists";
 import { useSmartEditor } from "./SmartPlaylistEditor";
 import { useLibrary, type LibraryFolder } from "../stores/library";
 import { useUI } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: LibraryFolder) => void }) {
   const navigate = useUI((s) => s.navigate);
@@ -68,13 +69,13 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
     setOpen(false);
     // Fresh state, not the render-time count — the menu may have sat open
     // while other entries appeared. Blank confirm keeps the default name.
-    const suggested = `My Playlist #${useLibrary.getState().playlists.length + 1}`;
+    const suggested = T("My Playlist #{count}", { count: useLibrary.getState().playlists.length + 1 });
     useUI.getState().openDialog({
-      title: "New playlist",
-      body: "Give your playlist a name.",
+      title: T("New playlist"),
+      body: T("Give your playlist a name."),
       initialValue: suggested,
-      placeholder: "Playlist name",
-      confirmLabel: "Create",
+      placeholder: T("Playlist name"),
+      confirmLabel: T("Create"),
       onConfirm: (value) => {
         const p = useLibrary.getState().createPlaylist(value.trim() || suggested);
         navigate({ name: "playlist", param: p.id });
@@ -84,13 +85,13 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
 
   const newFolder = (): void => {
     setOpen(false);
-    const suggested = `New Folder ${useLibrary.getState().folders.length + 1}`;
+    const suggested = T("New Folder {count}", { count: useLibrary.getState().folders.length + 1 });
     useUI.getState().openDialog({
-      title: "New folder",
-      body: "Give your folder a name.",
+      title: T("New folder"),
+      body: T("Give your folder a name."),
       initialValue: suggested,
-      placeholder: "Folder name",
-      confirmLabel: "Create",
+      placeholder: T("Folder name"),
+      confirmLabel: T("Create"),
       onConfirm: (value) => {
         const f = useLibrary.getState().createFolder(value.trim() || suggested);
         onFolderCreated?.(f);
@@ -102,8 +103,8 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
     <div className="relative" ref={ref}>
       <button
         onClick={toggle}
-        title="Create playlist or folder"
-        aria-label="Create playlist or folder"
+        title={T("Create playlist or folder")}
+        aria-label={T("Create playlist or folder")}
         aria-expanded={open}
         className={`p-1.5 rounded-full transition-colors ${
           open ? "text-ink-hi bg-ink-hi/[0.10]" : "text-ink-hi/55 hover:text-ink-hi hover:bg-ink-hi/[0.06]"
@@ -127,8 +128,8 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
                 <ListPlus className="w-5 h-5 text-ink-hi" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[14px] font-semibold text-ink-hi">Playlist</span>
-                <span className="block text-[12px] text-ink-hi/55 truncate">Create a playlist with songs</span>
+                <span className="block text-[14px] font-semibold text-ink-hi">{T("Playlist")}</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">{T("Create a playlist with songs")}</span>
               </span>
             </button>
             <button
@@ -142,8 +143,8 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
                 <Sparkles className="w-5 h-5 text-accent" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[14px] font-semibold text-ink-hi">Smart playlist</span>
-                <span className="block text-[12px] text-ink-hi/55 truncate">Fills itself from rules</span>
+                <span className="block text-[14px] font-semibold text-ink-hi">{T("Smart playlist")}</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">{T("Fills itself from rules")}</span>
               </span>
             </button>
             <button
@@ -157,8 +158,8 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
                 <FileUp className="w-5 h-5 text-ink-hi" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[14px] font-semibold text-ink-hi">Import playlist</span>
-                <span className="block text-[12px] text-ink-hi/55 truncate">From an M3U file — foobar2000, VLC …</span>
+                <span className="block text-[14px] font-semibold text-ink-hi">{T("Import playlist")}</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">{T("From an M3U file — foobar2000, VLC …")}</span>
               </span>
             </button>
             <button
@@ -172,8 +173,8 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
                 <ListMusic className="w-5 h-5 text-ink-hi" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[14px] font-semibold text-ink-hi">Recover a Spotify playlist</span>
-                <span className="block text-[12px] text-ink-hi/55 truncate">From its export — the songs you have, in order</span>
+                <span className="block text-[14px] font-semibold text-ink-hi">{T("Recover a Spotify playlist")}</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">{T("From its export — the songs you have, in order")}</span>
               </span>
             </button>
             <button
@@ -184,8 +185,8 @@ export function CreateMenu({ onFolderCreated }: { onFolderCreated?: (folder: Lib
                 <Folder className="w-5 h-5 text-ink-hi" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[14px] font-semibold text-ink-hi">Folder</span>
-                <span className="block text-[12px] text-ink-hi/55 truncate">Organize your playlists</span>
+                <span className="block text-[14px] font-semibold text-ink-hi">{T("Folder")}</span>
+                <span className="block text-[12px] text-ink-hi/55 truncate">{T("Organize your playlists")}</span>
               </span>
             </button>
           </div>,

@@ -1,3 +1,4 @@
+import { T } from "./i18n";
 /** Small formatting helpers shared across the UI. */
 
 export function fmtTime(sec: number): string {
@@ -26,6 +27,6 @@ export function fmtLength(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h} hr ${m} min`;
-  return `${m} min ${s % 60} sec`;
+  if (h > 0) return T("{h} hr {m} min", { h, m });
+  return T("{m} min {sec} sec", { m, sec: s % 60 });
 }

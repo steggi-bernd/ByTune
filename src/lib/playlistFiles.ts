@@ -11,6 +11,7 @@ import { matchM3u } from "./m3uMatch";
 import { useCatalog, versionsOf } from "../stores/catalog";
 import { useLibrary } from "../stores/library";
 import { useUI } from "../stores/ui";
+import { T } from "./i18n";
 
 export async function importM3uPlaylist(): Promise<void> {
   const bridge = window.bytune;
@@ -20,18 +21,18 @@ export async function importM3uPlaylist(): Promise<void> {
   try {
     file = await bridge.openM3u();
   } catch (err) {
-    ui.toast(ipcErrorText(err, "Couldn't read that playlist"), "error");
+    ui.toast(ipcErrorText(err, T("Couldn't read that playlist")), "error");
     return;
   }
   if (!file) return;
   if (!file.entries.length) {
-    ui.toast("That playlist has no songs in it", "info");
+    ui.toast(T("That playlist has no songs in it"), "info");
     return;
   }
   const catalog = useCatalog.getState();
   const songs = matchM3u(file.entries, catalog.tracks, catalog.byId, (t) => versionsOf(t)[0] ?? t).filter((t): t is Track => !!t);
   if (!songs.length) {
-    ui.toast(`None of the ${file.entries.length} songs in "${file.name}" are in your library`, "info");
+    ui.toast(T("None of the {count} songs in \"{name}\" are in your library", { count: file.entries.length, name: file.name }), "info");
     return;
   }
   const playlist = useLibrary.getState().createPlaylist(file.name);
@@ -39,7 +40,7 @@ export async function importM3uPlaylist(): Promise<void> {
   ui.navigate({ name: "playlist", param: playlist.id });
   const missed = file.entries.length - songs.length;
   ui.toast(
-    missed > 0 ? `Imported ${songs.length} of ${file.entries.length} songs — ${missed} aren't in your library` : `Imported ${songs.length} songs`,
+    missed > 0 ? T("Imported {count} of {count2} songs — {missed} aren't in your library", { count: songs.length, count2: file.entries.length, missed }) : T("Imported {count} songs", { count: songs.length }),
     "success"
   );
 }
@@ -61,12 +62,10 @@ export async function exportM3uPlaylist(name: string, tracks: Track[]): Promise<
     const saved = await bridge.saveM3u(name, text);
     if (!saved) return;
     ui.toast(
-      notes > 0
-        ? `Saved ${files + notes} songs — ${notes} only on your server come back in Songsta; other players skip those`
-        : `Saved "${name}" with ${files} songs`,
+      notes > 0 ? T("Saved {value} songs — {notes} only on your server come back in Songsta; other players skip those", { value: files + notes, notes }) : T("Saved \"{name}\" with {files} songs", { name, files }),
       "success"
     );
   } catch (err) {
-    ui.toast(ipcErrorText(err, "Couldn't save the playlist"), "error");
+    ui.toast(ipcErrorText(err, T("Couldn't save the playlist")), "error");
   }
 }

@@ -19,6 +19,7 @@ import { exportM3uPlaylist } from "../lib/playlistFiles";
 import { useArtistImages } from "../lib/songInfo";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 export function ArtistLikedView({ param }: { param: string }) {
   const name = parseRoute(param, "artist") ?? "";
@@ -34,23 +35,23 @@ export function ArtistLikedView({ param }: { param: string }) {
 
   if (!loaded) return null;
 
-  const title = `Liked songs by ${name}`;
+  const title = T("Liked songs by {name}", { name });
   const totalSec = liked.reduce((sum, t) => sum + t.duration, 0);
-  const meta = ["Playlist", liked.length ? plural(liked.length, "song", "songs") : "", totalSec > 0 ? `about ${fmtTime(totalSec)}` : ""]
+  const meta = [T("Playlist"), liked.length ? plural(liked.length, T("song"), T("songs")) : "", totalSec > 0 ? `about ${fmtTime(totalSec)}` : ""]
     .filter(Boolean)
     .join(" • ");
 
   const openMenu = (x: number, y: number): void => {
     openContextMenu(x, y, [
       {
-        label: "Add all to queue",
+        label: T("Add all to queue"),
         icon: ListPlus,
         action: () => {
           usePlayer.getState().addToQueue(liked);
-          toast("Songs added to queue");
+          toast(T("Songs added to queue"));
         },
       },
-      { label: "Export as M3U…", icon: FileDown, action: () => void exportM3uPlaylist(title, liked) },
+      { label: T("Export as M3U…"), icon: FileDown, action: () => void exportM3uPlaylist(title, liked) },
     ]);
   };
 
@@ -73,8 +74,8 @@ export function ArtistLikedView({ param }: { param: string }) {
           tracks={liked}
           showAlbum
           sourceName={title}
-          emptyTitle={`No liked songs by ${name}`}
-          emptyLabel="Songs of theirs you like show up here."
+          emptyTitle={T("No liked songs by {name}", { name })}
+          emptyLabel={T("Songs of theirs you like show up here.")}
         />
       </div>
     </div>

@@ -17,22 +17,23 @@ import type { LocalFolderEntry } from "../../electron/local-library";
 import type { Track } from "../types";
 import { getDownload, startDownload } from "./downloads";
 import { useTrackDrop } from "./dnd";
+import { T } from "./i18n";
 
 function addToOpenPlaylist(playlistId: string, track: Track): void {
   const lib = useLibrary.getState();
   const name = lib.playlists.find((p) => p.id === playlistId)?.name ?? "playlist";
   const added = lib.addToPlaylist(playlistId, track);
-  useUI.getState().toast(added ? `Added to "${name}"` : `Already in "${name}"`, added ? "success" : "info");
+  useUI.getState().toast(added ? T("Added to \"{name}\"", { name }) : T("Already in \"{name}\"", { name }), added ? "success" : "info");
 }
 
 function likeTrack(track: Track): void {
   const lib = useLibrary.getState();
   if (lib.liked.some((t) => t.id === track.id)) {
-    useUI.getState().toast("Already in Liked Songs", "info");
+    useUI.getState().toast(T("Already in Liked Songs"), "info");
     return;
   }
   lib.toggleLike(track);
-  useUI.getState().toast("Added to Liked Songs", "success");
+  useUI.getState().toast(T("Added to Liked Songs"), "success");
 }
 
 /** A streamed song dropped on the folder page downloads straight into it. */
@@ -46,11 +47,11 @@ function downloadIntoLocalFolder(track: Track, target?: string | null): void {
     const fallback = typeof first === "string" ? first : first?.path;
     const folder = target && target !== "all" ? target : fallback;
     if (!folder) {
-      useUI.getState().toast("Set up a local folder first", "info");
+      useUI.getState().toast(T("Set up a local folder first"), "info");
       return;
     }
     if (track.localPath || track.id.startsWith("local:")) {
-      useUI.getState().toast("That song is already in your local library", "info");
+      useUI.getState().toast(T("That song is already in your local library"), "info");
       return;
     }
     await startDownload(track, folder);
@@ -61,7 +62,7 @@ function downloadIntoLocalFolder(track: Track, target?: string | null): void {
     if (getDownload(track.id)?.status !== "queued") {
       return;
     }
-    useUI.getState().toast(`Downloading "${track.title}" into the folder`, "success");
+    useUI.getState().toast(T("Downloading \"{title}\" into the folder", { title: track.title }), "success");
     // Rescan when the file lands, then tell the open view to refresh. Cancel
     // counts as terminal too — the listener must not outlive its download.
     const off = window.bytune?.onDownloadEvent?.((e) => {

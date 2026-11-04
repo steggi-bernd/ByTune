@@ -18,6 +18,7 @@ import { useAlbumEdits } from "../stores/albumEdits";
 import { versionsOf } from "../stores/catalog";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 /** A credited artist, or "" where the tags name none. */
 const known = (artist: string | undefined): string => {
@@ -42,22 +43,20 @@ export function LooseSongsView() {
 
   if (!loaded) return null;
   if (!loose.length) {
-    return <EmptyState icon={Disc3} title="Every song is on an album" body="Songs whose tags name no album gather here, to be put on one." />;
+    return <EmptyState icon={Disc3} title={T("Every song is on an album")} body={T("Songs whose tags name no album gather here, to be put on one.")} />;
   }
   return (
     <div className="space-y-6">
       <CollectionHeader
-        label="Collection"
-        title="Songs without an album"
-        subtitle="Their tags name no album"
+        label={T("Collection")}
+        title={T("Songs without an album")}
+        subtitle={T("Their tags name no album")}
         tracks={loose}
         actions={
-          <Btn variant="glass" size="md" icon={Disc3} onClick={() => setMaking(true)}>
-            Make an album…
-          </Btn>
+          <Btn variant="glass" size="md" icon={Disc3} onClick={() => setMaking(true)}>{T("Make an album…")}</Btn>
         }
       />
-      <TrackList tracks={loose} showAlbum={false} sourceName="Songs without an album" emptyLabel="No songs." />
+      <TrackList tracks={loose} showAlbum={false} sourceName={T("Songs without an album")} emptyLabel={T("No songs.")} />
       {making && <MakeAlbumDialog songs={loose} onClose={() => setMaking(false)} />}
     </div>
   );
@@ -139,7 +138,7 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
     useAlbumEdits.getState().setSongs(edits);
     const n = chosen.length;
     toast(
-      joins ? `Put ${n} ${n === 1 ? "song" : "songs"} on “${joins.title}”` : `Made “${title.trim()}” from ${n} ${n === 1 ? "song" : "songs"}`,
+      joins ? T("Put {n} {value} on “{title}”", { n, value: n === 1 ? T("song") : T("songs"), title: joins.title }) : T("Made “{trim}” from {n} {value}", { trim: title.trim(), n, value: n === 1 ? T("song") : T("songs") }),
       "success"
     );
     onClose();
@@ -154,14 +153,14 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-label="Make an album" className="w-[min(680px,94vw)] max-h-[86vh] flex flex-col rounded-2xl glass-strong-solid shadow-float">
+      <div role="dialog" aria-label={T("Make an album")} className="w-[min(680px,94vw)] max-h-[86vh] flex flex-col rounded-2xl glass-strong-solid shadow-float">
         <div className="flex items-start gap-3 p-5 pb-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Make an album</div>
-            <div className="text-[18px] font-bold text-ink-hi">Put songs on an album</div>
-            <div className="text-[12.5px] text-ink-dim">It stays in Songsta — your files keep their tags. The album editor takes them off again.</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{T("Make an album")}</div>
+            <div className="text-[18px] font-bold text-ink-hi">{T("Put songs on an album")}</div>
+            <div className="text-[12.5px] text-ink-dim">{T("It stays in Songsta — your files keep their tags. The album editor takes them off again.")}</div>
           </div>
-          <IconBtn icon={X} title="Close" onClick={onClose} className="rounded-full" />
+          <IconBtn icon={X} title={T("Close")} onClick={onClose} className="rounded-full" />
         </div>
 
         <form
@@ -173,15 +172,15 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
         >
           <div className="grid grid-cols-[1fr_1fr_96px] gap-2">
             <label className="space-y-1">
-              <span className="block text-[12px] font-semibold text-ink-dim px-1">Album</span>
-              <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} list="make-album-titles" placeholder="Title" className={field} />
+              <span className="block text-[12px] font-semibold text-ink-dim px-1">{T("Album")}</span>
+              <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} list="make-album-titles" placeholder={T("Title")} className={field} />
             </label>
             <label className="space-y-1">
-              <span className="block text-[12px] font-semibold text-ink-dim px-1">Artist</span>
-              <input value={artist} onChange={(e) => setArtist(e.target.value)} list="make-album-artists" placeholder={credited.size > 1 ? "Various Artists" : "Artist"} className={field} />
+              <span className="block text-[12px] font-semibold text-ink-dim px-1">{T("Artist")}</span>
+              <input value={artist} onChange={(e) => setArtist(e.target.value)} list="make-album-artists" placeholder={credited.size > 1 ? T("Various Artists") : T("Artist")} className={field} />
             </label>
             <label className="space-y-1">
-              <span className="block text-[12px] font-semibold text-ink-dim px-1">Year</span>
+              <span className="block text-[12px] font-semibold text-ink-dim px-1">{T("Year")}</span>
               <input value={year} onChange={(e) => setYear(e.target.value)} inputMode="numeric" maxLength={4} placeholder="—" className={field} />
             </label>
             <datalist id="make-album-titles">
@@ -196,22 +195,19 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
             </datalist>
           </div>
           {joins && (
-            <p className="text-[12.5px] text-ink-dim -mt-2 px-1">
-              Joins your album “{joins.title}” by {joins.artist} ({joins.tracks.length} {joins.tracks.length === 1 ? "song" : "songs"}).
-            </p>
+            <p className="text-[12.5px] text-ink-dim -mt-2 px-1">{T("Joins your album “{title}” by {artist} ({count} {value}).", { title: joins.title, artist: joins.artist, count: joins.tracks.length, value: joins.tracks.length === 1 ? T("song") : T("songs") })}</p>
           )}
 
           <section>
             <div className="flex items-baseline justify-between">
-              <h3 className="text-[14px] font-bold text-ink-hi">
-                Songs <span className="text-ink-faint font-normal">· {chosen.length} of {order.length}</span>
+              <h3 className="text-[14px] font-bold text-ink-hi">{T("Songs")}{" "}<span className="text-ink-faint font-normal">{T("· {count} of {count2}", { count: chosen.length, count2: order.length })}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setPicked(chosen.length === order.length ? new Set() : new Set(order.map((t) => t.id)))}
                 className="text-[12.5px] font-semibold text-ink-dim hover:text-ink-hi"
               >
-                {chosen.length === order.length ? "Pick none" : "Pick all"}
+                {chosen.length === order.length ? T("Pick none") : T("Pick all")}
               </button>
             </div>
             <div className="mt-2 space-y-0.5">
@@ -220,17 +216,17 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
                 const no = on ? chosen.indexOf(t) + 1 : null;
                 return (
                   <div key={t.id} className={`flex items-center gap-3 px-2 h-12 rounded-lg hover:bg-ink-hi/[0.05] ${on ? "" : "opacity-55"}`}>
-                    <input type="checkbox" checked={on} onChange={() => toggle(t.id)} aria-label={`Put “${t.title}” on the album`} className="w-4 h-4 accent-[rgb(var(--accent))] shrink-0" />
+                    <input type="checkbox" checked={on} onChange={() => toggle(t.id)} aria-label={T("Put “{title}” on the album", { title: t.title })} className="w-4 h-4 accent-[rgb(var(--accent))] shrink-0" />
                     <span className="w-6 text-right text-[13px] tabular-nums text-ink-faint shrink-0">{no ?? ""}</span>
                     <div className="min-w-0 flex-1">
                       <div className="text-[14px] text-ink-hi truncate">{t.title}</div>
                       <div className="text-[12px] text-ink-dim truncate" title={t.localPath}>
-                        {known(t.artist) || "No artist"}
+                        {known(t.artist) || T("No artist")}
                         {t.localPath ? ` · ${t.localPath.split(/[\\/]/).pop()}` : ""}
                       </div>
                     </div>
-                    <IconBtn type="button" icon={ArrowUp} title="Earlier" onClick={() => move(t.id, -1)} disabled={i === 0} className="rounded-full" />
-                    <IconBtn type="button" icon={ArrowDown} title="Later" onClick={() => move(t.id, 1)} disabled={i === order.length - 1} className="rounded-full" />
+                    <IconBtn type="button" icon={ArrowUp} title={T("Earlier")} onClick={() => move(t.id, -1)} disabled={i === 0} className="rounded-full" />
+                    <IconBtn type="button" icon={ArrowDown} title={T("Later")} onClick={() => move(t.id, 1)} disabled={i === order.length - 1} className="rounded-full" />
                   </div>
                 );
               })}
@@ -238,11 +234,9 @@ function MakeAlbumDialog({ songs, onClose }: { songs: Track[]; onClose: () => vo
           </section>
 
           <div className="flex justify-end gap-2 pt-1">
-            <Btn type="button" variant="ghost" size="md" onClick={onClose}>
-              Cancel
-            </Btn>
+            <Btn type="button" variant="ghost" size="md" onClick={onClose}>{T("Cancel")}</Btn>
             <Btn type="submit" variant="accent" size="md" icon={Disc3} disabled={!title.trim() || !chosen.length}>
-              {joins ? "Put on album" : "Make album"}
+              {joins ? T("Put on album") : T("Make album")}
             </Btn>
           </div>
         </form>

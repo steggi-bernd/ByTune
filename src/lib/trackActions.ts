@@ -5,7 +5,6 @@ import {
   FolderOpen,
   Heart,
   ListMusic,
-  ListPlus,
   ListStart,
   Pencil,
   Play,
@@ -13,18 +12,24 @@ import {
   Search,
   Split,
   Trash2,
+  Undo2,
   User,
   Volume2,
   VolumeX,
+  Speaker,
 } from "lucide-react";
 import { downloadForOffline, SERVER_SONG, startDownload } from "./downloads";
 import type { TrackSource } from "./dnd";
 import { versionsOf } from "../stores/catalog";
+import { useCast } from "./cast";
+import { startZone } from "./zones";
+import { useDeviceNames } from "../stores/deviceNames";
 import { useLibrary, type Playlist } from "../stores/library";
 import { isMuted, useMuted } from "../stores/muted";
 import { usePlayer } from "../stores/player";
 import { useUI, type MenuItem } from "../stores/ui";
 import type { Track } from "../types";
+import { T } from "./i18n";
 
 /**
  * Branch off: the song — next, or where it was dropped — and after it the rest
@@ -39,8 +44,8 @@ export function branchOff(from: TrackSource, at?: number): void {
     player.playQueue(rest, 0);
     return;
   }
-  player.insertInQueue(rest, at ?? player.index + 1, true);
-  useUI.getState().toast(`Branching off into “${from.name}” — ${rest.length} ${rest.length === 1 ? "song" : "songs"}`);
+  player.branchOff(rest, from.name, at);
+  useUI.getState().toast(T("Branching off into “{name}” — {count} {value}", { name: from.name, count: rest.length, value: rest.length === 1 ? T("song") : T("songs") }));
 }
 
 /** After a song dropped into the queue: the rest of its list behind it, wherever the song is now. */
@@ -51,7 +56,12 @@ export function branchOffAfterDrop(from: TrackSource): void {
   const rest = from.tracks.slice(from.index + 1);
   if (at < 0 || !rest.length) return;
   usePlayer.getState().insertInQueue(rest, at + 1, true);
-  useUI.getState().toast(`Then the rest of “${from.name}” — ${rest.length} ${rest.length === 1 ? "song" : "songs"}`);
+  useUI.getState().toast(T("Then the rest of “{name}” — {count} {value}", { name: from.name, count: rest.length, value: rest.length === 1 ? T("song") : T("songs") }));
+}
+
+/** This very song is what a branch of this list started from, and it can still be taken back. */
+function isBranchChoice(track: Track, name: string): boolean {
+  return !!usePlayer.getState().branchFrom(track.id, name);
 }
 
 export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
@@ -61,69 +71,83 @@ export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
 
   const items: MenuItem[] = [
     {
-      label: "Play now",
+      label: T("Play now"),
       icon: Play,
       action: () => usePlayer.getState().playTrack(track),
     },
     {
-      label: "Play next",
+      label: T("Add to queue"),
       icon: ListStart,
       action: () => {
-        usePlayer.getState().addToQueue(track, true);
-        useUI.getState().toast("Playing next");
+        const inLine = usePlayer.getState().addToQueue(track);
+        useUI.getState().toast(inLine > 1 ? T("Added to queue, after {value} other {value2}", { value: inLine - 1, value2: inLine === 2 ? "song" : "songs" }) : T("Plays next"));
       },
     },
-    // Under "Play next": the same, then the rest of the list the song is in.
-    ...(from && from.index < from.tracks.length - 1
-      ? [{ label: `Branch off into “${from.name}”`, icon: Split, action: () => branchOff(from) }]
-      : []),
-    {
-      label: "Add to queue",
-      icon: ListPlus,
-      action: () => {
-        usePlayer.getState().addToQueue(track);
-        useUI.getState().toast("Added to queue");
-      },
-    },
+    // Under it: the same, then the rest of the list the song is in. On the chosen song itself: back out of it.
+    ...(from && isBranchChoice(track, from.name)
+      ? [
+          {
+            label: T("Undo branch"),
+            icon: Undo2,
+            action: () => {
+              usePlayer.getState().cancelBranch(from.name);
+              useUI.getState().toast(T("Branch taken back"));
+            },
+          },
+        ]
+      : from && from.index < from.tracks.length - 1
+        ? [{ label: T("Branch off into “{name}”", { name: from.name }), icon: Split, action: () => branchOff(from) }]
+        : []),
     {
       separatorBefore: true,
-      label: liked ? "Remove from Liked Songs" : "Add to Liked Songs",
+      label: liked ? T("Remove from Liked Songs") : T("Add to Liked Songs"),
       icon: Heart,
       action: () => useLibrary.getState().toggleLike(track),
     },
     {
-      label: isMuted(track.id) ? "Play again (unmute)" : "Mute song",
+      label: isMuted(track.id) ? T("Play again (unmute)") : T("Mute song"),
       icon: isMuted(track.id) ? Volume2 : VolumeX,
       action: () => {
         const nowMuted = useMuted.getState().toggle(track);
-        useUI.getState().toast(nowMuted ? `“${track.title}” is skipped from now on` : `“${track.title}” plays again`);
+        useUI.getState().toast(nowMuted ? T("“{title}” is skipped from now on", { title: track.title }) : T("“{title}” plays again", { title: track.title }));
       },
     },
   ];
 
+  // Straight to a device, next to whatever plays here. Those that a look around the network found.
+  const speakers = useCast.getState().devices.filter((d) => d.kind === "upnp" || d.kind === "cast");
+  if (speakers.length) {
+    items.push({
+      label: T("Play on"),
+      icon: Speaker,
+      children: speakers.map((d) => ({ label: useDeviceNames.getState().names[d.id] ?? d.name, icon: Speaker, action: () => void startZone(d, [track]) })),
+    });
+  }
+
   const playlists = lib.playlists.slice(0, 6);
   for (const p of playlists) {
     items.push({
-      label: `Add to "${p.name}"`,
+      label: T("Add to \"{name}\"", { name: p.name }),
+      icon: ListMusic,
       action: () => {
         const added = useLibrary.getState().addToPlaylist(p.id, track);
-        useUI.getState().toast(added ? `Added to "${p.name}"` : "Already in this playlist");
+        useUI.getState().toast(added ? T("Added to \"{name}\"", { name: p.name }) : T("Already in this playlist"));
       },
     });
   }
   items.push({
-    label: "New playlist…",
+    label: T("New playlist…"),
     icon: ListMusic,
     action: () => {
       // Name it before it exists — cancel creates nothing and the track
       // stays where it was. Blank confirm keeps the numbered default.
       const suggested = `Playlist ${useLibrary.getState().playlists.length + 1}`;
       useUI.getState().openDialog({
-        title: "New playlist",
-        body: `Add "${track.title}" to a new playlist.`,
+        title: T("New playlist"),
+        body: T("Add \"{title}\" to a new playlist.", { title: track.title }),
         initialValue: suggested,
-        placeholder: "Playlist name",
-        confirmLabel: "Create",
+        placeholder: T("Playlist name"),
+        confirmLabel: T("Create"),
         onConfirm: (value) => {
           const lib = useLibrary.getState();
           const playlist = lib.createPlaylist(value.trim() || suggested);
@@ -139,14 +163,14 @@ export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
   if (track.localPath) {
     items.push({
       separatorBefore: true,
-      label: "Show in folder",
+      label: T("Show in folder"),
       icon: FolderOpen,
       action: () => requireReveal(track.localPath as string),
     });
   } else if (SERVER_SONG.test(track.id) && !versionsOf(track).some((v) => v.localPath)) {
     items.push({
       separatorBefore: true,
-      label: "Download for offline",
+      label: T("Download for offline"),
       icon: Download,
       action: () => void downloadForOffline([track]),
     });
@@ -155,7 +179,7 @@ export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
   if (track.albumId?.startsWith("lib:album:")) {
     items.push({
       separatorBefore: true,
-      label: "Go to album",
+      label: T("Go to album"),
       icon: Disc3,
       action: () => useUI.getState().navigate({ name: "album", param: track.albumId }),
     });
@@ -163,14 +187,14 @@ export function trackMenuItems(track: Track, from?: TrackSource): MenuItem[] {
   if (track.artistId?.startsWith("lib:artist:")) {
     items.push({
       separatorBefore: !track.albumId,
-      label: "Go to artist",
+      label: T("Go to artist"),
       icon: User,
       action: () => useUI.getState().navigate({ name: "artist", param: track.artistId }),
     });
   } else if (track.artist && track.artist.toLowerCase() !== "unknown artist") {
     items.push({
       separatorBefore: !track.localPath,
-      label: `More by ${track.artist}`,
+      label: T("More by {artist}", { artist: track.artist }),
       icon: Search,
       action: () => {
         useUI.getState().setSearchQuery(track.artist);
@@ -189,12 +213,12 @@ function requireReveal(path: string): void {
 export function playlistMenuItems(playlist: Playlist, track: Track, from?: TrackSource): MenuItem[] {
   return [
     {
-      label: "Remove from this playlist",
+      label: T("Remove from this playlist"),
       icon: Trash2,
       danger: true,
       action: () => {
         useLibrary.getState().removeFromPlaylist(playlist.id, track.id);
-        useUI.getState().toast("Removed from playlist");
+        useUI.getState().toast(T("Removed from playlist"));
       },
     },
     ...trackMenuItems(track, from),
@@ -204,14 +228,14 @@ export function playlistMenuItems(playlist: Playlist, track: Track, from?: Track
 export function playlistHeaderItems(playlist: Playlist): MenuItem[] {
   return [
     {
-      label: "Rename",
+      label: T("Rename"),
       icon: Pencil,
       action: () => {
         useUI.getState().openDialog({
-          title: "Rename playlist",
+          title: T("Rename playlist"),
           initialValue: playlist.name,
-          placeholder: "Playlist name",
-          confirmLabel: "Rename",
+          placeholder: T("Playlist name"),
+          confirmLabel: T("Rename"),
           onConfirm: (value) => {
             if (value.trim()) useLibrary.getState().renamePlaylist(playlist.id, value);
           },
@@ -219,19 +243,19 @@ export function playlistHeaderItems(playlist: Playlist): MenuItem[] {
       },
     },
     {
-      label: "Delete playlist",
+      label: T("Delete playlist"),
       icon: Trash2,
       danger: true,
       action: () => {
         useUI.getState().openDialog({
-          title: `Delete "${playlist.name}"?`,
-          body: "This can't be undone. The tracks themselves aren't affected.",
-          confirmLabel: "Delete",
+          title: T("Delete \"{name}\"?", { name: playlist.name }),
+          body: T("This can't be undone. The tracks themselves aren't affected."),
+          confirmLabel: T("Delete"),
           danger: true,
           onConfirm: () => {
             useLibrary.getState().deletePlaylist(playlist.id);
             useUI.getState().navigate({ name: "playlists" });
-            useUI.getState().toast("Playlist deleted", "info");
+            useUI.getState().toast(T("Playlist deleted"), "info");
           },
         });
       },
@@ -243,14 +267,14 @@ export function playlistHeaderItems(playlist: Playlist): MenuItem[] {
 export function playlistFolderItems(playlist: Playlist): MenuItem[] {
   const folders = useLibrary.getState().folders;
   const items: MenuItem[] = folders.map((f, i) => ({
-    label: f.id === playlist.folderId ? `✓ ${f.name}` : `Move to “${f.name}”`,
+    label: f.id === playlist.folderId ? `✓ ${f.name}` : T("Move to “{name}”", { name: f.name }),
     icon: FolderOpen,
     separatorBefore: i === 0,
     action: () => useLibrary.getState().setPlaylistFolder(playlist.id, f.id),
   }));
   if (playlist.folderId) {
     items.push({
-      label: "Remove from folder",
+      label: T("Remove from folder"),
       icon: FolderOpen,
       separatorBefore: true,
       action: () => useLibrary.getState().setPlaylistFolder(playlist.id, null),
@@ -262,7 +286,7 @@ export function playlistFolderItems(playlist: Playlist): MenuItem[] {
 export function historyMenuItems(track: Track): MenuItem[] {
   return [
     {
-      label: "Remove from history",
+      label: T("Remove from history"),
       icon: Trash2,
       danger: true,
       action: () => {
@@ -283,14 +307,14 @@ export function historyMenuItems(track: Track): MenuItem[] {
 export function downloadMenuItems(track: Track, path: string | null): MenuItem[] {
   return [
     {
-      label: "Show in folder",
+      label: T("Show in folder"),
       icon: FolderOpen,
       action: () => {
         if (path) requireReveal(path);
       },
     },
     {
-      label: "Retry download",
+      label: T("Retry download"),
       icon: RotateCcw,
       action: () => void startDownload(track),
     },

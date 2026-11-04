@@ -5,6 +5,7 @@ import { useUI } from "../stores/ui";
 import type { Track } from "../types";
 import { requireBridge } from "./bridge";
 import { staleDownloadIds } from "./download-reconcile";
+import { T } from "./i18n";
 
 export function getDownload(id: string): DownloadItem | undefined {
   return useLibrary.getState().downloads[id];
@@ -19,7 +20,7 @@ export async function startDownload(track: Track, dirOverride?: string): Promise
   const existing = lib.downloads[track.id];
   if (existing?.status === "downloading" || existing?.status === "queued") return;
   if (existing?.status === "done") {
-    useUI.getState().toast("Already downloaded — see the Downloads view", "info");
+    useUI.getState().toast(T("Already downloaded — see the Downloads view"), "info");
     return;
   }
 
@@ -41,7 +42,7 @@ export async function startDownload(track: Track, dirOverride?: string): Promise
   } catch (err) {
     useLibrary.getState().patchDownload(track.id, { status: "failed", progress: 0 });
     useUI.getState().toast(
-      `Download failed: ${err instanceof Error ? err.message : "unknown error"}`,
+      T("Download failed: {value}", { value: err instanceof Error ? err.message : T("unknown error") }),
       "error"
     );
   }
@@ -140,7 +141,7 @@ function scheduleOfflineScan(): void {
       .scanLibrary(useSettings.getState().filterNonMusicAudio)
       .then((lib) => {
         window.dispatchEvent(new CustomEvent("bytune:local-library-updated", { detail: lib }));
-        useUI.getState().toast(`${n} song${n === 1 ? "" : "s"} ready offline`, "success");
+        useUI.getState().toast(T("{n} song{value} ready offline", { n, value: n === 1 ? "" : "s" }), "success");
       })
       .catch(() => undefined);
   }, 800);
@@ -151,7 +152,7 @@ export function downloadForOffline(tracks: Track[]): number {
   const wanted = tracks.filter((t) => SERVER_SONG.test(t.id) && getDownload(t.id)?.status !== "done");
   for (const t of wanted) void startDownload(t);
   if (wanted.length) {
-    useUI.getState().toast(`Downloading ${wanted.length} song${wanted.length === 1 ? "" : "s"} for offline listening`, "info");
+    useUI.getState().toast(T("Downloading {count} song{value} for offline listening", { count: wanted.length, value: wanted.length === 1 ? "" : "s" }), "info");
   }
   return wanted.length;
 }
@@ -190,12 +191,12 @@ export function listenForDownloadProgress(): () => void {
         offlineReady += 1;
         scheduleOfflineScan();
       } else {
-        useUI.getState().toast("Download finished", "success");
+        useUI.getState().toast(T("Download finished"), "success");
       }
     } else if (e.type === "failed") {
       buffer.flush(e.id);
       lib.patchDownload(e.id, { status: "failed", progress: 0 });
-      useUI.getState().toast(`Download failed: ${e.reason ?? "unknown error"}`, "error");
+      useUI.getState().toast(T("Download failed: {value}", { value: e.reason ?? T("unknown error") }), "error");
       if (SERVER_SONG.test(e.id)) scheduleOfflineScan();
     } else if (e.type === "cancelled") {
       buffer.flush(e.id);

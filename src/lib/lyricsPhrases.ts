@@ -1,3 +1,4 @@
+import { T } from "./i18n";
 /**
  * The lyric lookup's stand-in copy, BitChord mobile's own word lists
  * (strings.xml `lyrics_intro_lines` / `lyrics_loading_lines`).
@@ -11,33 +12,33 @@
  */
 
 export const LYRICS_LOADING_LINES: string[] = [
-  "Getting the lyrics",
-  "Finding the words",
-  "Fetching the verses",
-  "Lyrics are loading",
-  "Checking the lyric sheet",
-  "Searching the songbook",
-  "Lining up the lyrics",
-  "Words are on the way",
-  "Checking the archives",
-  "Finding the right words",
-  "Lyrics are coming together",
-  "Almost found the words",
+  T("Getting the lyrics"),
+  T("Finding the words"),
+  T("Fetching the verses"),
+  T("Lyrics are loading"),
+  T("Checking the lyric sheet"),
+  T("Searching the songbook"),
+  T("Lining up the lyrics"),
+  T("Words are on the way"),
+  T("Checking the archives"),
+  T("Finding the right words"),
+  T("Lyrics are coming together"),
+  T("Almost found the words"),
 ];
 
 export const LYRICS_INTRO_LINES: string[] = [
-  "The beat is landing",
-  "The song is starting",
-  "Warming up",
-  "Setting the mood",
-  "Bass first, words later",
-  "Wait for it",
-  "Feel that build",
-  "Just the groove for now",
-  "The hook is on the way",
-  "Let it breathe",
-  "Cue the vocals",
-  "First notes in",
+  T("The beat is landing"),
+  T("The song is starting"),
+  T("Warming up"),
+  T("Setting the mood"),
+  T("Bass first, words later"),
+  T("Wait for it"),
+  T("Feel that build"),
+  T("Just the groove for now"),
+  T("The hook is on the way"),
+  T("Let it breathe"),
+  T("Cue the vocals"),
+  T("First notes in"),
 ];
 
 export function pickLyricsLine(list: string[]): string {

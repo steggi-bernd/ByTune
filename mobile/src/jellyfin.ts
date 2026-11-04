@@ -9,6 +9,7 @@
 import { randomUUID } from "expo-crypto";
 import { ORIGINAL, type StreamChoice } from "./quality";
 import { jellyfinItemToTrack, jellyfinStreamPlan, jellyfinToTrack, type PlayCounts, type Track } from "./shared";
+import { T } from "./shared";
 
 export interface Session {
   /** where the server answers right now: its address at home or the one away from home */
@@ -83,14 +84,14 @@ async function request(
     text = await res.text();
   } catch {
     // Whatever went wrong on the way, this fetch has its own words for it: no answer came.
-    throw noAnswer(ctrl.signal.aborted ? "The server did not answer in time" : "Can't reach the server: check the address");
+    throw noAnswer(ctrl.signal.aborted ? T("The server did not answer in time") : T("Can't reach the server: check the address"));
   } finally {
     clearTimeout(timer);
   }
   if (res.status === 401) throw new Error("The server rejected the login: check the user name and password");
   // A tunnel or proxy answering for a server that's down.
-  if (res.status >= 500) throw noAnswer(`The server answered HTTP ${res.status}`);
-  if (!res.ok) throw new Error(`The server answered HTTP ${res.status}`);
+  if (res.status >= 500) throw noAnswer(T("The server answered HTTP {status}", { status: res.status }));
+  if (!res.ok) throw new Error(T("The server answered HTTP {status}", { status: res.status }));
   return text ? JSON.parse(text) : null;
 }
 

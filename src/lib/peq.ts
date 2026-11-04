@@ -1,3 +1,4 @@
+import { T } from "./i18n";
 /**
  * Parametric EQ profiles: the shape the player runs (audio.ts) and the
  * Equalizer APO text format AutoEQ publishes ("ParametricEQ.txt"), which is
@@ -26,12 +27,12 @@ export interface ParametricEq {
   bands: PeqBand[];
 }
 
-export const FLAT_PEQ: ParametricEq = { name: "Flat", preamp: 0, bands: [] };
+export const FLAT_PEQ: ParametricEq = { name: T("Flat"), preamp: 0, bands: [] };
 
 export const PEQ_TYPE_LABEL: Record<PeqType, string> = {
-  peaking: "Peak",
-  lowshelf: "Low shelf",
-  highshelf: "High shelf",
+  peaking: T("Peak"),
+  lowshelf: T("Low shelf"),
+  highshelf: T("High shelf"),
   lowpass: "Low-pass",
   highpass: "High-pass",
 };

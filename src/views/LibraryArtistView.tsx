@@ -2,9 +2,9 @@
  * Artist page for the library, Spotify-style: a full-width photo banner with
  * the name over it, play/shuffle, then two tabs.
  *
- *  - Overview: the artist's most played songs (from your own listening
- *    history), a strip leading to the songs of theirs you've liked (a small
- *    playlist of their own, ArtistLikedView), their albums, singles & EPs and
+ *  - Overview: a strip leading to the songs of theirs you've liked (a small
+ *    playlist of their own, ArtistLikedView), the artist's most played songs
+ *    (from your own listening history), their albums, singles & EPs and
  *    compilations (newest first), the releases they appear on, and an About
  *    card with the Wikipedia bio
  *  - Discography: every release of theirs in the library, newest on top,
@@ -31,14 +31,15 @@ import { RELEASE_LABEL } from "../lib/releases";
 import { useArtistImages } from "../lib/songInfo";
 import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useUI } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 type Tab = "overview" | "discography";
 type DiscFilter = "all" | "albums" | "eps" | "compilations";
 const DISC_FILTER_LABEL: Record<DiscFilter, string> = {
-  all: "All",
-  albums: "Albums",
-  eps: "Singles & EPs",
-  compilations: "Compilations",
+  all: T("All"),
+  albums: T("Albums"),
+  eps: T("Singles & EPs"),
+  compilations: T("Compilations"),
 };
 
 function inFilter(a: LibAlbum, f: DiscFilter): boolean {
@@ -58,7 +59,7 @@ function DiscographyRelease({ album }: { album: LibAlbum }) {
   return (
     <section className="space-y-3">
       <div className="flex items-end gap-5">
-        <button onClick={open} className="shrink-0" title={`Open ${album.title}`} aria-label={`Open ${album.title}`}>
+        <button onClick={open} className="shrink-0" title={T("Open {title}", { title: album.title })} aria-label={T("Open {title}", { title: album.title })}>
           <Artwork src={album.thumb} rounded="rounded-md" className="w-[136px] h-[136px] shadow-elev" iconClassName="w-8 h-8" />
         </button>
         <div className="min-w-0 pb-1">
@@ -70,15 +71,15 @@ function DiscographyRelease({ album }: { album: LibAlbum }) {
           </button>
           <div className="text-[14px] text-ink-dim mt-1">
             {RELEASE_LABEL[album.kind]}
-            {album.year ? ` · ${album.year}` : ""} · {album.tracks.length} {album.tracks.length === 1 ? "song" : "songs"},{" "}
+            {album.year ? ` · ${album.year}` : ""} · {album.tracks.length} {album.tracks.length === 1 ? T("song") : T("songs")},{" "}
             {fmtLength(album.duration)}
           </div>
           <div className="mt-3">
-            <BigPlayButton onClick={() => playCollection(album.tracks)} label={`Play ${album.title}`} tracks={album.tracks} />
+            <BigPlayButton onClick={() => playCollection(album.tracks)} label={T("Play {title}", { title: album.title })} tracks={album.tracks} />
           </div>
         </div>
       </div>
-      <TrackList tracks={album.tracks} showAlbum={false} showHeader={false} sourceName={album.title} emptyLabel="No songs." />
+      <TrackList tracks={album.tracks} showAlbum={false} showHeader={false} sourceName={album.title} emptyLabel={T("No songs.")} />
     </section>
   );
 }
@@ -125,13 +126,13 @@ export function LibraryArtistView({ param }: { param: string }) {
 
   if (!loaded) return null;
   if (!songs.length) {
-    return <EmptyState icon={User} title={`No songs by ${name}`} body="Nothing in your library credits this artist." />;
+    return <EmptyState icon={User} title={T("No songs by {name}", { name })} body={T("Nothing in your library credits this artist.")} />;
   }
 
   // The banner: the artist's sharpest picture, else a cover (lib/artistBanner.ts).
   const banner = bannerCandidates({ picture, genius: images, photo: about?.thumb ?? null, covers: [own[0]?.thumb, songs[0]?.thumb] });
   const counts = [
-    byType.albums.length ? `${byType.albums.length} ${byType.albums.length === 1 ? "album" : "albums"}` : null,
+    byType.albums.length ? `${byType.albums.length} ${byType.albums.length === 1 ? T("album") : T("albums")}` : null,
     byType.eps.length ? `${byType.eps.length} ${byType.eps.length === 1 ? "single or EP" : "singles & EPs"}` : null,
   ].filter(Boolean);
   const filters = (Object.keys(DISC_FILTER_LABEL) as DiscFilter[]).filter(
@@ -149,26 +150,24 @@ export function LibraryArtistView({ param }: { param: string }) {
             {name}
           </h1>
           <div className="text-[15px] text-white/85 mt-4">
-            {songs.length} {songs.length === 1 ? "song" : "songs"}
-            {counts.length > 0 && ` · ${counts.join(" · ")}`} in your library
-            {about?.facts && <span className="text-white/65"> · {about.facts}</span>}
+            {T("{count} {value}{value2} in your library", { count: songs.length, value: songs.length === 1 ? T("song") : T("songs"), value2: counts.length > 0 ? ` · ${counts.join(" · ")}` : "" })}{about?.facts && <span className="text-white/65"> · {about.facts}</span>}
           </div>
         </div>
       </header>
 
       <div className="flex items-center gap-5">
-        <BigPlayButton onClick={() => playCollection(popular)} label={`Play ${name}`} tracks={songs} />
+        <BigPlayButton onClick={() => playCollection(popular)} label={T("Play {name}", { name })} tracks={songs} />
         <button
           onClick={() => playCollection(songs, true)}
-          title="Shuffle play"
-          aria-label="Shuffle play"
+          title={T("Shuffle play")}
+          aria-label={T("Shuffle play")}
           className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
         >
           <Shuffle className="w-6 h-6" />
         </button>
       </div>
 
-      <div className="flex items-center gap-6 border-b border-ink-hi/[0.08]" role="tablist" aria-label="Artist sections">
+      <div className="flex items-center gap-6 border-b border-ink-hi/[0.08]" role="tablist" aria-label={T("Artist sections")}>
         {(["overview", "discography"] as const).map((t) => (
           <button
             key={t}
@@ -177,7 +176,7 @@ export function LibraryArtistView({ param }: { param: string }) {
             onClick={() => setTab(t)}
             className={`relative pb-3 text-[15px] font-bold transition-colors ${tab === t ? "text-ink-hi" : "text-ink-hi/55 hover:text-ink-hi/85"}`}
           >
-            {t === "overview" ? "Overview" : `Discography${own.length ? ` · ${own.length}` : ""}`}
+            {t === "overview" ? T("Overview") : T("Discography{value}", { value: own.length ? ` · ${own.length}` : "" })}
             <span className={`absolute left-0 right-0 -bottom-px h-[3px] rounded-full ${tab === t ? "bg-ink-hi" : "bg-transparent"}`} />
           </button>
         ))}
@@ -185,16 +184,6 @@ export function LibraryArtistView({ param }: { param: string }) {
 
       {tab === "overview" ? (
         <>
-          <section>
-            <h2 className="section-title text-[21px] mb-3">Popular</h2>
-            <TrackList tracks={popular.slice(0, showAll ? 10 : 5)} showAlbum emptyLabel="No songs." />
-            {popular.length > 5 && (
-              <button onClick={() => setShowAll((v) => !v)} className="mt-2 ml-3 text-[13px] font-bold text-ink-dim hover:text-ink-hi transition-colors">
-                {showAll ? "Show less" : "See more"}
-              </button>
-            )}
-          </section>
-
           {likedHere.length > 0 && (
             <button
               onClick={() => navigate({ name: "artistliked", param })}
@@ -202,21 +191,31 @@ export function LibraryArtistView({ param }: { param: string }) {
             >
               <LikedCover className="w-[52px] h-[52px] rounded-md shrink-0" />
               <span className="min-w-0 flex-1">
-                <span className="block text-[15px] font-semibold text-ink-hi truncate">Liked songs</span>
+                <span className="block text-[15px] font-semibold text-ink-hi truncate">{T("Liked songs")}</span>
                 <span className="block text-[13px] text-ink-dim truncate mt-0.5">
-                  {likedHere.length} {likedHere.length === 1 ? "song" : "songs"} by {name}
+                  {T("{count} {value} by {name}", { count: likedHere.length, value: likedHere.length === 1 ? T("song") : T("songs"), name })}
                 </span>
               </span>
               <ChevronRight className="w-5 h-5 shrink-0 text-ink-dim group-hover:text-ink-hi transition-colors" />
             </button>
           )}
+          <section>
+            <h2 className="section-title text-[21px] mb-3">{T("Popular")}</h2>
+            <TrackList tracks={popular.slice(0, showAll ? 10 : 5)} showAlbum emptyLabel={T("No songs.")} />
+            {popular.length > 5 && (
+              <button onClick={() => setShowAll((v) => !v)} className="mt-2 ml-3 text-[13px] font-bold text-ink-dim hover:text-ink-hi transition-colors">
+                {showAll ? T("Show less") : T("See more")}
+              </button>
+            )}
+          </section>
+
 
           {(
             [
-              ["Albums", byType.albums],
-              ["Singles & EPs", byType.eps],
-              ["Compilations", byType.compilations],
-              ["Appears on", appearsOn],
+              [T("Albums"), byType.albums],
+              [T("Singles & EPs"), byType.eps],
+              [T("Compilations"), byType.compilations],
+              [T("Appears on"), appearsOn],
             ] as const
           ).map(
             ([title, list]) =>
@@ -224,21 +223,19 @@ export function LibraryArtistView({ param }: { param: string }) {
                 <section key={title}>
                   <div className="flex items-baseline justify-between mb-4">
                     <h2 className="section-title text-[21px]">{title}</h2>
-                    {title !== "Appears on" && own.length > 0 && (
+                    {title !== T("Appears on") && own.length > 0 && (
                       <button
                         onClick={() => {
-                          setDiscFilter(title === "Albums" ? "albums" : title === "Compilations" ? "compilations" : "eps");
+                          setDiscFilter(title === T("Albums") ? "albums" : title === T("Compilations") ? "compilations" : "eps");
                           setTab("discography");
                         }}
                         className="text-[13px] font-bold text-ink-dim hover:text-ink-hi hover:underline transition-colors"
-                      >
-                        Show discography
-                      </button>
+                      >{T("Show discography")}</button>
                     )}
                   </div>
                   <ShelfScroller>
                     {list.map((a) => (
-                      <AlbumTile key={a.key} album={a} subtitle={title === "Appears on" ? `${a.year ? `${a.year} · ` : ""}${a.artist}` : releaseLine(a)} />
+                      <AlbumTile key={a.key} album={a} subtitle={title === T("Appears on") ? `${a.year ? `${a.year} · ` : ""}${a.artist}` : releaseLine(a)} />
                     ))}
                   </ShelfScroller>
                 </section>
@@ -247,7 +244,7 @@ export function LibraryArtistView({ param }: { param: string }) {
 
           {about?.description && (
             <section className="max-w-[860px]">
-              <h2 className="section-title text-[21px] mb-4">About</h2>
+              <h2 className="section-title text-[21px] mb-4">{T("About")}</h2>
               <div className="rounded-2xl bg-ink-hi/[0.04] overflow-hidden flex flex-col md:flex-row">
                 {about.thumb && <img src={about.thumb} alt="" className="md:w-[280px] h-[220px] md:h-auto object-cover object-top" />}
                 <div className="p-6 min-w-0">
@@ -257,8 +254,7 @@ export function LibraryArtistView({ param }: { param: string }) {
                     <button
                       onClick={() => window.open(about.wikiUrl as string, "_blank")}
                       className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-bold text-ink-hi hover:underline"
-                    >
-                      Read more on Wikipedia <ExternalLink className="w-3.5 h-3.5" />
+                    >{T("Read more on Wikipedia")}{" "}<ExternalLink className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -269,8 +265,8 @@ export function LibraryArtistView({ param }: { param: string }) {
       ) : own.length === 0 ? (
         <EmptyState
           icon={User}
-          title="No releases of their own yet"
-          body={`${name} appears on other artists' albums in your library — see Overview.`}
+          title={T("No releases of their own yet")}
+          body={T("{name} appears on other artists' albums in your library — see Overview.", { name })}
         />
       ) : (
         <>

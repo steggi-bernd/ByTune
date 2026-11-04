@@ -6,6 +6,7 @@ import type { PlayCounts } from "../stores/catalog";
 import type { RuleField, RuleOp, SmartPlaylist, SmartRule, SmartSort } from "../stores/smartPlaylists";
 import type { Track } from "../types";
 import { genresOf } from "./catalogIndex";
+import { T } from "./i18n";
 
 type Kind = "text" | "number" | "days" | "choice";
 
@@ -19,40 +20,40 @@ interface FieldDef {
 }
 
 export const FIELDS: Record<RuleField, FieldDef> = {
-  genre: { label: "Genre", kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
-  artist: { label: "Artist", kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
-  album: { label: "Album", kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
-  title: { label: "Title", kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
-  year: { label: "Year", kind: "number", ops: ["is", "gt", "lt", "between"] },
-  added: { label: "Added", kind: "days", ops: ["inLast", "notInLast"], unit: "days" },
-  plays: { label: "Plays", kind: "number", ops: ["gt", "lt", "is"] },
-  lastPlayed: { label: "Last played", kind: "days", ops: ["inLast", "notInLast"], unit: "days" },
-  duration: { label: "Length", kind: "number", ops: ["gt", "lt"], unit: "min" },
+  genre: { label: T("Genre"), kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
+  artist: { label: T("Artist"), kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
+  album: { label: T("Album"), kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
+  title: { label: T("Title"), kind: "text", ops: ["contains", "notContains", "is", "isNot"] },
+  year: { label: T("Year"), kind: "number", ops: ["is", "gt", "lt", "between"] },
+  added: { label: T("Added"), kind: "days", ops: ["inLast", "notInLast"], unit: "days" },
+  plays: { label: T("Plays"), kind: "number", ops: ["gt", "lt", "is"] },
+  lastPlayed: { label: T("Last played"), kind: "days", ops: ["inLast", "notInLast"], unit: "days" },
+  duration: { label: T("Length"), kind: "number", ops: ["gt", "lt"], unit: "min" },
   format: {
-    label: "Format",
+    label: T("Format"),
     kind: "choice",
     ops: ["is", "isNot"],
     choices: ["FLAC", "MP3", "AAC", "ALAC", "Opus", "Vorbis", "WAV", "AIFF", "WMA", "WavPack", "APE", "DSD"].map((f) => ({ value: f, label: f })),
   },
-  sampleRate: { label: "Sample rate", kind: "number", ops: ["gt", "lt", "is"], unit: "kHz" },
-  bitDepth: { label: "Bit depth", kind: "number", ops: ["gt", "lt", "is"], unit: "bit" },
+  sampleRate: { label: T("Sample rate"), kind: "number", ops: ["gt", "lt", "is"], unit: "kHz" },
+  bitDepth: { label: T("Bit depth"), kind: "number", ops: ["gt", "lt", "is"], unit: "bit" },
   source: {
-    label: "Source",
+    label: T("Source"),
     kind: "choice",
     ops: ["is", "isNot"],
     choices: [
-      { value: "local", label: "On this device" },
-      { value: "jellyfin", label: "Jellyfin" },
-      { value: "subsonic", label: "Navidrome" },
+      { value: "local", label: T("On this device") },
+      { value: "jellyfin", label: T("Jellyfin") },
+      { value: "subsonic", label: T("Navidrome") },
     ],
   },
   liked: {
-    label: "Liked",
+    label: T("Liked"),
     kind: "choice",
     ops: ["is"],
     choices: [
-      { value: "yes", label: "Yes" },
-      { value: "no", label: "No" },
+      { value: "yes", label: T("Yes") },
+      { value: "no", label: T("No") },
     ],
   },
 };
@@ -70,13 +71,13 @@ export const OP_LABEL: Record<RuleOp, string> = {
 };
 
 export const SORT_LABEL: Record<SmartSort, string> = {
-  random: "Random",
-  added: "Recently added",
-  plays: "Most played",
-  lastPlayed: "Recently played",
-  title: "Title",
-  artist: "Artist",
-  year: "Newest first",
+  random: T("Random"),
+  added: T("Recently added"),
+  plays: T("Most played"),
+  lastPlayed: T("Recently played"),
+  title: T("Title"),
+  artist: T("Artist"),
+  year: T("Newest first"),
 };
 
 /** Format family of a track's codec — "MPEG 1 Layer 3" → MP3, "MPEG-4/AAC" → AAC … */
@@ -233,14 +234,14 @@ export function describeRules(sp: SmartPlaylist): string {
     const range = r.op === "between" ? `${value} and ${r.value2 ?? ""}` : value;
     return `${f.label} ${OP_LABEL[r.op]} ${range}${f.unit ? ` ${f.unit}` : ""}`;
   });
-  return parts.join(sp.match === "all" ? " · " : " or ") || "All songs";
+  return parts.join(sp.match === "all" ? " · " : " or ") || T("All songs");
 }
 
 /** Starting points offered when a new smart playlist is created. */
 export const SMART_PRESETS: { name: string; rules: SmartRule[]; sort: SmartSort; limit: number | null }[] = [
   { name: "Hi-Res", rules: [{ field: "sampleRate", op: "gt", value: "48" }], sort: "artist", limit: null },
-  { name: "Recently added", rules: [{ field: "added", op: "inLast", value: "30" }], sort: "added", limit: null },
-  { name: "Never played", rules: [{ field: "plays", op: "is", value: "0" }], sort: "random", limit: 100 },
-  { name: "Most played", rules: [{ field: "plays", op: "gt", value: "2" }], sort: "plays", limit: 50 },
-  { name: "Not played in a while", rules: [{ field: "plays", op: "gt", value: "0" }, { field: "lastPlayed", op: "notInLast", value: "90" }], sort: "random", limit: 100 },
+  { name: T("Recently added"), rules: [{ field: "added", op: "inLast", value: "30" }], sort: "added", limit: null },
+  { name: T("Never played"), rules: [{ field: "plays", op: "is", value: "0" }], sort: "random", limit: 100 },
+  { name: T("Most played"), rules: [{ field: "plays", op: "gt", value: "2" }], sort: "plays", limit: 50 },
+  { name: T("Not played in a while"), rules: [{ field: "plays", op: "gt", value: "0" }, { field: "lastPlayed", op: "notInLast", value: "90" }], sort: "random", limit: 100 },
 ];

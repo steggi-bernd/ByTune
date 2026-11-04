@@ -4,6 +4,7 @@ import { sourceOf, useAvailabilityCheck } from "../stores/availability";
 import { sameSong, useCatalog, versionsOf } from "../stores/catalog";
 import { likedIdSet, useLibrary } from "../stores/library";
 import { useIsMuted } from "../stores/muted";
+import { BranchMark } from "./primitives";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI, type MenuItem } from "../stores/ui";
 import { trackMenuItems } from "../lib/trackActions";
@@ -13,6 +14,7 @@ import { fmtTime } from "../lib/format";
 import { Artwork, EqBars, EmptyState, ExplicitBadge } from "./primitives";
 import { ArtistLinks } from "./ArtistLinks";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 /** Download state glyph for a track row — spinner / green check / red fail. */
 export function DownloadBadge({ id }: { id: string }) {
@@ -20,20 +22,20 @@ export function DownloadBadge({ id }: { id: string }) {
   if (!dl) return null;
   if (dl.status === "downloading" || dl.status === "queued") {
     return (
-      <span className="p-1.5 rounded-md text-ink-hi" title="Downloading…">
+      <span className="p-1.5 rounded-md text-ink-hi" title={T("Downloading…")}>
         <Loader2 className="w-4 h-4 animate-spin" />
       </span>
     );
   }
   if (dl.status === "done") {
     return (
-      <span className="p-1.5 rounded-md text-emerald-400" title="Downloaded">
+      <span className="p-1.5 rounded-md text-emerald-400" title={T("Downloaded")}>
         <Check className="w-4 h-4" />
       </span>
     );
   }
   return (
-    <span className="p-1.5 rounded-md text-red-400" title="Download failed">
+    <span className="p-1.5 rounded-md text-red-400" title={T("Download failed")}>
       <AlertCircle className="w-4 h-4" />
     </span>
   );
@@ -65,8 +67,8 @@ export function FileButton({ track }: { track: Track }) {
           e.stopPropagation();
           void window.bytune?.revealPath(filePath);
         }}
-        title="Show in folder"
-        aria-label={`Show ${track.title} in its folder`}
+        title={T("Show in folder")}
+        aria-label={T("Show {title} in its folder", { title: track.title })}
         className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
       >
         <FolderOpen className="w-4 h-4" />
@@ -80,8 +82,8 @@ export function FileButton({ track }: { track: Track }) {
         e.stopPropagation();
         downloadForOffline([track]);
       }}
-      title={dl?.status === "failed" ? "Download failed — try again" : "Download for offline listening"}
-      aria-label={`Download ${track.title} for offline listening`}
+      title={dl?.status === "failed" ? T("Download failed — try again") : T("Download for offline listening")}
+      aria-label={T("Download {title} for offline listening", { title: track.title })}
       className={`p-1.5 rounded-md hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${
         dl?.status === "failed" ? "text-red-400" : "text-ink-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
       }`}
@@ -139,7 +141,7 @@ const TrackRow = memo(function TrackRow({
   const activate = (): void => {
     if (isCurrent) usePlayer.getState().toggle();
     else if (available) onPlay(index);
-    else useUI.getState().toast(`"${track.title}" can't be reached right now — its drive or server is away`, "warning");
+    else useUI.getState().toast(T("\"{title}\" can't be reached right now — its drive or server is away", { title: track.title }), "warning");
   };
 
   return (
@@ -152,7 +154,7 @@ const TrackRow = memo(function TrackRow({
         e.stopPropagation();
         openMenu(e.clientX, e.clientY);
       }}
-      title={available ? undefined : "Not available right now — its drive or server can't be reached"}
+      title={available ? undefined : T("Not available right now — its drive or server can't be reached")}
       aria-disabled={!available || undefined}
       // Long lists: rows off screen are neither laid out nor painted.
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
@@ -172,8 +174,8 @@ const TrackRow = memo(function TrackRow({
               activate();
             }}
             className="hidden group-hover:block text-ink-hi hover:text-ink-hi transition-colors"
-            title={isCurrent && isPlaying ? "Pause" : "Play"}
-            aria-label={isCurrent && isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
+            title={isCurrent && isPlaying ? T("Pause") : T("Play")}
+            aria-label={isCurrent && isPlaying ? T("Pause {title}", { title: track.title }) : T("Play {title}", { title: track.title })}
           >
             {isCurrent && isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
           </button>
@@ -195,6 +197,7 @@ const TrackRow = memo(function TrackRow({
         <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : muted ? "text-red-300" : "text-ink-hi"}`}>
           {track.explicit && <ExplicitBadge />}
           <span className="truncate">{track.title}</span>
+          <BranchMark id={track.id} />
         </div>
         <div className="text-[14px] truncate text-ink-dim mt-0.5">
           {track.artistId?.startsWith("lib:artist:") ? (
@@ -215,7 +218,7 @@ const TrackRow = memo(function TrackRow({
                 navigate({ name: "album", param: track.albumId });
               }}
             >
-              {track.album ?? "Single"}
+              {track.album ?? T("Single")}
             </button>
           ) : (
             track.album ?? ""
@@ -230,8 +233,8 @@ const TrackRow = memo(function TrackRow({
             e.stopPropagation();
             toggleLike(track);
           }}
-          title={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
-          aria-label={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+          title={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
+          aria-label={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
           className={`p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${liked ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
         >
           <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-accent text-accent" : ""}`} />
@@ -242,8 +245,8 @@ const TrackRow = memo(function TrackRow({
             e.stopPropagation();
             openMenu(e.clientX, e.clientY);
           }}
-          title="More options"
-          aria-label="More options"
+          title={T("More options")}
+          aria-label={T("More options")}
           className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -277,7 +280,7 @@ export function TrackList({
   menuFor = trackMenuItems,
   sourceName,
   emptyLabel,
-  emptyTitle = "Nothing here yet",
+  emptyTitle = T("Nothing here yet"),
 }: TrackListProps) {
   const currentId = usePlayer((s) => s.queue[s.index]?.id ?? null);
   const playing = usePlayer((s) => s.playing);
@@ -300,7 +303,7 @@ export function TrackList({
   const play = onPlay ?? playFromList;
 
   if (!tracks.length) {
-    return <EmptyState icon={Play} title={emptyTitle} body={emptyLabel ?? "Tracks will appear here."} />;
+    return <EmptyState icon={Play} title={emptyTitle} body={emptyLabel ?? T("Tracks will appear here.")} />;
   }
 
   return (
@@ -309,10 +312,10 @@ export function TrackList({
         <div className="flex items-center gap-3 px-3 pb-2.5 mb-1 border-b border-ink-hi/[0.06] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-ghost">
           <div className="w-7 shrink-0">#</div>
           <div className="w-[52px] shrink-0" />
-          <div className="flex-1 min-w-0">Title</div>
-          {showAlbum && <div className="w-52 shrink-0 hidden xl:block">Album</div>}
+          <div className="flex-1 min-w-0">{T("Title")}</div>
+          {showAlbum && <div className="w-52 shrink-0 hidden xl:block">{T("Album")}</div>}
           <div className="w-[88px] shrink-0" />
-          <div className="w-11 shrink-0 text-right">Time</div>
+          <div className="w-11 shrink-0 text-right">{T("Time")}</div>
         </div>
       )}
       <div>

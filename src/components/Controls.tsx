@@ -5,6 +5,7 @@ import { useVolumeTarget } from "../lib/cast";
 import { fmtTime } from "../lib/format";
 import { usePlayer } from "../stores/player";
 import { Slider } from "./Slider";
+import { T } from "../lib/i18n";
 
 interface SeekBarProps {
   large?: boolean;
@@ -34,7 +35,7 @@ export function SeekBar({ large = false, showRemaining = false }: SeekBarProps) 
       <span className={`shrink-0 text-right tabular-nums ${label}`}>{fmtTime(shown)}</span>
       <Slider
         className="flex-1"
-        label="Seek"
+        label={T("Seek")}
         value={max > 0 ? position / max : 0}
         buffered={max > 0 ? Math.max(buffered, position / max) : 0}
         live={playing && max > 0 ? live : undefined}
@@ -59,13 +60,13 @@ export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }
   const shown = muted ? 0 : volume;
 
   return (
-    <div className="flex items-center" title={fixed ? "This player's volume is set on the player" : undefined}>
+    <div className="flex items-center" title={fixed ? T("This player's volume is set on the player") : undefined}>
       <button
         onClick={toggleMute}
         disabled={fixed}
         className="grid h-8 w-8 place-items-center text-[#b3b3b3] transition-colors hover:text-white disabled:opacity-40"
-        title={muted ? "Unmute" : "Mute"}
-        aria-label={muted ? "Unmute" : "Mute"}
+        title={muted ? T("Unmute") : T("Mute")}
+        aria-label={muted ? T("Unmute") : T("Mute")}
       >
         <span key={muted ? "muted" : "on"} className="icon-swap">
           <VolIcon className="w-4 h-4" />
@@ -73,7 +74,7 @@ export function VolumeControl({ VolIcon }: { VolIcon: (p: { className?: string }
       </button>
       <Slider
         className="w-[93px]"
-        label="Volume"
+        label={T("Volume")}
         value={shown}
         onChange={setVolume}
         step={0.05}
@@ -98,14 +99,14 @@ export function VolumeRow() {
       <button
         onClick={toggleMute}
         className="text-ink-hi/60 hover:text-ink-hi transition-all active:scale-90 shrink-0"
-        title={muted ? "Unmute" : "Mute"}
-        aria-label={muted ? "Unmute" : "Mute"}
+        title={muted ? T("Unmute") : T("Mute")}
+        aria-label={muted ? T("Unmute") : T("Mute")}
       >
         <Volume1 className="w-5 h-5" />
       </button>
       <Slider
         className="flex-1"
-        label="Volume"
+        label={T("Volume")}
         value={shown}
         onChange={setVolume}
         step={0.05}
@@ -115,8 +116,8 @@ export function VolumeRow() {
       <button
         onClick={toggleMute}
         className="text-ink-hi/60 hover:text-ink-hi transition-all active:scale-90 shrink-0"
-        title="Volume up"
-        aria-label="Volume up"
+        title={T("Volume up")}
+        aria-label={T("Volume up")}
       >
         <Volume2 className="w-5 h-5" />
       </button>

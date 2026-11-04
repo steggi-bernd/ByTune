@@ -1,20 +1,29 @@
 /**
- * The queue, as on Spotify: a sheet over the dimmed player with the playing
- * song on top, what comes next with its handles, Clear and Edit up top, and
- * Shuffle, Repeat and the sleep Timer as three big buttons below. Its grip and
- * its head drag it: all the way up, or down and away.
+ * The queue, as on Spotify: a sheet over the dimmed player with the playing song on
+ * top, a small area of its own for what was asked for by hand, then what comes next
+ * from the list. Every song can go by its cross or a pull to the right, and moves by
+ * its handle. Shuffle, Repeat and the sleep Timer are three big buttons below. Its
+ * grip and its head drag it: all the way up, or down and away.
  */
 import { useNavigation } from "@react-navigation/native";
-import { CircleMinus, Menu, Pause, Play, Repeat, Repeat1, Shuffle, Timer } from "lucide-react-native";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { ChevronDown, ChevronUp, Menu, Pause, Play, Repeat, Repeat1, Shuffle, Split, Timer, Trash2, X } from "lucide-react-native";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { Animated, FlatList, PanResponder, PixelRatio, Pressable, StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
+import { glideList, PullRow } from "../components/SwipeRow";
 import { Cover, EqBars } from "../components/ui";
-import type { Track } from "../shared";
+import { handRows, type Track } from "../shared";
 import { usePlayer } from "../stores/player";
+import { feel } from "../stores/settings";
 import { colors } from "../theme";
+import { T } from "../shared";
 
-const ROW_HEIGHT = 61;
+/** A row's height: the list knows where everything is by these. On whole pixels, or the area shows hairlines between its rows. */
+const px = PixelRatio.roundToNearestPixel;
+const HEIGHT = { hand: px(44), branch: px(38), song: px(61), more: px(42), handEnd: px(18), list: px(42) };
+/** The area of what was asked for by hand stands out a little from the sheet. */
+const AREA = "#2B2B2E";
+const AREA_MARGIN = 8;
 /** At rest the sheet covers this much of the screen. */
 const AT_REST = 0.66;
 const SHEET_GAP_ON_TOP = 8;
@@ -25,23 +34,51 @@ const BUTTONS_BELOW = 12;
 const FLICK_MS = 200;
 const SPRING = { stiffness: 300, damping: 34, mass: 1, overshootClamping: true, useNativeDriver: true };
 
-/** One song that comes next. Its handle drags it: every row's height away is one place in the list. */
+type Row =
+  | { kind: "hand"; key: string }
+  | { kind: "branch"; key: string; name: string; count: number; folds: boolean }
+  | { kind: "song"; key: string; track: Track; at: number; inHand: boolean }
+  | { kind: "more"; key: string; name: string; count: number }
+  | { kind: "handEnd"; key: string }
+  | { kind: "list"; key: string; title: string };
+
+/** The row being dragged: its whole cell comes up, or the rows after it would cover it. */
+const HeldRow = createContext<string | null>(null);
+
+function QueueCell({ item, style, onLayout, children }: { item: Row; style?: StyleProp<ViewStyle>; onLayout?: (e: LayoutChangeEvent) => void; children?: ReactNode }) {
+  const held = useContext(HeldRow) === item.key;
+  return (
+    <View style={[style, held && styles.cellHeld]} onLayout={onLayout}>
+      {children}
+    </View>
+  );
+}
+
+/** One song that comes next. Its handle drags it: to the place of whichever song the finger comes to. */
 function UpcomingRow({
+  rowKey,
   track,
-  index,
-  editing,
+  at,
+  inHand,
   onDragChange,
+  placeFor,
 }: {
+  rowKey: string;
   track: Track;
-  index: number;
-  editing: boolean;
-  onDragChange: (dragging: boolean) => void;
+  at: number;
+  inHand: boolean;
+  onDragChange: (row: string | null) => void;
+  /** Dragged this far from there: the place in the queue it would take. */
+  placeFor: (at: number, dy: number) => number;
 }) {
   const { skipTo, removeAt, moveItem } = usePlayer.getState();
   const y = useRef(new Animated.Value(0)).current;
   const [held, setHeld] = useState(false);
-  const place = useRef(index);
-  place.current = index;
+  const place = useRef(at);
+  place.current = at;
+  const slot = useRef(at);
+  const finding = useRef(placeFor);
+  finding.current = placeFor;
 
   const pan = useMemo(
     () =>
@@ -50,49 +87,70 @@ function UpcomingRow({
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
+          slot.current = place.current;
+          feel("press");
           setHeld(true);
-          onDragChange(true);
+          onDragChange(rowKey);
         },
-        onPanResponderMove: (_, g) => y.setValue(g.dy),
+        onPanResponderMove: (_, g) => {
+          y.setValue(g.dy);
+          // Every place passed can be felt.
+          const now = finding.current(place.current, g.dy);
+          if (now !== slot.current) feel("tick");
+          slot.current = now;
+        },
         onPanResponderRelease: (_, g) => {
+          feel("press");
           y.setValue(0);
           setHeld(false);
-          onDragChange(false);
-          const state = usePlayer.getState();
-          const target = Math.max(state.index + 1, Math.min(state.queue.length - 1, place.current + Math.round(g.dy / ROW_HEIGHT)));
-          moveItem(place.current, target);
+          onDragChange(null);
+          moveItem(place.current, finding.current(place.current, g.dy));
         },
         onPanResponderTerminate: () => {
           y.setValue(0);
           setHeld(false);
-          onDragChange(false);
+          onDragChange(null);
         },
       }),
-    [y, moveItem, onDragChange]
+    [y, moveItem, onDragChange, rowKey]
   );
 
+  const remove = (): void => {
+    glideList();
+    removeAt(place.current);
+  };
+  const rowColor = inHand ? AREA : colors.sheet;
+
   return (
-    <Animated.View style={[styles.row, held && styles.rowHeld, { transform: [{ translateY: y }] }]}>
-      {editing && (
-        <Pressable onPress={() => removeAt(index)} accessibilityLabel={`Remove ${track.title}`} style={styles.remove}>
-          <CircleMinus size={22} color={colors.soft} />
+    <PullRow label={T("Remove")} Icon={Trash2} tone="danger" leaves rowColor={rowColor} style={inHand ? styles.inArea : undefined} onPull={remove}>
+      <Animated.View style={[styles.row, inHand && styles.rowInArea, held && styles.rowHeld, { transform: [{ translateY: y }] }]}>
+        <Pressable onPress={() => skipTo(place.current)} style={styles.rowMain}>
+          <Cover uri={track.thumb} size={46} />
+          <View style={styles.rowText}>
+            <Text numberOfLines={1} style={styles.rowTitle}>
+              {track.title}
+            </Text>
+            <Text numberOfLines={1} style={styles.rowArtist}>
+              {track.artist}
+            </Text>
+          </View>
         </Pressable>
-      )}
-      <Pressable onPress={() => skipTo(index)} style={styles.rowMain}>
-        <Cover uri={track.thumb} size={46} />
-        <View style={styles.rowText}>
-          <Text numberOfLines={1} style={styles.rowTitle}>
-            {track.title}
-          </Text>
-          <Text numberOfLines={1} style={styles.rowArtist}>
-            {track.artist}
-          </Text>
+        <Pressable
+          onPress={() => {
+            feel("press");
+            remove();
+          }}
+          hitSlop={4}
+          accessibilityLabel={T("Remove {title}", { title: track.title })}
+          style={styles.remove}
+        >
+          <X size={17} color={colors.dim} />
+        </Pressable>
+        <View {...pan.panHandlers} accessibilityLabel={T("Move {title}", { title: track.title })} style={styles.handle}>
+          <Menu size={20} color={colors.ink} />
         </View>
-      </Pressable>
-      <View {...pan.panHandlers} accessibilityLabel={`Move ${track.title}`} style={styles.handle}>
-        <Menu size={20} color={colors.ink} />
-      </View>
-    </Animated.View>
+      </Animated.View>
+    </PullRow>
   );
 }
 
@@ -102,16 +160,79 @@ export function QueueScreen() {
   const queue = usePlayer((s) => s.queue);
   const index = usePlayer((s) => s.index);
   const context = usePlayer((s) => s.context);
+  const homeContext = usePlayer((s) => s.homeContext);
+  const lineEnd = usePlayer((s) => s.lineEnd);
+  const branches = usePlayer((s) => s.branches);
   const playWhenReady = usePlayer((s) => s.playWhenReady);
   const shuffle = usePlayer((s) => s.shuffle);
   const repeat = usePlayer((s) => s.repeat);
   const sleepAt = usePlayer((s) => s.sleepAt);
-  const { toggle, toggleShuffle, cycleRepeat, clearUpcoming, cycleSleepTimer } = usePlayer.getState();
-  const [editing, setEditing] = useState(false);
-  const [dragging, setDragging] = useState(false);
+  const { toggle, toggleShuffle, cycleRepeat, clearUpcoming, clearLine, cancelBranch, cycleSleepTimer } = usePlayer.getState();
+  const [heldRow, setHeldRow] = useState<string | null>(null);
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const current = queue[index];
-  const onDragChange = useCallback((d: boolean) => setDragging(d), []);
-  const upcoming = useMemo(() => queue.slice(index + 1).map((track, i) => ({ track, at: index + 1 + i })), [queue, index]);
+  const onDragChange = useCallback((row: string | null) => setHeldRow(row), []);
+  const openOrClose = (name: string): void => {
+    glideList();
+    setOpened((was) => {
+      const next = new Set(was);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
+  };
+
+  const { rows, tops } = useMemo(() => {
+    const out: Row[] = [];
+    const times = new Map<string, number>();
+    const once = (key: string): string => {
+      const n = times.get(key) ?? 0;
+      times.set(key, n + 1);
+      return `${key}:${n}`;
+    };
+    const hand = handRows(queue, index, lineEnd, branches, opened);
+    if (hand.length) {
+      out.push({ kind: "hand", key: "hand" });
+      for (const row of hand) {
+        if (row.kind === "song") out.push({ kind: "song", key: once(`song:${row.track.id}`), track: row.track, at: row.at, inHand: true });
+        else if (row.kind === "branch") out.push({ kind: "branch", key: once(`branch:${row.branch}`), name: row.branch, count: row.count, folds: row.folds });
+        else out.push({ kind: "more", key: once(`more:${row.branch}`), name: row.branch, count: row.count });
+      }
+      out.push({ kind: "handEnd", key: "handEnd" });
+    }
+    const from = Math.min(queue.length, Math.max(index + 1, lineEnd));
+    const list = homeContext ?? context;
+    if (from < queue.length) out.push({ kind: "list", key: "list", title: list ? T("Next from {name}", { name: list }) : T("Next up") });
+    for (let at = from; at < queue.length; at++) out.push({ kind: "song", key: once(`song:${queue[at].id}`), track: queue[at], at, inHand: false });
+    let y = 0;
+    const places = out.map((row) => {
+      const top = y;
+      y += HEIGHT[row.kind];
+      return top;
+    });
+    return { rows: out, tops: places };
+  }, [queue, index, lineEnd, branches, opened, homeContext, context]);
+
+  const placeFor = useCallback(
+    (at: number, dy: number): number => {
+      let from = 0;
+      rows.forEach((row, i) => {
+        if (row.kind === "song" && row.at === at) from = tops[i];
+      });
+      const wanted = from + dy;
+      let best = at;
+      let bestBy = Infinity;
+      rows.forEach((row, i) => {
+        if (row.kind !== "song") return;
+        const by = Math.abs(tops[i] - wanted);
+        if (by < bestBy) {
+          bestBy = by;
+          best = row.at;
+        }
+      });
+      return best;
+    },
+    [rows, tops]
+  );
   const minutesLeft = sleepAt ? Math.max(1, Math.round((sleepAt - Date.now()) / 60000)) : 0;
 
   // The sheet is always its full height and slides: 0 is all the way up.
@@ -162,36 +283,33 @@ export function QueueScreen() {
   return (
     <View style={styles.root}>
       <Animated.View style={[styles.dim, { opacity: dimming }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => moveTo(away)} accessibilityLabel="Close the queue" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => moveTo(away)} accessibilityLabel={T("Close the queue")} />
       </Animated.View>
       <Animated.View style={[styles.sheet, { top: sheetTop, transform: [{ translateY: y }] }]}>
         <View {...pan.panHandlers}>
-          <Pressable onPress={() => moveTo(big ? rest : 0)} accessibilityLabel={big ? "Make the queue smaller" : "Make the queue bigger"} style={styles.gripArea}>
+          <Pressable onPress={() => moveTo(big ? rest : 0)} accessibilityLabel={big ? T("Make the queue smaller") : T("Make the queue bigger")} style={styles.gripArea}>
             <View style={styles.grip} />
           </Pressable>
           <View style={styles.head}>
             <View style={styles.headText}>
-              <Text style={styles.heading}>Queue</Text>
-              <Text numberOfLines={1} style={styles.from}>
-                Playing from '{context}'
-              </Text>
+              <Text style={styles.heading}>{T("Queue")}</Text>
+              <Text numberOfLines={1} style={styles.from}>{context ? T("Playing from '{context}'", { context }) : ""}</Text>
             </View>
             <Pressable onPress={clearUpcoming} style={styles.pill}>
-              <Text style={styles.pillText}>Clear</Text>
-            </Pressable>
-            <Pressable onPress={() => setEditing((e) => !e)} style={styles.pill}>
-              <Text style={styles.pillText}>{editing ? "Done" : "Edit"}</Text>
+              <Text style={styles.pillText}>{T("Clear")}</Text>
             </Pressable>
           </View>
         </View>
 
+        <HeldRow.Provider value={heldRow}>
         <FlatList
-          data={upcoming}
-          scrollEnabled={!dragging}
+          data={rows}
+          scrollEnabled={!heldRow}
+          CellRendererComponent={QueueCell}
           // What the sheet's lower part hides at rest can still be scrolled up into view.
           contentContainerStyle={{ paddingBottom: buttonsHeight + (big ? 0 : rest) }}
-          keyExtractor={(u, i) => `${u.track.id}-${i}`}
-          getItemLayout={(_, i) => ({ length: ROW_HEIGHT, offset: ROW_HEIGHT * i, index: i })}
+          keyExtractor={(row) => row.key}
+          getItemLayout={(_, i) => ({ length: HEIGHT[rows[i].kind], offset: (current ? HEIGHT.song : 0) + tops[i], index: i })}
           ListHeaderComponent={
             current ? (
               <View style={styles.row}>
@@ -209,27 +327,101 @@ export function QueueScreen() {
                     </Text>
                   </View>
                 </View>
-                <Pressable onPress={toggle} accessibilityLabel={playWhenReady ? "Pause" : "Play"} style={styles.currentButton}>
+                <Pressable onPress={toggle} accessibilityLabel={playWhenReady ? T("Pause") : T("Play")} style={styles.currentButton}>
                   {playWhenReady ? <Pause size={15} color="#121212" fill="#121212" /> : <Play size={15} color="#121212" fill="#121212" />}
                 </Pressable>
               </View>
             ) : undefined
           }
-          renderItem={({ item }) => <UpcomingRow track={item.track} index={item.at} editing={editing} onDragChange={onDragChange} />}
+          renderItem={({ item }) => {
+            switch (item.kind) {
+              case "song":
+                return <UpcomingRow rowKey={item.key} track={item.track} at={item.at} inHand={item.inHand} onDragChange={onDragChange} placeFor={placeFor} />;
+              case "hand":
+                return (
+                  <View style={[styles.inArea, styles.areaTop]}>
+                    <Text numberOfLines={1} style={styles.areaTitle}>
+                      {T("Next in queue")}
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        feel("press");
+                        glideList();
+                        clearLine();
+                      }}
+                      hitSlop={6}
+                      style={styles.areaClear}
+                    >
+                      <Text style={styles.areaClearText}>{T("Clear")}</Text>
+                    </Pressable>
+                  </View>
+                );
+              case "branch": {
+                const open = opened.has(item.name);
+                return (
+                  <View style={[styles.inArea, styles.branchRow]}>
+                    <Pressable
+                      disabled={!item.folds}
+                      onPress={() => openOrClose(item.name)}
+                      accessibilityLabel={item.folds ? (open ? T("Show less") : T("Show all")) : undefined}
+                      style={styles.branchName}
+                    >
+                      <Split size={14} color={colors.accent} strokeWidth={2.4} />
+                      <Text numberOfLines={1} style={styles.branchText}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.branchCount}>{item.count}</Text>
+                      {item.folds && (open ? <ChevronUp size={15} color={colors.dim} /> : <ChevronDown size={15} color={colors.dim} />)}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        feel("press");
+                        glideList();
+                        cancelBranch(item.name);
+                      }}
+                      hitSlop={6}
+                      accessibilityLabel={T("Undo branch")}
+                      style={styles.remove}
+                    >
+                      <X size={17} color={colors.dim} />
+                    </Pressable>
+                  </View>
+                );
+              }
+              case "more":
+                return (
+                  <Pressable onPress={() => openOrClose(item.name)} style={[styles.inArea, styles.moreRow]}>
+                    <Text style={styles.moreText}>{T("{count} more", { count: item.count })}</Text>
+                    <ChevronDown size={15} color={colors.dim} />
+                  </Pressable>
+                );
+              case "handEnd":
+                return <View style={[styles.inArea, styles.areaEnd]} />;
+              case "list":
+                return (
+                  <View style={styles.listHead}>
+                    <Text numberOfLines={1} style={styles.listTitle}>
+                      {item.title}
+                    </Text>
+                  </View>
+                );
+            }
+          }}
         />
+        </HeldRow.Provider>
 
         <Animated.View style={[styles.buttons, { paddingBottom: insets.bottom + BUTTONS_BELOW, transform: [{ translateY: buttonsY }] }]}>
           <Pressable onPress={toggleShuffle} style={styles.bigButton}>
             <Shuffle size={22} color={shuffle ? colors.accent : colors.ink} />
-            <Text style={[styles.bigLabel, shuffle && { color: colors.accent }]}>Shuffle</Text>
+            <Text style={[styles.bigLabel, shuffle && { color: colors.accent }]}>{T("Shuffle")}</Text>
           </Pressable>
           <Pressable onPress={cycleRepeat} style={styles.bigButton}>
             {repeat === "one" ? <Repeat1 size={22} color={colors.accent} /> : <Repeat size={22} color={repeat === "all" ? colors.accent : colors.ink} />}
-            <Text style={[styles.bigLabel, repeat !== "off" && { color: colors.accent }]}>Repeat</Text>
+            <Text style={[styles.bigLabel, repeat !== "off" && { color: colors.accent }]}>{T("Repeat")}</Text>
           </Pressable>
           <Pressable onPress={() => cycleSleepTimer()} style={styles.bigButton}>
             <Timer size={22} color={sleepAt ? colors.accent : colors.ink} />
-            <Text style={[styles.bigLabel, !!sleepAt && { color: colors.accent }]}>{sleepAt ? `${minutesLeft} min` : "Timer"}</Text>
+            <Text style={[styles.bigLabel, !!sleepAt && { color: colors.accent }]}>{sleepAt ? `${minutesLeft} min` : T("Timer")}</Text>
           </Pressable>
         </Animated.View>
       </Animated.View>
@@ -249,12 +441,29 @@ const styles = StyleSheet.create({
   from: { color: "#B3B3B8", fontSize: 13, marginTop: 4 },
   pill: { height: 34, paddingHorizontal: 14, borderRadius: 17, backgroundColor: colors.button, justifyContent: "center" },
   pillText: { color: colors.ink, fontSize: 13.5, fontWeight: "700" },
-  row: { flexDirection: "row", alignItems: "center", height: ROW_HEIGHT, paddingLeft: 15, paddingRight: 6 },
-  rowHeld: { backgroundColor: colors.button, zIndex: 10, elevation: 8 },
-  remove: { width: 34, height: 44, alignItems: "flex-start", justifyContent: "center" },
+  row: { flexDirection: "row", alignItems: "center", height: HEIGHT.song, paddingLeft: 15, paddingRight: AREA_MARGIN },
+  rowInArea: { paddingLeft: 15 - AREA_MARGIN, paddingRight: 0 },
+  rowHeld: { backgroundColor: colors.button },
+  cellHeld: { zIndex: 10, elevation: 8 },
+  remove: { width: 34, height: 44, alignItems: "center", justifyContent: "center" },
+  inArea: { marginHorizontal: AREA_MARGIN },
+  areaTop: { height: HEIGHT.hand, flexDirection: "row", alignItems: "center", paddingLeft: 15 - AREA_MARGIN, paddingRight: 4, backgroundColor: AREA, borderTopLeftRadius: 14, borderTopRightRadius: 14 },
+  areaTitle: { flex: 1, minWidth: 0, color: colors.accent, fontSize: 13.5, fontWeight: "700" },
+  areaClear: { height: 34, paddingHorizontal: 10, justifyContent: "center" },
+  areaClearText: { color: colors.soft, fontSize: 13, fontWeight: "600" },
+  areaEnd: { height: HEIGHT.handEnd - 8, marginBottom: 8, backgroundColor: AREA, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
+  branchRow: { height: HEIGHT.branch, flexDirection: "row", alignItems: "center", paddingLeft: 15 - AREA_MARGIN, paddingRight: 4, backgroundColor: AREA },
+  branchName: { flex: 1, minWidth: 0, height: "100%", flexDirection: "row", alignItems: "center", gap: 7 },
+  branchText: { flexShrink: 1, color: colors.ink, fontSize: 13, fontWeight: "600" },
+  branchCount: { color: colors.dim, fontSize: 12.5 },
+  moreRow: { height: HEIGHT.more, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 15 - AREA_MARGIN + 46 + 12, backgroundColor: AREA },
+  moreText: { color: colors.soft, fontSize: 13.5, fontWeight: "600" },
+  listHead: { height: HEIGHT.list, justifyContent: "center", paddingHorizontal: 15 },
+  listTitle: { color: colors.ink, fontSize: 13.5, fontWeight: "700" },
   rowMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: "100%" },
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { color: colors.ink, fontSize: 15.5 },
+  rowLine: { flexDirection: "row", alignItems: "center", gap: 5 },
   rowArtist: { color: "#B3B3B8", fontSize: 13.5, marginTop: 3 },
   currentLine: { flexDirection: "row", alignItems: "center", gap: 6 },
   currentTitle: { flexShrink: 1, color: colors.accent },

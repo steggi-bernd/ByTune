@@ -22,7 +22,7 @@ import { importPurchase } from "../lib/archiveImport";
 import { storeLinks } from "../lib/storeLinks";
 import { useSettings } from "../stores/settings";
 import { TrackList } from "../components/TrackList";
-import { Artwork, Btn, IconBtn } from "../components/primitives";
+import { Artwork, Btn, IconBtn, SearchClear } from "../components/primitives";
 import { fmtTime } from "../lib/format";
 import { matchesQuery } from "../lib/libraryTracks";
 import {
@@ -42,19 +42,20 @@ import { useLibrary } from "../stores/library";
 import { useSpotifyImport } from "../stores/spotifyImport";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 type Tab = "have" | "check" | "missing";
 
 const REASON: Record<NonNullable<ImportRow["reason"]>, string> = {
-  title: "The title differs",
-  length: "The length differs",
-  artist: "The artist is spelled differently",
+  title: T("The title differs"),
+  length: T("The length differs"),
+  artist: T("The artist is spelled differently"),
 };
 
 const DECIDED: Record<NonNullable<ImportRow["decided"]>, string> = {
-  same: "Same song",
-  different: "Marked different",
-  picked: "Chosen by you",
+  same: T("Same song"),
+  different: T("Marked different"),
+  picked: T("Chosen by you"),
 };
 
 const likedOn = (ms: number | undefined): string =>
@@ -83,37 +84,28 @@ function HowToExport({ onPick, error, playlist = false }: { onPick: () => void; 
   return (
     <div className="space-y-4 max-w-[760px]">
       <div className="rounded-2xl bg-ink-hi/[0.04] p-6 space-y-4">
-        <h2 className="text-[17px] font-bold text-ink-hi">1 · {playlist ? "Export the playlist" : "Export your Liked Songs"}</h2>
+        <h2 className="text-[17px] font-bold text-ink-hi">1 · {playlist ? T("Export the playlist") : T("Export your Liked Songs")}</h2>
         <div className="text-[14px] text-ink-hi/85 leading-relaxed space-y-3">
           <p>
-            <span className="font-semibold text-ink-hi">Exportify</span> (recommended): open{" "}
-            <button onClick={() => window.open("https://exportify.net", "_blank")} className="font-semibold text-ink-hi underline">
-              exportify.net
-            </button>
-            {playlist
-              ? ", sign in with Spotify and click Export next to the playlist. The CSV keeps the playlist's order."
-              : ", sign in with Spotify and click Export next to “Liked Songs”. The CSV says when you liked each song, so the order comes over exactly."}
+            <span className="font-semibold text-ink-hi">{T("Exportify")}</span>{" "}{T("(recommended): open")}{" "}
+            <button onClick={() => window.open("https://exportify.net", "_blank")} className="font-semibold text-ink-hi underline">{T("exportify.net")}</button>
+            {playlist ? T(", sign in with Spotify and click Export next to the playlist. The CSV keeps the playlist's order.") : T(", sign in with Spotify and click Export next to “Liked Songs”. The CSV says when you liked each song, so the order comes over exactly.")}
           </p>
           <p>
-            <span className="font-semibold text-ink-hi">Spotify's own data download</span>: Spotify account → Privacy
-            settings → “Download your data” → Account data. The ZIP arrives within a few days; use the{" "}
+            <span className="font-semibold text-ink-hi">{T("Spotify's own data download")}</span>{T(": Spotify account → Privacy settings → “Download your data” → Account data. The ZIP arrives within a few days; use the")}{" "}
             {playlist ? (
               <>
-                <code className="text-[13px]">Playlist1.json</code> inside — it holds all your playlists; you pick one next.
-              </>
+                <code className="text-[13px]">{T("Playlist1.json")}</code>{" "}{T("inside — it holds all your playlists; you pick one next.")}</>
             ) : (
               <>
-                <code className="text-[13px]">YourLibrary.json</code> inside. It has no like dates, so the file's order is used.
-              </>
+                <code className="text-[13px]">{T("YourLibrary.json")}</code>{" "}{T("inside. It has no like dates, so the file's order is used.")}</>
             )}
           </p>
         </div>
       </div>
       <div className="rounded-2xl bg-ink-hi/[0.04] p-6 space-y-4">
-        <h2 className="text-[17px] font-bold text-ink-hi">2 · Choose the file</h2>
-        <Btn variant="white" icon={FileUp} onClick={onPick}>
-          Choose export file
-        </Btn>
+        <h2 className="text-[17px] font-bold text-ink-hi">{T("2 · Choose the file")}</h2>
+        <Btn variant="white" icon={FileUp} onClick={onPick}>{T("Choose export file")}</Btn>
         {error && <p className="text-[13px] text-red-400">{error}</p>}
       </div>
     </div>
@@ -142,14 +134,14 @@ function TrackPicker({ entry, onPick, onClose }: { entry: SpotifyEntry; onPick: 
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-label="Choose the song" className="w-[min(640px,92vw)] max-h-[80vh] flex flex-col rounded-2xl glass-strong-solid shadow-float p-5">
+      <div role="dialog" aria-label={T("Choose the song")} className="w-[min(640px,92vw)] max-h-[80vh] flex flex-col rounded-2xl glass-strong-solid shadow-float p-5">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Which song in your library is</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{T("Which song in your library is")}</div>
             <div className="text-[17px] font-bold text-ink-hi truncate mt-1">{entry.title}</div>
             <div className="text-[13px] text-ink-dim truncate">{describe(entry)}</div>
           </div>
-          <IconBtn icon={X} title="Close" onClick={onClose} className="rounded-full" />
+          <IconBtn icon={X} title={T("Close")} onClick={onClose} className="rounded-full" />
         </div>
         <div className="relative mt-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-hi/50 pointer-events-none" />
@@ -157,13 +149,14 @@ function TrackPicker({ entry, onPick, onClose }: { entry: SpotifyEntry; onPick: 
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your library"
-            className="w-full h-10 pl-9 pr-4 rounded-full bg-ink-hi/[0.07] text-[14px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
+            placeholder={T("Search your library")}
+            className="w-full h-10 pl-9 pr-9 rounded-full bg-ink-hi/[0.07] text-[14px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
           />
+          <SearchClear value={query} onClear={() => setQuery("")} />
         </div>
         <div className="mt-3 overflow-y-auto min-h-0 flex-1 space-y-0.5">
           {results.length === 0 ? (
-            <p className="text-[13px] text-ink-dim px-2 py-6 text-center">No songs match — try fewer words.</p>
+            <p className="text-[13px] text-ink-dim px-2 py-6 text-center">{T("No songs match — try fewer words.")}</p>
           ) : (
             results.map((t) => (
               <button
@@ -201,7 +194,7 @@ function PlaylistChooser({ lists, onChoose }: { lists: { name: string; entries: 
   return (
     <div className="space-y-3 max-w-[760px]">
       <div className="flex items-center gap-3">
-        <h2 className="text-[17px] font-bold text-ink-hi mr-auto">Which playlist?</h2>
+        <h2 className="text-[17px] font-bold text-ink-hi mr-auto">{T("Which playlist?")}</h2>
         {lists.length > 8 && (
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-hi/50 pointer-events-none" />
@@ -209,9 +202,10 @@ function PlaylistChooser({ lists, onChoose }: { lists: { name: string; entries: 
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${lists.length} playlists`}
-              className="w-full h-9 pl-9 pr-4 rounded-full bg-ink-hi/[0.07] text-[13.5px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
+              placeholder={T("Search {count} playlists", { count: lists.length })}
+              className="w-full h-9 pl-9 pr-9 rounded-full bg-ink-hi/[0.07] text-[13.5px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
             />
+            <SearchClear value={query} onClear={() => setQuery("")} />
           </div>
         )}
       </div>
@@ -228,12 +222,12 @@ function PlaylistChooser({ lists, onChoose }: { lists: { name: string; entries: 
             <span className="min-w-0 flex-1">
               <span className="block text-[14px] font-semibold text-ink-hi truncate">{l.name}</span>
               <span className="block text-[12.5px] text-ink-dim">
-                {l.entries.length} {l.entries.length === 1 ? "song" : "songs"}
+                {l.entries.length} {l.entries.length === 1 ? T("song") : T("songs")}
               </span>
             </span>
           </button>
         ))}
-        {!shown.length && <p className="text-[13px] text-ink-dim px-2 py-4">No playlist by that name.</p>}
+        {!shown.length && <p className="text-[13px] text-ink-dim px-2 py-4">{T("No playlist by that name.")}</p>}
       </div>
     </div>
   );
@@ -310,9 +304,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
     const added = useLibrary.getState().importLikes(order, likedIds);
     noteLiked(order.map((t) => t.id));
     toast(
-      added > 0
-        ? `Added ${added} ${added === 1 ? "song" : "songs"} to Liked Songs, in Spotify's order`
-        : "Your Liked Songs now follow Spotify's order",
+      added > 0 ? T("Added {added} {value} to Liked Songs, in Spotify's order", { added, value: added === 1 ? T("song") : T("songs") }) : T("Your Liked Songs now follow Spotify's order"),
       "success"
     );
   };
@@ -333,7 +325,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
     const added = order.filter((t) => !before.has(songKey(t.id))).length;
     const name = lib.getPlaylist(playlist.id)?.name ?? recovering.name;
     toast(
-      added > 0 ? `Added ${added} ${added === 1 ? "song" : "songs"} to “${name}”, in Spotify's order` : `“${name}” now follows Spotify's order`,
+      added > 0 ? T("Added {added} {value} to “{name}”, in Spotify's order", { added, value: added === 1 ? T("song") : T("songs"), name }) : T("“{name}” now follows Spotify's order", { name }),
       "success"
     );
   };
@@ -342,18 +334,18 @@ export function SpotifyImportView({ param }: { param?: string }) {
     try {
       const listName = playlistMode && recovering ? `${recovering.name.replace(/[\\/:*?"<>|]+/g, " ").trim() || "Spotify playlist"} — songs to buy.csv` : "Spotify songs to buy.csv";
       const saved = await window.bytune?.saveTextFile(listName, shoppingListCsv(missingEntries));
-      if (saved) toast(`Saved the list of ${missingEntries.length} songs`, "success");
+      if (saved) toast(T("Saved the list of {count} songs", { count: missingEntries.length }), "success");
     } catch {
-      toast("Couldn't save the list", "error");
+      toast(T("Couldn't save the list"), "error");
     }
   };
 
   const copyList = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(shoppingListText(missingEntries));
-      toast(`Copied ${missingEntries.length} ${missingEntries.length === 1 ? "song" : "songs"}`);
+      toast(T("Copied {count} {value}", { count: missingEntries.length, value: missingEntries.length === 1 ? T("song") : T("songs") }));
     } catch {
-      toast("Couldn't copy the list", "error");
+      toast(T("Couldn't copy the list"), "error");
     }
   };
 
@@ -380,29 +372,23 @@ export function SpotifyImportView({ param }: { param?: string }) {
           onPick={(t) => {
             pick(entryKey(picking), t.id);
             setPicking(null);
-            toast(`“${picking.title}” is “${t.title}” in your library`, "success");
+            toast(T("“{title}” is “{title2}” in your library", { title: picking.title, title2: t.title }), "success");
           }}
         />
       )}
       <header className="pt-2">
         <h1 className="font-display text-[34px] font-extrabold tracking-[-0.03em] text-ink-hi">
-          {playlistMode ? "Recover a Spotify playlist" : "Import from Spotify"}
+          {playlistMode ? T("Recover a Spotify playlist") : T("Import from Spotify")}
         </h1>
         <p className="text-[14px] text-ink-dim mt-2 max-w-[760px]">
-          {playlistMode
-            ? `Bring a Spotify playlist over: see which of its songs you already have, put them in ${
-                target ? `“${target.name}”` : "a playlist"
-              } in Spotify's order, and keep a list of the ones you still want to buy. Come back after buying songs and add again.`
-            : "Bring your Spotify Liked Songs over: see which songs you already have, add them to your Liked Songs in Spotify's order, and keep a list of the ones you still want to buy. The import stays here until you start over, so you can come back after buying songs and add again."}
+          {playlistMode ? T("Bring a Spotify playlist over: see which of its songs you already have, put them in {value} in Spotify's order, and keep a list of the ones you still want to buy. Come back after buying songs and add again.", { value: target ? `“${target.name}”` : T("a playlist") }) : T("Bring your Spotify Liked Songs over: see which songs you already have, add them to your Liked Songs in Spotify's order, and keep a list of the ones you still want to buy. The import stays here until you start over, so you can come back after buying songs and add again.")}
         </p>
       </header>
 
       {choices && !entries.length ? (
         <>
           <PlaylistChooser lists={choices.lists} onChoose={(i) => imp.choosePlaylist(i)} />
-          <Btn variant="glass" size="sm" icon={FileUp} onClick={pickFile}>
-            Choose another file
-          </Btn>
+          <Btn variant="glass" size="sm" icon={FileUp} onClick={pickFile}>{T("Choose another file")}</Btn>
         </>
       ) : !entries.length ? (
         <HowToExport onPick={pickFile} error={error} playlist={playlistMode} />
@@ -411,53 +397,37 @@ export function SpotifyImportView({ param }: { param?: string }) {
           <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-dim">
             <span className="text-ink-hi font-semibold">{playlistMode && recovering ? recovering.name : fileName}</span>
             <span>
-              · {entries.length} {entries.length === 1 ? "song" : "songs"} ·{" "}
-              {playlistMode ? "in the playlist's order" : dated ? "in the order you liked them" : "in the file's order (no like dates)"}
+              · {entries.length} {entries.length === 1 ? T("song") : T("songs")} ·{" "}
+              {playlistMode ? T("in the playlist's order") : dated ? T("in the order you liked them") : T("in the file's order (no like dates)")}
             </span>
             <div className="ml-auto flex gap-2">
-              <Btn variant="glass" size="sm" icon={FileUp} onClick={pickFile}>
-                Choose another file
-              </Btn>
-              <Btn variant="glass" size="sm" icon={RotateCcw} onClick={reset} title="Forget the file — your decisions stay for the next export">
-                Start over
-              </Btn>
+              <Btn variant="glass" size="sm" icon={FileUp} onClick={pickFile}>{T("Choose another file")}</Btn>
+              <Btn variant="glass" size="sm" icon={RotateCcw} onClick={reset} title={T("Forget the file — your decisions stay for the next export")}>{T("Start over")}</Btn>
             </div>
           </div>
           {error && <p className="text-[13px] text-red-400">{error}</p>}
 
           <div className="flex flex-wrap gap-3">
-            <Stat label="In your library" value={have.length} tone="text-emerald-400" active={tab === "have"} onClick={() => setTab("have")} />
-            <Stat label="To check" value={check.length} tone="text-amber-300" active={tab === "check"} onClick={() => setTab("check")} />
-            <Stat label="Missing — to buy" value={missing.length} tone="text-ink-hi" active={tab === "missing"} onClick={() => setTab("missing")} />
+            <Stat label={T("In your library")} value={have.length} tone="text-emerald-400" active={tab === "have"} onClick={() => setTab("have")} />
+            <Stat label={T("To check")} value={check.length} tone="text-amber-300" active={tab === "check"} onClick={() => setTab("check")} />
+            <Stat label={T("Missing — to buy")} value={missing.length} tone="text-ink-hi" active={tab === "missing"} onClick={() => setTab("missing")} />
           </div>
 
           {playlistMode && recovering ? (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-ink-hi/[0.04] p-4">
               <Btn variant="white" icon={ListPlus} onClick={addToPlaylist} disabled={!toLike.length}>
-                {target ? `Add ${toLike.length} to “${target.name}”` : `Make “${recovering.name}” with ${toLike.length} ${toLike.length === 1 ? "song" : "songs"}`}
+                {target ? T("Add {count} to “{name}”", { count: toLike.length, name: target.name }) : T("Make “{name}” with {count} {value}", { name: recovering.name, count: toLike.length, value: toLike.length === 1 ? T("song") : T("songs") })}
               </Btn>
-              <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">
-                In the playlist's order — adding again later puts newly found songs in their place. Songs you added to it in
-                Songsta stay, after them{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
-              </p>
+              <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">{T("In the playlist's order — adding again later puts newly found songs in their place. Songs you added to it in Songsta stay, after them{value}.", { value: check.length ? T("; the {count} still to check aren't added until you decide", { count: check.length }) : "" })}</p>
               {target && (
-                <Btn variant="glass" size="sm" onClick={() => navigate({ name: "playlist", param: target.id })}>
-                  Open playlist
-                </Btn>
+                <Btn variant="glass" size="sm" onClick={() => navigate({ name: "playlist", param: target.id })}>{T("Open playlist")}</Btn>
               )}
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-ink-hi/[0.04] p-4">
-              <Btn variant="white" icon={Heart} onClick={addToLiked} disabled={!toLike.length}>
-                Add {toLike.length} to Liked Songs
-              </Btn>
-              <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">
-                In Spotify's order, newest first — adding again later puts newly found songs in their place. Songs you liked
-                only in Songsta stay on top{check.length ? `; the ${check.length} still to check aren't added until you decide` : ""}.
-              </p>
-              <Btn variant="glass" size="sm" onClick={() => navigate({ name: "library", param: "liked" })}>
-                Open Liked Songs
-              </Btn>
+              <Btn variant="white" icon={Heart} onClick={addToLiked} disabled={!toLike.length}>{T("Add {count} to Liked Songs", { count: toLike.length })}</Btn>
+              <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">{T("In Spotify's order, newest first — adding again later puts newly found songs in their place. Songs you liked only in Songsta stay on top{value}.", { value: check.length ? T("; the {count} still to check aren't added until you decide", { count: check.length }) : "" })}</p>
+              <Btn variant="glass" size="sm" onClick={() => navigate({ name: "library", param: "liked" })}>{T("Open Liked Songs")}</Btn>
             </div>
           )}
 
@@ -465,28 +435,21 @@ export function SpotifyImportView({ param }: { param?: string }) {
             <TrackList
               tracks={toLike}
               showAlbum
-              emptyTitle="None of these songs are in your library yet"
-              emptyLabel="Add music folders or connect your server — songs you add show up here by themselves."
+              emptyTitle={T("None of these songs are in your library yet")}
+              emptyLabel={T("Add music folders or connect your server — songs you add show up here by themselves.")}
             />
           )}
 
           {tab === "check" && (
             <section className="space-y-3">
               {check.length === 0 ? (
-                <p className="text-[14px] text-ink-dim">Nothing left to check.</p>
+                <p className="text-[14px] text-ink-dim">{T("Nothing left to check.")}</p>
               ) : (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[13px] text-ink-dim mr-auto">
-                      These look like songs you have, but something differs. Same song → {playlistMode ? "the playlist" : "Liked Songs"};
-                      different → the shopping list; or choose the right song yourself.
-                    </p>
-                    <Btn variant="glass" size="sm" icon={Check} onClick={() => setVerdicts(check.map((r) => entryKey(r.entry)), "same")}>
-                      All the same
-                    </Btn>
-                    <Btn variant="glass" size="sm" icon={X} onClick={() => setVerdicts(check.map((r) => entryKey(r.entry)), "different")}>
-                      All different
-                    </Btn>
+                    <p className="text-[13px] text-ink-dim mr-auto">{T("These look like songs you have, but something differs. Same song → {value}; different → the shopping list; or choose the right song yourself.", { value: playlistMode ? T("the playlist") : T("Liked Songs") })}</p>
+                    <Btn variant="glass" size="sm" icon={Check} onClick={() => setVerdicts(check.map((r) => entryKey(r.entry)), "same")}>{T("All the same")}</Btn>
+                    <Btn variant="glass" size="sm" icon={X} onClick={() => setVerdicts(check.map((r) => entryKey(r.entry)), "different")}>{T("All different")}</Btn>
                   </div>
                   {check.map((row) => {
                     const key = entryKey(row.entry);
@@ -495,12 +458,12 @@ export function SpotifyImportView({ param }: { param?: string }) {
                       <div key={key} className="flex flex-wrap items-center gap-4 rounded-xl p-3 bg-ink-hi/[0.05]">
                         <div className="flex-1 min-w-[280px] grid grid-cols-2 gap-4">
                           <div className="min-w-0">
-                            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Spotify</div>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{T("Spotify")}</div>
                             <div className="text-[14px] font-semibold text-ink-hi truncate">{row.entry.title}</div>
                             <div className="text-[12.5px] text-ink-dim truncate">{describe(row.entry)}</div>
                           </div>
                           <div className="min-w-0">
-                            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Your library</div>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{T("Your library")}</div>
                             <div className="text-[14px] font-semibold text-ink-hi truncate">{t.title}</div>
                             <div className="text-[12.5px] text-ink-dim truncate">
                               {t.artist}
@@ -511,15 +474,9 @@ export function SpotifyImportView({ param }: { param?: string }) {
                         </div>
                         <div className="w-44 text-[12px] text-amber-300/90">{row.reason ? REASON[row.reason] : ""}</div>
                         <div className="flex gap-1.5">
-                          <button onClick={() => setVerdict(key, "same")} className={chip(false, "")}>
-                            Same song
-                          </button>
-                          <button onClick={() => setVerdict(key, "different")} className={chip(false, "")}>
-                            Different
-                          </button>
-                          <button onClick={() => setPicking(row.entry)} className={chip(false, "")}>
-                            Choose…
-                          </button>
+                          <button onClick={() => setVerdict(key, "same")} className={chip(false, "")}>{T("Same song")}</button>
+                          <button onClick={() => setVerdict(key, "different")} className={chip(false, "")}>{T("Different")}</button>
+                          <button onClick={() => setPicking(row.entry)} className={chip(false, "")}>{T("Choose…")}</button>
                         </div>
                       </div>
                     );
@@ -533,9 +490,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
                     onClick={() => setShowDecided((v) => !v)}
                     className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-dim hover:text-ink-hi transition-colors"
                   >
-                    {showDecided ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    Your decisions ({decided.length})
-                  </button>
+                    {showDecided ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}{T("Your decisions ({count})", { count: decided.length })}</button>
                   {showDecided && (
                     <div className="mt-2 space-y-0.5">
                       {decided.map((row) => (
@@ -551,9 +506,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
                           <span className={`text-[12px] font-semibold ${row.decided === "different" ? "text-ink-dim" : "text-emerald-400"}`}>
                             {DECIDED[row.decided!]}
                           </span>
-                          <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>
-                            Undo
-                          </Btn>
+                          <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>{T("Undo")}</Btn>
                         </div>
                       ))}
                     </div>
@@ -566,42 +519,31 @@ export function SpotifyImportView({ param }: { param?: string }) {
           {tab === "missing" && (
             <section className="space-y-3">
               {missing.length === 0 ? (
-                <p className="text-[14px] text-ink-dim">You have every one of these songs.</p>
+                <p className="text-[14px] text-ink-dim">{T("You have every one of these songs.")}</p>
               ) : (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[13px] text-ink-dim mr-auto">
-                      Songs not in your library{dated ? ", newest like first" : playlistMode ? ", in the playlist's order" : ""}. The list saves as a spreadsheet that
-                      opens in Excel. Have one under another name? Use “I have it…”. Bought one? Drop the store's ZIP
-                      anywhere on Songsta.
-                    </p>
-                    <Btn variant="white" size="sm" icon={FileDown} onClick={() => void saveList()}>
-                      Save as list…
-                    </Btn>
-                    <Btn variant="glass" size="sm" icon={Copy} onClick={() => void copyList()}>
-                      Copy
-                    </Btn>
-                    <Btn variant="glass" size="sm" icon={PackageOpen} onClick={() => void importPurchase()}>
-                      Import ZIP…
-                    </Btn>
+                    <p className="text-[13px] text-ink-dim mr-auto">{T("Songs not in your library{value}. The list saves as a spreadsheet that opens in Excel. Have one under another name? Use “I have it…”. Bought one? Drop the store's ZIP anywhere on Songsta.", { value: dated ? T(", newest like first") : playlistMode ? T(", in the playlist's order") : "" })}</p>
+                    <Btn variant="white" size="sm" icon={FileDown} onClick={() => void saveList()}>{T("Save as list…")}</Btn>
+                    <Btn variant="glass" size="sm" icon={Copy} onClick={() => void copyList()}>{T("Copy")}</Btn>
+                    <Btn variant="glass" size="sm" icon={PackageOpen} onClick={() => void importPurchase()}>{T("Import ZIP…")}</Btn>
                     <button
                       onClick={() => setStoreLinks(!showStores)}
                       role="switch"
                       aria-checked={showStores}
-                      title="Search links to Qobuz, Bandcamp, 7digital and Amazon"
+                      title={T("Search links to Qobuz, Bandcamp, 7digital and Amazon")}
                       className={`h-8 px-3 rounded-full text-[12.5px] font-semibold transition-colors ${
                         showStores ? "bg-accent/20 text-ink-hi" : "bg-ink-hi/[0.06] text-ink-dim hover:text-ink-hi"
                       }`}
-                    >
-                      Shop links {showStores ? "on" : "off"}
+                    >{T("Shop links {value}", { value: showStores ? "on" : "off" })}
                     </button>
                   </div>
                   <div>
                     <div className="flex items-center gap-3 px-3 pb-2.5 mb-1 border-b border-ink-hi/[0.06] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-ghost">
                       <div className="w-8 shrink-0">#</div>
-                      <div className="flex-1 min-w-0">Title</div>
-                      <div className="w-56 hidden lg:block">Album</div>
-                      <div className="w-28 hidden md:block">{playlistMode ? "Added" : "Liked"}</div>
+                      <div className="flex-1 min-w-0">{T("Title")}</div>
+                      <div className="w-56 hidden lg:block">{T("Album")}</div>
+                      <div className="w-28 hidden md:block">{playlistMode ? T("Added") : T("Liked")}</div>
                       <div className={showStores ? "w-[210px]" : "w-[150px]"} />
                     </div>
                     {missing.map((row, n) => {
@@ -613,7 +555,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
                             <div className="text-[14.5px] font-semibold text-ink-hi truncate">{row.entry.title}</div>
                             <div className="text-[13px] text-ink-dim truncate">
                               {row.entry.artists.join(", ")}
-                              {row.decided === "different" && <span className="text-ink-faint"> · marked different</span>}
+                              {row.decided === "different" && <span className="text-ink-faint">{" "}{T("· marked different")}</span>}
                             </div>
                           </div>
                           <div className="w-56 hidden lg:block text-[12.5px] text-ink-faint truncate">{row.entry.album}</div>
@@ -633,7 +575,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
                                     rect.right,
                                     rect.bottom + 6,
                                     storeLinks(row.entry, navigator.language).map((l) => ({
-                                      label: `Search on ${l.store}`,
+                                      label: T("Search on {store}", { store: l.store }),
                                       icon: ExternalLink,
                                       action: () => window.open(l.url, "_blank"),
                                     })),
@@ -641,30 +583,24 @@ export function SpotifyImportView({ param }: { param?: string }) {
                                   );
                                 }}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                aria-label={`Where to buy ${row.entry.title}`}
+                                aria-label={T("Where to buy {title}", { title: row.entry.title })}
                                 className="h-7 px-2.5 rounded-full inline-flex items-center gap-1 text-[12px] font-semibold text-ink-hi bg-accent/15 hover:bg-accent/25 transition-colors"
                               >
-                                <ShoppingBag className="w-3.5 h-3.5" />
-                                Buy
-                              </button>
+                                <ShoppingBag className="w-3.5 h-3.5" />{T("Buy")}</button>
                             )}
                             {row.decided === "different" ? (
-                              <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>
-                                Undo
-                              </Btn>
+                              <Btn variant="ghost" size="sm" icon={Undo2} onClick={() => undo(row)}>{T("Undo")}</Btn>
                             ) : (
                               <button
                                 onClick={() => setPicking(row.entry)}
                                 className="h-7 px-2.5 rounded-full text-[12px] font-semibold text-ink-hi bg-ink-hi/[0.08] hover:bg-ink-hi/[0.14] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                              >
-                                I have it…
-                              </button>
+                              >{T("I have it…")}</button>
                             )}
                             {link && (
                               <button
                                 onClick={() => window.open(link, "_blank")}
-                                title="Open in Spotify"
-                                aria-label={`Open ${row.entry.title} in Spotify`}
+                                title={T("Open in Spotify")}
+                                aria-label={T("Open {title} in Spotify", { title: row.entry.title })}
                                 className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
                               >
                                 <ExternalLink className="w-4 h-4" />

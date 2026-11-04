@@ -31,6 +31,7 @@ import { RELEASE_LABEL } from "../lib/releases";
 import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useSettings, type ExploreSort, type ExploreTab } from "../stores/settings";
 import { useUI, type MenuItem } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 /** How an order looks as a table column. */
 interface ColumnLook<T> {
@@ -91,7 +92,7 @@ function Table<T>({
               role="columnheader"
               aria-sort={active ? (sort.desc ? "descending" : "ascending") : "none"}
               onClick={() => onSort(c)}
-              title={`Sort by ${c.label.toLowerCase()}`}
+              title={T("Sort by {toLowerCase}", { toLowerCase: c.label.toLowerCase() })}
               className={`${c.className} flex items-center gap-1 uppercase transition-colors hover:text-ink-hi ${c.right ? "justify-end" : ""} ${
                 active ? "text-ink-hi" : ""
               }`}
@@ -118,8 +119,8 @@ function Table<T>({
                 e.stopPropagation();
                 play(r);
               }}
-              title="Play"
-              aria-label="Play"
+              title={T("Play")}
+              aria-label={T("Play")}
               className="absolute inset-0 hidden group-hover:grid place-items-center rounded-md bg-black/45 text-white"
             >
               <Play className="w-4 h-4 fill-current" />
@@ -193,9 +194,9 @@ const genreColumns = columnsOf<GenreRow>(genreOrders, {
 /* ------------------------------------------------------------ the page */
 
 const TABS: { key: ExploreTab; label: string }[] = [
-  { key: "albums", label: "Albums" },
-  { key: "artists", label: "Artists" },
-  { key: "genres", label: "Genres" },
+  { key: "albums", label: T("Albums") },
+  { key: "artists", label: T("Artists") },
+  { key: "genres", label: T("Genres") },
 ];
 
 export function ExploreView() {
@@ -242,7 +243,7 @@ export function ExploreView() {
     }
     const rect = sortButton.current?.getBoundingClientRect();
     const items: MenuItem[] = [
-      { label: "Sort by", header: true },
+      { label: T("Sort by"), header: true },
       ...tabColumns.map((c) => ({
         label: c.label,
         icon: sort.by === c.key ? (sort.desc ? ArrowDown : ArrowUp) : undefined,
@@ -254,7 +255,7 @@ export function ExploreView() {
 
   if (!loaded) return null;
   if (!tracks.length) {
-    return <EmptyState icon={DiscAlbum} title="Nothing to explore yet" body="Add a music folder or connect a server — your albums, artists and genres show up here." />;
+    return <EmptyState icon={DiscAlbum} title={T("Nothing to explore yet")} body={T("Add a music folder or connect a server — your albums, artists and genres show up here.")} />;
   }
 
   const counts = { albums: albums.length, artists: artists.length, genres: genres.length };
@@ -264,10 +265,9 @@ export function ExploreView() {
   return (
     <div className="space-y-6">
       <header className="pt-2">
-        <h1 className="font-display text-[44px] font-extrabold tracking-[-0.04em] text-ink-hi leading-none">Explore</h1>
+        <h1 className="font-display text-[44px] font-extrabold tracking-[-0.04em] text-ink-hi leading-none">{T("Explore")}</h1>
         <p className="text-[14px] text-ink-dim mt-3">
-          {plural(albums.length, "album", "albums")} · {plural(artists.length, "artist", "artists")} · {plural(genres.length, "genre", "genres")} in your library
-        </p>
+          {T("{count} · {count2} · {count3} in your library", { count: plural(albums.length, T("album"), T("albums")), count2: plural(artists.length, T("artist"), T("artists")), count3: plural(genres.length, T("genre"), T("genres")) })}</p>
       </header>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -278,12 +278,12 @@ export function ExploreView() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Filter ${tab}`}
-              aria-label={`Filter ${tab}`}
+              placeholder={T("Filter {tab}", { tab })}
+              aria-label={T("Filter {tab}", { tab })}
               className="h-9 w-56 pl-9 pr-8 rounded-full bg-ink-hi/[0.06] text-[13.5px] text-ink-hi placeholder:text-ink-hi/40 outline-none focus:bg-ink-hi/[0.09] transition-colors"
             />
             {query && (
-              <button onClick={() => setQuery("")} title="Clear filter" aria-label="Clear filter" className="absolute right-2 p-1 rounded-full text-ink-hi/55 hover:text-ink-hi">
+              <button onClick={() => setQuery("")} title={T("Clear filter")} aria-label={T("Clear filter")} className="absolute right-2 p-1 rounded-full text-ink-hi/55 hover:text-ink-hi">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -297,8 +297,8 @@ export function ExploreView() {
                 e.stopPropagation();
                 openSortMenu();
               }}
-              title={`Sorted by ${sortLabel.toLowerCase()}, ${sort.desc ? "descending" : "ascending"}`}
-              aria-label={`Sorted by ${sortLabel.toLowerCase()}`}
+              title={T("Sorted by {toLowerCase}, {value}", { toLowerCase: sortLabel.toLowerCase(), value: sort.desc ? "descending" : "ascending" })}
+              aria-label={T("Sorted by {toLowerCase}", { toLowerCase: sortLabel.toLowerCase() })}
               className="h-9 px-3 rounded-full flex items-center gap-1.5 text-[13px] font-medium text-ink-hi/80 hover:text-ink-hi bg-ink-hi/[0.06] hover:bg-ink-hi/[0.09] transition-colors"
             >
               <ArrowUpDown className="w-4 h-4" />
@@ -308,8 +308,8 @@ export function ExploreView() {
           <div className="flex items-center rounded-full bg-ink-hi/[0.06] p-0.5">
             {(
               [
-                ["list", List, "List"],
-                ["grid", LayoutGrid, "Tiles"],
+                ["list", List, T("List")],
+                ["grid", LayoutGrid, T("Tiles")],
               ] as const
             ).map(([key, Icon, label]) => (
               <button
@@ -330,19 +330,19 @@ export function ExploreView() {
       </div>
 
       {shown === 0 ? (
-        <EmptyState icon={Search} title={`No ${tab} match “${query.trim()}”`} body="Try another word." />
+        <EmptyState icon={Search} title={T("No {tab} match “{trim}”", { tab, trim: query.trim() })} body={T("Try another word.")} />
       ) : layout === "grid" ? (
         <div className="flex flex-wrap gap-y-2 -mx-2">
           {tab === "albums" && shownAlbums.map((r) => <AlbumTile key={r.album.key} album={r.album} />)}
           {tab === "artists" &&
             shownArtists.map((r) => (
-              <ArtistTile key={r.artist.route} name={r.artist.name} route={r.artist.route} subtitle={plural(r.artist.trackCount, "song", "songs")} fallbackThumb={r.artist.thumb} />
+              <ArtistTile key={r.artist.route} name={r.artist.name} route={r.artist.route} subtitle={plural(r.artist.trackCount, T("song"), T("songs"))} fallbackThumb={r.artist.thumb} />
             ))}
           {tab === "genres" && shownGenres.map((r) => <GenreTile key={r.genre.key} genre={r.genre} />)}
         </div>
       ) : tab === "albums" ? (
         <Table
-          label="Albums"
+          label={T("Albums")}
           rows={shownAlbums}
           columns={albumColumns}
           sort={sorts.albums}
@@ -354,7 +354,7 @@ export function ExploreView() {
         />
       ) : tab === "artists" ? (
         <Table
-          label="Artists"
+          label={T("Artists")}
           rows={shownArtists}
           columns={artistColumns}
           sort={sorts.artists}
@@ -366,7 +366,7 @@ export function ExploreView() {
         />
       ) : (
         <Table
-          label="Genres"
+          label={T("Genres")}
           rows={shownGenres}
           columns={genreColumns}
           sort={sorts.genres}

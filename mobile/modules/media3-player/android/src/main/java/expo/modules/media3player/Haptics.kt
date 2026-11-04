@@ -56,6 +56,12 @@ internal object Haptics {
     }
     val sdkR = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
     val effect = when (kind) {
+      "tick" ->
+        (if (sdkR) composed(vibrator, Triple(VibrationEffect.Composition.PRIMITIVE_TICK, 0.7f, 0)) else null)
+          ?: predefined(VibrationEffect.EFFECT_TICK, 12, 90)
+      "press" ->
+        (if (sdkR) composed(vibrator, Triple(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.55f, 0)) else null)
+          ?: predefined(VibrationEffect.EFFECT_CLICK, 16, 120)
       "arm" ->
         (if (sdkR) composed(vibrator, Triple(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.8f, 0)) else null)
           ?: predefined(VibrationEffect.EFFECT_CLICK, 20, 140)

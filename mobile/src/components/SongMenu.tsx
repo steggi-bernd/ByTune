@@ -1,7 +1,7 @@
 /** What a song's menu offers, and the download buttons of a song and of a whole list. */
-import { ArrowDown, CircleArrowDown } from "lucide-react-native";
-import { Alert, Modal, Pressable, Share, StyleSheet, Text, ToastAndroid, View, type ViewStyle } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ArrowDown, CircleArrowDown, Disc3, ListPlus, ListStart, Share2, Speaker, Undo2, User, Volume2, VolumeX, type LucideIcon } from "lucide-react-native";
+import { useState } from "react";
+import { Pressable, Share, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { create } from "zustand";
 import { albumKeyOf } from "../playingFrom";
@@ -11,10 +11,16 @@ import { downloadOf, percentOf, useDownloads } from "../stores/downloads";
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { usePlaylists } from "../stores/playlists";
+import { showDialog, toast } from "../stores/popups";
+import { canPlay, deviceName, startOwnMusicOn, useZones } from "../stores/zones";
 import { colors } from "../theme";
+import { MenuSheet, type SheetRow } from "./Sheet";
+import { Cover } from "./ui";
+import { T } from "../shared";
 
 interface MenuExtra {
   label: string;
+  Icon?: LucideIcon;
   run(): void;
 }
 
@@ -38,7 +44,7 @@ export const useSongMenu = create<SongMenuState>((set) => ({
   close: () => set({ track: null, extras: [], plain: false }),
 }));
 
-const DOWNLOAD_LABEL = { kept: "Remove download", loading: "Stop downloading", wifi: "Stop waiting for Wi-Fi", failed: "Try downloading again" } as const;
+const DOWNLOAD_LABEL = { kept: T("Remove download"), loading: T("Stop downloading"), wifi: T("Stop waiting for Wi-Fi"), failed: T("Try downloading again") } as const;
 
 /** On mobile data the question comes up at once: nothing that silently waits for a Wi-Fi nobody has in mind. */
 export function startDownload(tracks: Track[]): void {
@@ -47,13 +53,13 @@ export function startDownload(tracks: Track[]): void {
     add(tracks);
     return;
   }
-  Alert.alert(
-    "You're on mobile data",
-    quality === "original" ? "Downloading the files themselves takes about 10 MB a minute of music, or wait for Wi-Fi." : "Downloading takes about 1.5 MB a minute of music, or wait for Wi-Fi.",
+  showDialog(
+    T("You're on mobile data"),
+    quality === "original" ? T("Downloading the files themselves takes about 10 MB a minute of music, or wait for Wi-Fi.") : T("Downloading takes about 1.5 MB a minute of music, or wait for Wi-Fi."),
     [
-      { text: "Wait for Wi-Fi", onPress: () => add(tracks) },
+      { text: T("Wait for Wi-Fi"), onPress: () => add(tracks) },
       {
-        text: "Use mobile data",
+        text: T("Use mobile data"),
         onPress: () => {
           setOverMobile(true);
           add(tracks);
@@ -67,68 +73,70 @@ export function startDownload(tracks: Track[]): void {
 /** One song's download, the same words wherever it is offered. */
 export function useDownloadAction(track: Track | null | undefined): { label: string; run(): void } | null {
   const state = useDownloads((s) => (track ? downloadOf(s, track.id) : null));
-  if (!track) return null;
+  if (!track || track.localPath) return null;
   const { remove } = useDownloads.getState();
   return {
-    label: state ? DOWNLOAD_LABEL[state] : "Download",
+    label: state ? DOWNLOAD_LABEL[state] : T("Download"),
     run: () => (state === "kept" || state === "loading" || state === "wifi" ? remove([track]) : startDownload([track])),
   };
 }
 
 export function SongMenu() {
-  const insets = useSafeAreaInsets();
   const { track, extras, plain, goTo, close } = useSongMenu();
   const download = useDownloadAction(track);
   const albumKey = track ? albumKeyOf(track) : null;
   const muted = useLibrary((s) => !!track && s.muted.has(track.id));
-  const row = (label: string, run: () => void) => (
-    <Pressable
-      key={label}
-      style={styles.row}
-      onPress={() => {
-        close();
-        run();
-      }}
-    >
-      <Text style={styles.rowText}>{label}</Text>
-    </Pressable>
-  );
+  const [playOn, setPlayOn] = useState<Track | null>(null);
+  const found = useZones((s) => s.found);
+  const names = useZones((s) => s.names);
+  const playable = found.filter(canPlay);
+  const branch = track ? usePlayer.getState().branches.find((b) => b.trackId === track.id) : undefined;
+  const rows: SheetRow[] = [];
+  if (track && !plain) {
+    if (download) rows.push({ label: download.label, Icon: CircleArrowDown, run: download.run });
+    rows.push({ label: T("Add to playlist"), Icon: ListPlus, run: () => usePlaylists.getState().setPicking(track) });
+    rows.push({
+      label: T("Add to queue"),
+      Icon: ListStart,
+      run: () => {
+        const inLine = usePlayer.getState().addToQueue([track]);
+        toast(inLine > 1 ? T("Added to queue, after {count}", { count: plural(inLine - 1, T("other song"), T("other songs")) }) : T("Plays next"));
+      },
+    });
+    if (branch) {
+      rows.push({
+        label: T("Undo branch"),
+        Icon: Undo2,
+        run: () => {
+          usePlayer.getState().cancelBranch(branch.name);
+          toast(T("Branch taken back"));
+        },
+      });
+    }
+    if (playable.length > 0 && !track.localPath) rows.push({ label: T("Play on a device"), Icon: Speaker, run: () => setPlayOn(track) });
+    if (albumKey) rows.push({ label: T("Go to album"), Icon: Disc3, run: () => goTo?.("Album", { albumKey }) });
+    rows.push({ label: T("Go to artist"), Icon: User, run: () => goTo?.("Artist", { name: leadArtist(track.artist) }) });
+    rows.push({ label: muted ? T("Play again (unmute)") : T("Mute song"), Icon: muted ? Volume2 : VolumeX, run: () => void useLibrary.getState().toggleMuted(track) });
+    rows.push({ label: T("Share"), Icon: Share2, run: () => void Share.share({ message: `${track.title} · ${track.artist}` }) });
+  }
+  for (const extra of extras) rows.push(extra);
   return (
-    <Modal visible={!!track} transparent animationType="fade" onRequestClose={close}>
-      <Pressable style={styles.back} onPress={close}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 10 }]}>
-          {!!track && (
-            <View style={styles.head}>
-              <Text numberOfLines={1} style={styles.title}>
-                {track.title}
-              </Text>
-              <Text numberOfLines={1} style={styles.artist}>
-                {track.artist}
-              </Text>
-            </View>
-          )}
-          {!plain && !!download && row(download.label, download.run)}
-          {!plain && !!track && row("Add to playlist", () => usePlaylists.getState().setPicking(track))}
-          {!plain &&
-            !!track &&
-            row("Play next", () => {
-              usePlayer.getState().playNext([track]);
-              ToastAndroid.show("Plays next", ToastAndroid.SHORT);
-            })}
-          {!plain &&
-            !!track &&
-            row("Add to queue", () => {
-              usePlayer.getState().addToQueue([track]);
-              ToastAndroid.show("Added to the queue", ToastAndroid.SHORT);
-            })}
-          {!plain && !!albumKey && row("Go to album", () => goTo?.("Album", { albumKey }))}
-          {!plain && !!track && row("Go to artist", () => goTo?.("Artist", { name: leadArtist(track.artist) }))}
-          {!plain && !!track && row(muted ? "Play again (unmute)" : "Mute song", () => useLibrary.getState().toggleMuted(track))}
-          {!plain && !!track && row("Share", () => void Share.share({ message: `${track.title} · ${track.artist}` }))}
-          {extras.map((extra) => row(extra.label, extra.run))}
-        </View>
-      </Pressable>
-    </Modal>
+    <>
+      <MenuSheet visible={!!track} art={track ? <Cover uri={track.thumb} size={46} /> : undefined} title={track?.title} subtitle={track?.artist} rows={rows} onClose={close} />
+      <MenuSheet
+        visible={!!playOn}
+        title={T("Play on")}
+        subtitle={playOn?.title}
+        rows={playable.map((d) => ({
+          label: deviceName(d, names),
+          Icon: Speaker,
+          run: () => {
+            if (playOn) void startOwnMusicOn([d], [playOn]);
+          },
+        }))}
+        onClose={() => setPlayOn(null)}
+      />
+    </>
   );
 }
 
@@ -164,14 +172,15 @@ export function SongDownloadButton({ track, size = 24, style }: { track: Track; 
   const state = useDownloads((s) => downloadOf(s, track.id));
   const percent = useDownloads((s) => percentOf(s, track.id));
   const { remove } = useDownloads.getState();
+  if (track.localPath) return null;
   return (
     <Pressable
-      accessibilityLabel={state ? DOWNLOAD_LABEL[state] : "Download"}
+      accessibilityLabel={state ? DOWNLOAD_LABEL[state] : T("Download")}
       onPress={() => {
         if (state === "kept") {
-          Alert.alert("Remove this download?", `“${track.title}” goes from this phone. It stays on your server.`, [
-            { text: "Cancel", style: "cancel" },
-            { text: "Remove", style: "destructive", onPress: () => remove([track]) },
+          showDialog(T("Remove this download?"), T("“{title}” goes from this phone. It stays on your server.", { title: track.title }), [
+            { text: T("Cancel"), style: "cancel" },
+            { text: T("Remove"), style: "destructive", onPress: () => remove([track]) },
           ]);
         } else if (state === "loading" || state === "wifi") remove([track]);
         else startDownload([track]);
@@ -205,16 +214,16 @@ export function DownloadButton({ tracks, size = 24, style }: { tracks: Track[]; 
   const [kept, loading] = counts.split("/").map(Number);
   const all = tracks.length > 0 && kept === tracks.length;
   const { remove } = useDownloads.getState();
-  const label = all ? "Remove download" : loading ? "Downloading" : "Download";
+  const label = all ? T("Remove download") : loading ? T("Downloading") : T("Download");
   return (
     <Pressable
       accessibilityLabel={label}
       onPress={() => {
         if (!tracks.length) return;
         if (all || loading) {
-          Alert.alert(all ? "Remove these downloads?" : "Stop these downloads?", `${plural(kept + loading, "song", "songs")} from this phone. They stay on your server.`, [
-            { text: "Cancel", style: "cancel" },
-            { text: "Remove", style: "destructive", onPress: () => remove(tracks) },
+          showDialog(all ? T("Remove these downloads?") : T("Stop these downloads?"), T("{count} from this phone. They stay on your server.", { count: plural(kept + loading, T("song"), T("songs")) }), [
+            { text: T("Cancel"), style: "cancel" },
+            { text: T("Remove"), style: "destructive", onPress: () => remove(tracks) },
           ]);
         } else startDownload(tracks);
       }}
@@ -231,13 +240,6 @@ export function DownloadButton({ tracks, size = 24, style }: { tracks: Track[]; 
 }
 
 const styles = StyleSheet.create({
-  back: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: colors.sheet, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 10 },
-  head: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.hairline, marginBottom: 4 },
-  title: { color: colors.ink, fontSize: 16, fontWeight: "600" },
-  artist: { color: colors.dim, fontSize: 13, marginTop: 2 },
-  row: { height: 52, justifyContent: "center", paddingHorizontal: 20 },
-  rowText: { color: colors.ink, fontSize: 16 },
   button: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minWidth: 44, height: 44 },
   count: { color: colors.accent, fontSize: 12, fontWeight: "600" },
 });

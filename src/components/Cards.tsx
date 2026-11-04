@@ -6,6 +6,7 @@ import { tintHoverHandlers, useUI } from "../stores/ui";
 import { Artwork, PlayOverlay, ShelfScroller } from "./primitives";
 import type { Album, Artist, HomeItem, HomeShelf, PlaylistCard, Track } from "../types";
 import type { KeyboardEvent } from "react";
+import { T } from "../lib/i18n";
 
 /** Keyboard activation for div-based cards (button semantics, kept clickable). */
 function activateOnKey(open: () => void) {
@@ -65,7 +66,7 @@ export function AlbumCard({ album }: { album: Album }) {
       onKeyDown={activateOnKey(open)}
       {...tintHoverHandlers(album.thumb)}
       {...drag.props}
-      title="Drag into Your Library to import this album"
+      title={T("Drag into Your Library to import this album")}
       className={`${CARD} select-none ${drag.dragging ? "opacity-40" : ""}`}
     >
       <div className="relative overflow-hidden rounded-xl">
@@ -95,7 +96,7 @@ export function ArtistCard({ artist }: { artist: Artist }) {
       onKeyDown={activateOnKey(open)}
       {...tintHoverHandlers(artist.thumb)}
       {...drag.props}
-      title="Drag into Your Library to import this artist's top songs"
+      title={T("Drag into Your Library to import this artist's top songs")}
       className={`${CARD} select-none ${drag.dragging ? "opacity-40" : ""}`}
     >
       <div className="relative overflow-hidden rounded-full">
@@ -103,7 +104,7 @@ export function ArtistCard({ artist }: { artist: Artist }) {
       </div>
       <div className="mt-2.5">
         <div className={CARD_TITLE}>{artist.name}</div>
-        <div className={CARD_SUB}>{artist.subtitle ?? "Artist"}</div>
+        <div className={CARD_SUB}>{artist.subtitle ?? T("Artist")}</div>
       </div>
     </div>
   );
@@ -121,7 +122,7 @@ export function PlaylistCardView({ playlist }: { playlist: PlaylistCard }) {
       onKeyDown={activateOnKey(open)}
       {...tintHoverHandlers(playlist.thumb)}
       {...drag.props}
-      title="Drag into Your Library to import this playlist"
+      title={T("Drag into Your Library to import this playlist")}
       className={`${CARD} select-none ${drag.dragging ? "opacity-40" : ""}`}
     >
       <div className="relative overflow-hidden rounded-xl">
@@ -130,7 +131,7 @@ export function PlaylistCardView({ playlist }: { playlist: PlaylistCard }) {
       </div>
       <div className="mt-2.5">
         <div className={CARD_TITLE}>{playlist.title}</div>
-        <div className={CARD_SUB}>{playlist.subtitle || "Playlist"}</div>
+        <div className={CARD_SUB}>{playlist.subtitle || T("Playlist")}</div>
       </div>
     </div>
   );

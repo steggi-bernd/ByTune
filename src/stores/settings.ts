@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { storage } from "../lib/persist";
 import { DEFAULT_EXPLORE_SORTS, type ExploreSort, type ExploreTab } from "../lib/exploreRows";
+import { T } from "../lib/i18n";
 export type { ExploreSort, ExploreTab };
 
 export type StreamQuality = "low" | "medium" | "high" | "lossless";
@@ -11,16 +12,16 @@ export type LibraryOrder = "played" | "added" | "alpha" | "artist";
 export type DownloadQuality = "standard" | "high" | "lossless";
 
 export const STREAM_QUALITY_LABEL: Record<StreamQuality, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  lossless: "Lossless",
+  low: T("Low"),
+  medium: T("Medium"),
+  high: T("High"),
+  lossless: T("Lossless"),
 };
 
 export const DOWNLOAD_QUALITY_LABEL: Record<DownloadQuality, string> = {
-  standard: "Standard",
-  high: "High",
-  lossless: "Lossless",
+  standard: T("Standard"),
+  high: T("High"),
+  lossless: T("Lossless"),
 };
 
 interface SettingsState {

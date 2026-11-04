@@ -1,7 +1,9 @@
 package expo.modules.media3player
 
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -42,6 +44,7 @@ class QueueItem : Record {
 
 private const val TICK_MS = 500L
 private const val ZONE_TICK_MS = 1000L
+private const val PICK_FOLDER = 7931
 
 /**
  * The player as JavaScript sees it: commands in, one state event out. The
@@ -57,6 +60,7 @@ class Media3PlayerModule : Module() {
   private var lastNetworkState: Map<String, Boolean>? = null
   private var output: SoundOutput? = null
   private var sockets: LanSockets? = null
+  private var pickingFolder: Promise? = null
 
   /** Timers in JavaScript stand still in the background; native events still arrive, and the zones need their once a second. */
   private val zoneTick = object : Runnable {
@@ -186,7 +190,77 @@ class Media3PlayerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Media3Player")
 
-    Events("onState", "onError", "onNetwork", "onOutput", "onSocket", "onZoneTick", "onZoneControl")
+    Events("onState", "onError", "onNetwork", "onOutput", "onSocket", "onZoneTick", "onZoneControl", "onLocalScan")
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode != PICK_FOLDER) return@OnActivityResult
+      val promise = pickingFolder ?: return@OnActivityResult
+      pickingFolder = null
+      val tree = payload.data?.data
+      if (payload.resultCode != Activity.RESULT_OK || tree == null) {
+        promise.resolve(null)
+        return@OnActivityResult
+      }
+      // Kept across restarts of the phone; only what the picker just gave can be kept.
+      runCatching { context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+      promise.resolve(mapOf("uri" to tree.toString(), "name" to LocalFiles.nameOf(tree)))
+    }
+
+    /** Android's folder picker; null when somebody changed their mind. */
+    AsyncFunction("pickFolder") { promise: Promise ->
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve(null)
+      } else {
+        pickingFolder?.resolve(null)
+        pickingFolder = promise
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+          .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+        activity.startActivityForResult(intent, PICK_FOLDER)
+      }
+    }.runOnQueue(Queues.MAIN)
+
+    /** What's in a picked folder; `known`: file address to when it last changed. */
+    AsyncFunction("localScan") { folder: String, known: Map<String, Double>, promise: Promise ->
+      thread(isDaemon = true) {
+        runCatching {
+          LocalFiles.scan(context, Uri.parse(folder), known) { read, total -> sendEvent("onLocalScan", mapOf("folder" to folder, "read" to read, "total" to total)) }
+        }.onSuccess { promise.resolve(it) }
+          .onFailure { promise.reject("ERR_LOCAL_SCAN", it.message ?: "That folder can't be read", it) }
+      }
+    }
+
+    AsyncFunction("localForget") { folder: String ->
+      runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(folder), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+    }
+
+    AsyncFunction("readText") { uri: String ->
+      LocalFiles.readText(context, Uri.parse(uri))
+    }
+
+    /** What Settings asks of the sound. */
+    AsyncFunction("setTuning") { skipSilence: Boolean, speed: Double, fadeSeconds: Int, seamless: Boolean ->
+      PlaybackTuning.skipSilence = skipSilence
+      PlaybackTuning.speed = speed.toFloat()
+      PlaybackTuning.fadeSeconds = fadeSeconds
+      PlaybackTuning.seamless = seamless
+      PlaybackTuning.service?.applyTuning()
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("setEqualizer") { on: Boolean, bands: List<Int>, gains: List<Double> ->
+      PlaybackTuning.eqOn = on
+      PlaybackTuning.eqBands = bands.toIntArray()
+      PlaybackTuning.eqGains = gains.map { it.toFloat() }.toFloatArray()
+      PlaybackTuning.service?.applyTuning()
+    }.runOnQueue(Queues.MAIN)
+
+    /** For what only applies when the app starts anew: the accent colour. */
+    AsyncFunction("restartApp") {
+      context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { start ->
+        context.startActivity(start.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        Runtime.getRuntime().exit(0)
+      }
+    }.runOnQueue(Queues.MAIN)
 
     OnCreate {
       watchNetwork()
@@ -235,7 +309,10 @@ class Media3PlayerModule : Module() {
 
     /** The playing song's gain now; each next song brings its own. */
     AsyncFunction("setGain") { gainDb: Double ->
-      withPlayer { player -> player.volume = min(1.0, 10.0.pow(gainDb / 20.0)).toFloat() }
+      val volume = min(1.0, 10.0.pow(gainDb / 20.0)).toFloat()
+      val service = PlaybackTuning.service
+      if (service != null) service.setSongVolume(volume)
+      else withPlayer { player -> player.volume = volume }
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("getNetwork") {
@@ -284,7 +361,25 @@ class Media3PlayerModule : Module() {
       else ZoneKeepAliveService.hide(context)
     }.runOnQueue(Queues.MAIN)
 
-    /** What a gesture feels like: "arm", "charge", "charged", "commit" or "cancel". */
+    /** The volume of music on this phone, 0 to 1: for another device that steers it. */
+    AsyncFunction("getMediaVolume") {
+      val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+      val most = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+      audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toDouble() / most
+    }
+
+    AsyncFunction("setMediaVolume") { level: Double ->
+      val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+      val most = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+      audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, Math.round(level.coerceIn(0.0, 1.0) * most).toInt(), 0)
+    }
+
+    /** While this phone steers another device, from the front: the volume keys are for that one. Below 0: they're this phone's again. */
+    AsyncFunction("followVolumeKeys") { level: Int ->
+      FollowVolumeKeys.set(context, level)
+    }.runOnQueue(Queues.MAIN)
+
+    /** What a touch or a gesture feels like: "tick", "press", "arm", "charge", "charged", "commit" or "cancel". */
     AsyncFunction("haptic") { kind: String ->
       Haptics.play(context, kind)
     }.runOnQueue(Queues.MAIN)

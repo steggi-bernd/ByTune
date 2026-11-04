@@ -171,22 +171,34 @@ test("an incoming track shorter than the blend is promoted and the queue keeps m
   assert.ok(live[0].currentTime < 1.5, `playback must resume promptly, got ${live[0].currentTime}s`);
 });
 
-test("shuffle and repeat-one suppress pre-arming entirely", async (t) => {
+test("shuffled, the next song is known: it's the queue's, and the transition arms as usual", async (t) => {
+  const h = await boot();
+  t.after(() => h.restore());
+  const { usePlayer } = h.engine;
+  usePlayer.getState().toggleShuffle();
+  await play(h, stage(h, ["B", "C"]));
+  // play() starts the first song asked for: it stays first, what's behind it is mixed.
+  assert.equal(usePlayer.getState().queue[0].id, "A");
+  const next = usePlayer.getState().queue[1].id;
+  const other = usePlayer.getState().queue[2].id;
+
+  await h.advance(2700);
+  assert.equal(decksOf(h, next).length, 1, "the song next in the queue is on the standby deck");
+  assert.equal(decksOf(h, other).length, 0, "the one after it isn't");
+  usePlayer.getState().toggleShuffle();
+});
+
+test("repeat-one suppresses pre-arming entirely", async (t) => {
   const h = await boot();
   t.after(() => h.restore());
   const { usePlayer } = h.engine;
   h.setDuration("A", 3.0);
-  usePlayer.getState().toggleShuffle();
-  await play(h, [track("A", 3.0), track("B", 4.0), track("C", 4.0)]);
-
-  await h.advance(1200);
-  assert.equal(firstSoundAt(h, "B"), Infinity, "shuffle must not pre-arm a transition");
-  assert.equal(firstSoundAt(h, "C"), Infinity, "shuffle must not pre-arm a transition");
-
-  usePlayer.getState().toggleShuffle();
   usePlayer.getState().cycleRepeat(); // off -> all
   usePlayer.getState().cycleRepeat(); // all -> one
   assert.equal(usePlayer.getState().repeat, "one");
+  await play(h, [track("A", 3.0), track("B", 4.0), track("C", 4.0)]);
+
+  await h.advance(1200);
   h.trace.length = 0;
   (h.elements.emits ?? []).length = 0;
   h.record();

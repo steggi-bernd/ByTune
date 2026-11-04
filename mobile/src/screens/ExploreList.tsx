@@ -6,8 +6,9 @@
 import { useNavigation } from "@react-navigation/native";
 import { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, List } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
-import { Modal, Pressable, SectionList, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, SectionList, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MenuSheet } from "../components/Sheet";
 import { Card, Chip, Cover, CoverGrid } from "../components/ui";
 import {
   addedLabel,
@@ -31,6 +32,7 @@ import {
 import { useExplore } from "../stores/explore";
 import { useArtistPhoto, useLibrary } from "../stores/library";
 import { colors, PAGE_END } from "../theme";
+import { T } from "../shared";
 
 type Item =
   | { kind: "album"; key: string; row: AlbumRow }
@@ -42,9 +44,9 @@ const GAP = 12;
 const SIDE = 16;
 
 const TABS: { key: ExploreTab; label: string }[] = [
-  { key: "albums", label: "Albums" },
-  { key: "artists", label: "Artists" },
-  { key: "genres", label: "Genres" },
+  { key: "albums", label: T("Albums") },
+  { key: "artists", label: T("Artists") },
+  { key: "genres", label: T("Genres") },
 ];
 
 const titleOf = (item: Item): string =>
@@ -52,27 +54,27 @@ const titleOf = (item: Item): string =>
 
 /** The value the list is ordered by, where that isn't the name itself. */
 function valueOf(item: Item, by: string): string | null {
-  const plays = plural(item.row.plays, "play", "plays");
+  const plays = plural(item.row.plays, T("play"), T("plays"));
   if (item.kind === "album") {
     const { album } = item.row;
     if (by === "released") return dayLabel(album.date, album.year);
     if (by === "type") return RELEASE_LABEL[album.kind];
-    if (by === "songs") return plural(album.tracks.length, "song", "songs");
+    if (by === "songs") return plural(album.tracks.length, T("song"), T("songs"));
     if (by === "length") return fmtLength(album.duration);
     if (by === "added") return addedLabel(album.addedAt);
     return by === "plays" ? plays : null;
   }
   if (item.kind === "artist") {
     const { artist, addedAt } = item.row;
-    if (by === "albums") return plural(artist.albumCount, "album", "albums");
-    if (by === "songs") return plural(artist.trackCount, "song", "songs");
+    if (by === "albums") return plural(artist.albumCount, T("album"), T("albums"));
+    if (by === "songs") return plural(artist.trackCount, T("song"), T("songs"));
     if (by === "added") return addedLabel(addedAt);
     return by === "plays" ? plays : null;
   }
   const { genre } = item.row;
-  if (by === "artists") return plural(genre.artistCount, "artist", "artists");
-  if (by === "albums") return plural(genre.albumCount, "album", "albums");
-  if (by === "songs") return plural(genre.tracks.length, "song", "songs");
+  if (by === "artists") return plural(genre.artistCount, T("artist"), T("artists"));
+  if (by === "albums") return plural(genre.albumCount, T("album"), T("albums"));
+  if (by === "songs") return plural(genre.tracks.length, T("song"), T("songs"));
   return by === "plays" ? plays : null;
 }
 
@@ -85,9 +87,9 @@ function lineOf(item: Item, by: string): string {
   }
   if (item.kind === "artist") {
     const { artist } = item.row;
-    return value ?? `${plural(artist.albumCount, "album", "albums")} · ${plural(artist.trackCount, "song", "songs")}`;
+    return value ?? `${plural(artist.albumCount, T("album"), T("albums"))} · ${plural(artist.trackCount, T("song"), T("songs"))}`;
   }
-  return value ?? plural(item.row.genre.tracks.length, "song", "songs");
+  return value ?? plural(item.row.genre.tracks.length, T("song"), T("songs"));
 }
 
 /** A tile's line: one thing fits. */
@@ -95,8 +97,8 @@ function shortOf(item: Item, by: string): string {
   const value = valueOf(item, by);
   if (value) return value;
   if (item.kind === "album") return item.row.album.artist;
-  if (item.kind === "artist") return plural(item.row.artist.trackCount, "song", "songs");
-  return plural(item.row.genre.tracks.length, "song", "songs");
+  if (item.kind === "artist") return plural(item.row.artist.trackCount, T("song"), T("songs"));
+  return plural(item.row.genre.tracks.length, T("song"), T("songs"));
 }
 
 function ArtistArt({ name, thumb, size }: { name: string; thumb: string; size: number }) {
@@ -148,7 +150,7 @@ export function ExploreList() {
     [nav]
   );
 
-  if (!tracks.length) return <Text style={styles.none}>Nothing to explore yet.</Text>;
+  if (!tracks.length) return <Text style={styles.none}>{T("Nothing to explore yet.")}</Text>;
 
   const orders: { key: string; label: string; numeric?: boolean }[] = tab === "albums" ? albumOrders : tab === "artists" ? artistOrders : genreOrders;
   const sortLabel = orders.find((o) => o.key === sort.by)?.label ?? orders[0].label;
@@ -166,7 +168,7 @@ export function ExploreList() {
         keyboardDismissMode="on-drag"
         initialNumToRender={12}
         contentContainerStyle={{ paddingBottom: PAGE_END + insets.bottom }}
-        ListHeaderComponent={<Text style={styles.heading}>Explore your library</Text>}
+        ListHeaderComponent={<Text style={styles.heading}>{T("Explore your library")}</Text>}
         renderSectionHeader={() => (
           <View style={styles.controls}>
             <View style={styles.chips}>
@@ -175,13 +177,13 @@ export function ExploreList() {
               ))}
             </View>
             <View style={styles.tools}>
-              <Pressable onPress={() => setMenu(true)} accessibilityLabel={`Sorted by ${sortLabel}`} style={styles.sort}>
+              <Pressable onPress={() => setMenu(true)} accessibilityLabel={T("Sorted by {sortLabel}", { sortLabel })} style={styles.sort}>
                 <ArrowUpDown size={16} color={colors.ink} />
                 <Text style={styles.sortText}>{sortLabel}</Text>
               </Pressable>
               <Pressable
                 onPress={() => setLayout(layout === "grid" ? "list" : "grid")}
-                accessibilityLabel={layout === "grid" ? "Show as list" : "Show as tiles"}
+                accessibilityLabel={layout === "grid" ? T("Show as list") : T("Show as tiles")}
                 style={styles.layout}
               >
                 {layout === "grid" ? <List size={20} color={colors.ink} /> : <LayoutGrid size={20} color={colors.ink} />}
@@ -212,29 +214,20 @@ export function ExploreList() {
         }
       />
 
-      <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
-        <Pressable style={styles.menuBack} onPress={() => setMenu(false)}>
-          <View style={[styles.menu, { paddingBottom: insets.bottom + 10 }]}>
-            <Text style={styles.menuTitle}>Sort by</Text>
-            {orders.map((o) => {
-              const active = sort.by === o.key;
-              return (
-                <Pressable
-                  key={o.key}
-                  style={styles.menuRow}
-                  onPress={() => {
-                    setSort(tab, nextSort(sort, o));
-                    setMenu(false);
-                  }}
-                >
-                  <Text style={[styles.menuText, active && { color: colors.accent }]}>{o.label}</Text>
-                  {active && (sort.desc ? <ArrowDown size={18} color={colors.accent} /> : <ArrowUp size={18} color={colors.accent} />)}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
+      <MenuSheet
+        visible={menu}
+        title={T("Sort by")}
+        onClose={() => setMenu(false)}
+        rows={orders.map((o) => {
+          const active = sort.by === o.key;
+          return {
+            label: o.label,
+            active,
+            trailing: active ? sort.desc ? <ArrowDown size={18} color={colors.accent} /> : <ArrowUp size={18} color={colors.accent} /> : undefined,
+            run: () => setSort(tab, nextSort(sort, o)),
+          };
+        })}
+      />
     </>
   );
 }
@@ -253,9 +246,4 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { color: colors.ink, fontSize: 15, fontWeight: "600" },
   rowSub: { color: colors.dim, fontSize: 13, marginTop: 3 },
-  menuBack: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  menu: { backgroundColor: colors.sheet, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 14 },
-  menuTitle: { color: colors.dim, fontSize: 13, fontWeight: "600", paddingHorizontal: 20, paddingBottom: 6 },
-  menuRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 50, paddingHorizontal: 20 },
-  menuText: { color: colors.ink, fontSize: 16 },
 });

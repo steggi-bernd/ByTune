@@ -17,6 +17,7 @@ import { leaveCast, useCast, type CastDevice } from "./cast";
 import { ipcErrorText } from "./ipcError";
 import { playableVersions } from "./librarySource";
 import { Zone, type ZoneDriver, type ZoneSong, type ZoneState } from "./zoneEngine";
+import { T } from "./i18n";
 
 const TICK_MS = 1000;
 const CASTABLE = /^(local|jf|ss):/;
@@ -32,9 +33,11 @@ interface ZonesState {
   zones: ZoneView[];
   /** the device the next song asked for goes to */
   pickingFor: CastDevice | null;
+  /** those that play along with it */
+  pickingWith: CastDevice[];
 }
 
-export const useZones = create<ZonesState>(() => ({ zones: [], pickingFor: null }));
+export const useZones = create<ZonesState>(() => ({ zones: [], pickingFor: null, pickingWith: [] }));
 
 interface Running {
   id: string;
@@ -106,7 +109,7 @@ function driverOf(r: Pick<Running, "id" | "tracks" | "status" | "ended">): ZoneD
 }
 
 /** Music of its own on this device; a zone already there just gets the new songs. */
-export async function startZone(device: CastDevice, tracks: Track[], start = 0): Promise<void> {
+export async function startZone(device: CastDevice, tracks: Track[], start = 0): Promise<string | null> {
   listen();
   const asked = tracks[Math.max(0, Math.min(start, tracks.length - 1))];
   const list = tracks.filter((t) => t === asked || !isMuted(t.id));
@@ -132,25 +135,35 @@ export async function startZone(device: CastDevice, tracks: Track[], start = 0):
     for (const t of list) r.tracks.set(t.id, t);
     await r.zone.play(list.map(toSong), index);
     publish();
-    useUI.getState().toast(`Playing on ${device.name}`);
+    useUI.getState().toast(T("Playing on {name}", { name: device.name }));
+    return r.id;
   } catch (err) {
-    useUI.getState().toast(ipcErrorText(err, `Couldn't start ${device.name}`), "error");
+    useUI.getState().toast(ipcErrorText(err, T("Couldn't start {name}", { name: device.name })), "error");
+    return null;
   }
 }
 
-export function pickMusicFor(device: CastDevice | null): void {
-  useZones.setState({ pickingFor: device });
+/** Music of their own for several: the first device takes it, the others play along with it. */
+export async function startZoneOn(devices: CastDevice[], tracks: Track[], start = 0): Promise<void> {
+  const [first, ...rest] = devices;
+  if (!first || !tracks.length) return;
+  const id = await startZone(first, tracks, start);
+  if (id) for (const d of rest) await zoneJoin(id, d);
+}
+
+export function pickMusicFor(device: CastDevice | null, others: CastDevice[] = []): void {
+  useZones.setState({ pickingFor: device, pickingWith: device ? others : [] });
   setPlayHook(
     device
       ? (tracks, start) => {
-          useZones.setState({ pickingFor: null });
+          useZones.setState({ pickingFor: null, pickingWith: [] });
           setPlayHook(null);
-          void startZone(device, tracks, start);
+          void startZoneOn([device, ...others], tracks, start);
           return true;
         }
       : null
   );
-  if (device) useUI.getState().toast(`Now choose something to play on ${device.name}`);
+  if (device) useUI.getState().toast(T("Now choose something to play on {join}", { join: [device, ...others].map((d) => d.name).join(" + ") }));
 }
 
 const zoneOf = (id: string): Running | undefined => running.get(id);
@@ -181,7 +194,7 @@ export async function zoneJoin(id: string, device: CastDevice): Promise<void> {
   try {
     await requireBridge().castJoin(id, device.id);
   } catch (err) {
-    useUI.getState().toast(ipcErrorText(err, `${device.name} can't play along`), "error");
+    useUI.getState().toast(ipcErrorText(err, T("{name} can't play along", { name: device.name })), "error");
   }
 }
 

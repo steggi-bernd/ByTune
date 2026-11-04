@@ -12,6 +12,7 @@ import { AlbumScreen } from "./screens/AlbumScreen";
 import { ArtistScreen } from "./screens/ArtistScreen";
 import { CollectionScreen } from "./screens/CollectionScreen";
 import { DevicesScreen } from "./screens/DevicesScreen";
+import { EqualizerScreen } from "./screens/EqualizerScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
 import { LyricsScreen } from "./screens/LyricsScreen";
@@ -19,6 +20,7 @@ import { QueueScreen } from "./screens/QueueScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { colors } from "./theme";
+import { T } from "./shared";
 
 const Root = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -35,6 +37,7 @@ function tabStack(name: string, First: ComponentType) {
         <Pages.Screen name="Artist" component={ArtistScreen} />
         <Pages.Screen name="Collection" component={CollectionScreen} />
         <Pages.Screen name="Settings" component={SettingsScreen} />
+        <Pages.Screen name="Equalizer" component={EqualizerScreen} />
       </Pages.Navigator>
     );
   };

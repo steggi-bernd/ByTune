@@ -8,6 +8,7 @@
  */
 import type { Track } from "../types";
 import { decadeOf, genresOf, type PlayCounts } from "./catalogBuild";
+import { T } from "./i18n";
 
 export interface Mix {
   id: string;
@@ -56,7 +57,7 @@ export function genreMixes(tracks: Track[], limit = 8): Mix[] {
     .filter(([, v]) => v.tracks.length >= MIN_TRACKS)
     .sort((a, b) => b[1].tracks.length - a[1].tracks.length)
     .slice(0, limit)
-    .map(([key, v]) => make(`genre:${key}`, `${v.name} Mix`, `${v.tracks.length} songs`, v.tracks));
+    .map(([key, v]) => make(`genre:${key}`, `${v.name} Mix`, T("{count} songs", { count: v.tracks.length }), v.tracks));
 }
 
 export function decadeMixes(tracks: Track[]): Mix[] {
@@ -69,7 +70,7 @@ export function decadeMixes(tracks: Track[]): Mix[] {
   return [...byDecade.entries()]
     .filter(([, list]) => list.length >= MIN_TRACKS)
     .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([d, list]) => make(`decade:${d}`, `${d} Mix`, `${list.length} songs from the ${d}`, list));
+    .map(([d, list]) => make(`decade:${d}`, `${d} Mix`, T("{count} songs from the {d}", { count: list.length, d }), list));
 }
 
 export function onRepeatMix(tracks: Track[], counts: PlayCounts): Mix | null {
@@ -77,22 +78,22 @@ export function onRepeatMix(tracks: Track[], counts: PlayCounts): Mix | null {
   if (played.length < MIN_TRACKS) return null;
   const top = [...played].sort((a, b) => (counts[b.id]?.plays ?? 0) - (counts[a.id]?.plays ?? 0)).slice(0, MIX_SIZE);
   // Ranked, not shuffled: this one is literally your most played songs.
-  return { id: "onrepeat", title: "On Repeat", subtitle: "Your most played songs", tracks: top };
+  return { id: "onrepeat", title: T("On Repeat"), subtitle: T("Your most played songs"), tracks: top };
 }
 
 export function rediscoverMix(tracks: Track[], counts: PlayCounts): Mix | null {
   const unplayed = tracks.filter((t) => !counts[t.id]?.plays);
   if (unplayed.length < MIN_TRACKS) return null;
-  return make("rediscover", "Rediscover", "Songs you haven't played yet", unplayed);
+  return make("rediscover", T("Rediscover"), T("Songs you haven't played yet"), unplayed);
 }
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAYS = [T("Sunday"), T("Monday"), T("Tuesday"), T("Wednesday"), T("Thursday"), T("Friday"), T("Saturday")];
 
 /** "Sunday Evening": the weekday and the part of the day; past midnight it is still the night before. */
 export function momentTitle(now: number): string {
   const d = new Date(now);
   const h = d.getHours();
-  const part = h < 5 || h >= 22 ? "Night" : h >= 18 ? "Evening" : h >= 14 ? "Afternoon" : h >= 11 ? "Midday" : "Morning";
+  const part = h < 5 || h >= 22 ? T("Night") : h >= 18 ? T("Evening") : h >= 14 ? T("Afternoon") : h >= 11 ? T("Midday") : T("Morning");
   return `${WEEKDAYS[h < 5 ? (d.getDay() + 6) % 7 : d.getDay()]} ${part}`;
 }
 
@@ -120,7 +121,7 @@ export function momentMix(
   }
   if (picked.length < MIN_TRACKS) return null;
   const title = momentTitle(now);
-  return { id: "moment", title, subtitle: "What you usually play around now", tracks: seededShuffle(picked, `moment|${title}|${today()}`) };
+  return { id: "moment", title, subtitle: T("What you usually play around now"), tracks: seededShuffle(picked, `moment|${title}|${today()}`) };
 }
 
 /**
@@ -136,8 +137,8 @@ export function moodMixes(tracks: Track[], energyOf: (t: Track) => number | unde
   if (measured.length < MIN_TRACKS * 2) return [];
   const fifth = Math.max(MIN_TRACKS, Math.floor(measured.length / 5));
   return [
-    make("mood:calm", "Calm Mix", "Quiet, gentle songs from your library", measured.slice(0, fifth).map((x) => x.t)),
-    make("mood:upbeat", "Upbeat Mix", "Your most energetic songs", measured.slice(-fifth).map((x) => x.t)),
+    make("mood:calm", T("Calm Mix"), T("Quiet, gentle songs from your library"), measured.slice(0, fifth).map((x) => x.t)),
+    make("mood:upbeat", T("Upbeat Mix"), T("Your most energetic songs"), measured.slice(-fifth).map((x) => x.t)),
   ];
 }
 

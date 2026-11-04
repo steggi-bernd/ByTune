@@ -38,6 +38,7 @@ import { useDrag } from "../lib/dnd";
 import { useCanvas } from "../lib/canvas";
 import { requestLyricsAlignment, useLyricsAlign } from "../lib/lyricsOffset";
 import type { LyricsResult } from "../types";
+import { T } from "../lib/i18n";
 
 /* ================================================================ backdrop */
 
@@ -191,7 +192,7 @@ function FsModeSwitch({
             mode === m ? "bg-white/[0.14] text-white" : "text-white/55 hover:text-white/90"
           }`}
         >
-          {m === "lyrics" ? "Lyrics" : "Queue"}
+          {m === "lyrics" ? T("Lyrics") : T("Queue")}
         </button>
       ))}
     </div>
@@ -405,10 +406,8 @@ export function NowPlaying() {
           }`}
         >
           <div className="flex items-center gap-2.5 rounded-lg border border-white/10 bg-[#1c1c1e]/95 px-4 py-3 shadow-float">
-            <span className="text-[14.5px] text-white">To exit full screen, press</span>
-            <kbd className="grid h-7 min-w-[36px] place-items-center rounded-[5px] border border-white/40 px-2 text-[13px] text-white">
-              Esc
-            </kbd>
+            <span className="text-[14.5px] text-white">{T("To exit full screen, press")}</span>
+            <kbd className="grid h-7 min-w-[36px] place-items-center rounded-[5px] border border-white/40 px-2 text-[13px] text-white">{T("Esc")}</kbd>
           </div>
         </div>
 
@@ -416,8 +415,8 @@ export function NowPlaying() {
         <div className="relative h-14 shrink-0 flex items-center px-3">
           <button
             onClick={close}
-            title="Close (Esc)"
-            aria-label="Close Now Playing"
+            title={T("Close (Esc)")}
+            aria-label={T("Close Now Playing")}
             className="relative z-10 p-2 -ml-1 rounded-full text-white/75 hover:text-white hover:bg-white/[0.08] transition-colors"
           >
             <ChevronDown className="w-5 h-5" />
@@ -426,8 +425,8 @@ export function NowPlaying() {
             {milkdrop && (
               <button
                 onClick={() => milkdropRef.current?.next()}
-                title="Next visual"
-                aria-label="Next visual"
+                title={T("Next visual")}
+                aria-label={T("Next visual")}
                 className="p-2 rounded-full text-white/75 hover:text-white hover:bg-white/[0.08] transition-colors"
               >
                 <Shuffle className="w-5 h-5" />
@@ -437,8 +436,8 @@ export function NowPlaying() {
               onClick={() => setMilkdrop(!milkdrop)}
               role="switch"
               aria-checked={milkdrop}
-              title={milkdrop ? "Hide the Milkdrop visuals" : "Milkdrop visuals behind the music"}
-              aria-label="Milkdrop visualizer"
+              title={milkdrop ? T("Hide the Milkdrop visuals") : T("Milkdrop visuals behind the music")}
+              aria-label={T("Milkdrop visualizer")}
               className={`p-2 rounded-full transition-colors ${
                 milkdrop ? "text-white bg-white/[0.14]" : "text-white/75 hover:text-white hover:bg-white/[0.08]"
               }`}
@@ -454,8 +453,8 @@ export function NowPlaying() {
               <div className="w-16 h-16 rounded-[calc(18px*var(--radius-scale))] glass grid place-items-center mx-auto mb-5">
                 <Music2 className="w-7 h-7 text-white/55" />
               </div>
-              <p className="text-sm text-white/85">Nothing playing yet</p>
-              <p className="text-[13px] text-white/55 mt-1">Play something and it will show up here.</p>
+              <p className="text-sm text-white/85">{T("Nothing playing yet")}</p>
+              <p className="text-[13px] text-white/55 mt-1">{T("Play something and it will show up here.")}</p>
             </div>
           </div>
         ) : (
@@ -486,7 +485,7 @@ export function NowPlaying() {
                     className={`relative rounded-[calc(20px*var(--radius-scale))] overflow-hidden shadow-art art-hairline aspect-square w-[min(38vh,32vw,480px)] grid place-items-center bg-white/[0.04] ${
                       heroDrag.dragging ? "opacity-60" : ""
                     }`}
-                    title="Drag to a playlist to add this song"
+                    title={T("Drag to a playlist to add this song")}
                   >
                     {canvasUrl && animatedCanvas ? (
                       <>
@@ -534,12 +533,12 @@ export function NowPlaying() {
                 </div>
                 <button
                   onClick={() => toggleLike(track)}
-                  title={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+                  title={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
                   aria-pressed={liked}
                   className="mt-4 inline-flex items-center gap-2 h-8 px-4 rounded-full bg-white/[0.06] hover:bg-white/[0.11] text-white/60 hover:text-white text-[12.5px] font-semibold transition-all active:scale-95"
                 >
                   <Heart className={`w-3.5 h-3.5 shrink-0 ${liked ? "fill-accent text-accent" : ""}`} />
-                  {liked ? "In Liked Songs" : "Add to Liked Songs"}
+                  {liked ? T("In Liked Songs") : T("Add to Liked Songs")}
                 </button>
               </div>
 

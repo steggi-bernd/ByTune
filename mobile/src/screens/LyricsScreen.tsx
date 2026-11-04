@@ -6,10 +6,12 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { tinted } from "../color";
 import { currentLine, useLyrics } from "../lyrics";
-import { fmtTime } from "../shared";
+import { fmtTime, hasCyrillic, toLatin } from "../shared";
 import { useCoverColor } from "../stores/library";
 import { usePlayer } from "../stores/player";
+import { useSettings } from "../stores/settings";
 import { colors } from "../theme";
+import { T } from "../shared";
 
 export function LyricsScreen() {
   const nav = useNavigation<any>();
@@ -22,8 +24,11 @@ export function LyricsScreen() {
   const lines = useLyrics(track);
   const color = useCoverColor(track?.thumb);
   const list = useRef<FlatList>(null);
-  const at = currentLine(lines, position);
-  const timed = lines.length > 0 && lines[0].at !== undefined;
+  const synced = useSettings((s) => s.syncedLyrics);
+  const dim = useSettings((s) => s.dimLyrics);
+  const latin = useSettings((s) => s.lyricsLatin);
+  const at = synced ? currentLine(lines, position) : -1;
+  const timed = synced && dim && lines.length > 0 && lines[0].at !== undefined;
 
   useEffect(() => {
     if (at >= 0) list.current?.scrollToIndex({ index: at, viewPosition: 0.3, animated: true });
@@ -35,7 +40,7 @@ export function LyricsScreen() {
   return (
     <View style={[styles.root, { backgroundColor: background }]}>
       <View style={[styles.top, { paddingTop: insets.top + 2 }]}>
-        <Pressable onPress={() => nav.goBack()} accessibilityLabel="Close the lyrics" style={styles.close}>
+        <Pressable onPress={() => nav.goBack()} accessibilityLabel={T("Close the lyrics")} style={styles.close}>
           <ChevronDown size={28} color={colors.ink} />
         </Pressable>
         <View style={styles.topText}>
@@ -57,6 +62,7 @@ export function LyricsScreen() {
         renderItem={({ item, index }) => (
           <Pressable disabled={item.at === undefined} onPress={() => item.at !== undefined && seek(item.at)}>
             <Text style={[styles.line, timed && index !== at && (index < at ? styles.linePast : styles.lineNext)]}>{item.text || "♪"}</Text>
+            {latin && hasCyrillic(item.text) && <Text style={styles.latin}>{toLatin(item.text)}</Text>}
           </Pressable>
         )}
       />
@@ -69,7 +75,7 @@ export function LyricsScreen() {
           <Text style={styles.time}>{fmtTime(position / 1000)}</Text>
           <Text style={styles.time}>{fmtTime(duration / 1000)}</Text>
         </View>
-        <Pressable onPress={toggle} accessibilityLabel={playWhenReady ? "Pause" : "Play"} style={styles.play}>
+        <Pressable onPress={toggle} accessibilityLabel={playWhenReady ? T("Pause") : T("Play")} style={styles.play}>
           {playWhenReady ? <Pause size={26} color={colors.base} fill={colors.base} /> : <Play size={26} color={colors.base} fill={colors.base} />}
         </Pressable>
       </View>
@@ -86,6 +92,7 @@ const styles = StyleSheet.create({
   artist: { color: "rgba(255,255,255,0.78)", fontSize: 13, marginTop: 2 },
   lines: { paddingHorizontal: 24, paddingVertical: 12, gap: 18 },
   line: { color: colors.ink, fontSize: 27, fontWeight: "800", lineHeight: 33, letterSpacing: -0.6 },
+  latin: { color: "rgba(255,255,255,0.62)", fontSize: 16, lineHeight: 22, marginTop: 4 },
   linePast: { color: "rgba(255,255,255,0.48)" },
   lineNext: { color: "rgba(255,255,255,0.62)" },
   bottom: { paddingHorizontal: 24, paddingTop: 12 },

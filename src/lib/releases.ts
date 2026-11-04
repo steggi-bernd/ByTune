@@ -11,14 +11,15 @@
  * passes for an EP.
  */
 import type { Track } from "../types";
+import { T } from "./i18n";
 
 export type ReleaseKind = "album" | "ep" | "single" | "compilation";
 
 export const RELEASE_LABEL: Record<ReleaseKind, string> = {
-  album: "Album",
+  album: T("Album"),
   ep: "EP",
-  single: "Single",
-  compilation: "Compilation",
+  single: T("Single"),
+  compilation: T("Compilation"),
 };
 
 const VARIOUS_ARTISTS = /^(various( artists)?|va|verschiedene( interpreten)?|diverse)$/i;

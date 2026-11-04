@@ -6,9 +6,9 @@
  */
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Check, Pause, Play, Speaker, Tv } from "lucide-react-native";
+import { AudioLines, Check, CircleArrowDown, Disc3, ListPlus, Pause, Play, Speaker, Tv, User, Volume2, VolumeX } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, BackHandler, Easing, Modal, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, BackHandler, Easing, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import { seeThrough, tinted } from "../color";
 import { albumKeyOf } from "../playingFrom";
@@ -17,12 +17,15 @@ import { describePlayback, formatLine, leadArtist, type Track } from "../shared"
 import { useCoverColor, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { usePlaylists } from "../stores/playlists";
+import { feel, useSettings } from "../stores/settings";
 import { useZones } from "../stores/zones";
 import { colors, MINI_PLAYER_HEIGHT, qualityColors, TAB_BAR_HEIGHT } from "../theme";
 import { PlayerPage } from "./PlayerPage";
+import { MenuSheet, SheetFrame, SheetHead } from "./Sheet";
 import { useDownloadAction } from "./SongMenu";
 import { TrackStrip, useTrackSwipe } from "./TrackStrip";
 import { Cover } from "./ui";
+import { T } from "../shared";
 
 const SPRING = { stiffness: 300, damping: 34, mass: 1, overshootClamping: true, useNativeDriver: true };
 
@@ -38,9 +41,9 @@ const COVER_RADIUS = 8;
 const MINI_RADIUS = 4;
 
 const QUALITIES: { mode: QualityMode; title: string; line: string }[] = [
-  { mode: "auto", title: "Automatic", line: "The best your connection carries, on mobile data up to AAC 256 kbps" },
-  { mode: "original", title: "Original", line: "Always the file itself, nothing converted" },
-  { mode: "compact", title: "Compact", line: "A small copy (128 kbps) that saves data" },
+  { mode: "auto", title: T("Automatic"), line: T("The best your connection carries, on mobile data up to AAC 256 kbps") },
+  { mode: "original", title: T("Original"), line: T("Always the file itself, nothing converted") },
+  { mode: "compact", title: T("Compact"), line: T("A small copy (128 kbps) that saves data") },
 ];
 
 /** Past the end of the page the finger pulls against a spring. */
@@ -80,24 +83,31 @@ function MiniPlayer({ width, onOpen }: { width: number; onOpen: () => void }) {
         <View {...swipe.panHandlers} style={styles.miniStrip}>
           <TrackStrip width={stripWidth}>
             {(t) => (
-              <Pressable onPress={onOpen} style={styles.miniOpen} accessibilityLabel="Open the player">
+              <Pressable onPress={onOpen} style={styles.miniOpen} accessibilityLabel={T("Open the player")}>
                 <Cover uri={t.thumb} size={MINI_COVER} radius={MINI_RADIUS} />
                 <View style={styles.miniText}>
                   <Text numberOfLines={1} style={styles.miniTitle}>
                     {t.title}
                   </Text>
                   <Text numberOfLines={1} style={[styles.miniArtist, !!elsewhere && styles.miniElsewhere]}>
-                    {elsewhere ? `On ${elsewhere} · ${t.artist}` : t.artist}
+                    {elsewhere ? T("On {elsewhere} · {artist}", { elsewhere, artist: t.artist }) : t.artist}
                   </Text>
                 </View>
               </Pressable>
             )}
           </TrackStrip>
         </View>
-        <Pressable onPress={() => nav.navigate("Devices")} style={styles.miniDevices} accessibilityLabel="Devices">
+        <Pressable onPress={() => nav.navigate("Devices")} style={styles.miniDevices} accessibilityLabel={T("Devices")}>
           {device?.tv ? <Tv size={21} color={elsewhere ? colors.accent : colors.ink} /> : <Speaker size={21} color={elsewhere ? colors.accent : colors.ink} />}
         </Pressable>
-        <Pressable onPress={toggle} style={styles.miniButton} accessibilityLabel={playWhenReady ? "Pause" : "Play"}>
+        <Pressable
+          onPress={() => {
+            feel("tick");
+            toggle();
+          }}
+          style={styles.miniButton}
+          accessibilityLabel={playWhenReady ? T("Pause") : T("Play")}
+        >
           {playWhenReady ? <Pause size={24} color={colors.ink} fill={colors.ink} /> : <Play size={24} color={colors.ink} fill={colors.ink} />}
         </Pressable>
       </View>
@@ -191,9 +201,11 @@ export function PlayerSheet({
 
   const settle = useCallback(
     (open: boolean, velocity = 0) => {
+      if (isOpen.current !== open) feel("tick");
       isOpen.current = open;
       setExpanded(open);
-      Animated.spring(progress, { ...SPRING, toValue: open ? 1 : 0, velocity }).start();
+      if (useSettings.getState().reduceMotion) progress.setValue(open ? 1 : 0);
+      else Animated.spring(progress, { ...SPRING, toValue: open ? 1 : 0, velocity }).start();
       if (!open && pageRest.current !== 0) settlePage(0);
     },
     [progress, setExpanded, settlePage]
@@ -360,89 +372,49 @@ export function PlayerSheet({
         </Animated.View>
       </View>
 
-      <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
-        <Pressable style={styles.menuBack} onPress={() => setMenu(false)}>
-          <View style={[styles.menu, { paddingBottom: insets.bottom + 10 }]}>
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenu(false);
-                usePlaylists.getState().setPicking(track);
-              }}
-            >
-              <Text style={styles.menuText}>Add to playlist</Text>
-            </Pressable>
-            {!!download && (
-              <Pressable
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenu(false);
-                  download.run();
-                }}
-              >
-                <Text style={styles.menuText}>{download.label}</Text>
-              </Pressable>
-            )}
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenu(false);
-                setQualityOpen(true);
-              }}
-            >
-              <Text style={styles.menuText}>Quality: {QUALITIES.find((q) => q.mode === quality)?.title}</Text>
-            </Pressable>
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenu(false);
-                useLibrary.getState().toggleMuted(track);
-              }}
-            >
-              <Text style={styles.menuText}>{muted ? "Play again (unmute)" : "Mute song"}</Text>
-            </Pressable>
-            {!!track.album && !!albumKey && (
-              <Pressable style={styles.menuRow} onPress={() => openPage("Album", { albumKey })}>
-                <Text style={styles.menuText}>Go to album</Text>
-              </Pressable>
-            )}
-            <Pressable style={styles.menuRow} onPress={() => openPage("Artist", { name: leadArtist(track.artist) })}>
-              <Text style={styles.menuText}>Go to artist</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+      <MenuSheet
+        visible={menu}
+        art={<Cover uri={track.thumb} size={46} />}
+        title={track.title}
+        subtitle={track.artist}
+        onClose={() => setMenu(false)}
+        rows={[
+          { label: T("Add to playlist"), Icon: ListPlus, run: () => usePlaylists.getState().setPicking(track) },
+          ...(download ? [{ label: download.label, Icon: CircleArrowDown, run: download.run }] : []),
+          { label: T("Quality: {title}", { title: QUALITIES.find((q) => q.mode === quality)?.title }), Icon: AudioLines, run: () => setQualityOpen(true) },
+          { label: muted ? T("Play again (unmute)") : T("Mute song"), Icon: muted ? Volume2 : VolumeX, run: () => void useLibrary.getState().toggleMuted(track) },
+          ...(track.album && albumKey ? [{ label: T("Go to album"), Icon: Disc3, run: () => openPage("Album", { albumKey }) }] : []),
+          { label: T("Go to artist"), Icon: User, run: () => openPage("Artist", { name: leadArtist(track.artist) }) },
+        ]}
+      />
 
-      <Modal visible={qualityOpen} transparent animationType="fade" onRequestClose={() => setQualityOpen(false)}>
-        <Pressable style={styles.menuBack} onPress={() => setQualityOpen(false)}>
-          <View style={[styles.menu, { paddingBottom: insets.bottom + 10 }]}>
-            <Text style={styles.menuHeading}>Quality</Text>
-            {!!playing && (
-              <Text style={[styles.playingLine, { color: qualityColors[playing.tier] }]}>
-                Playing now: {isTheFile && format ? `${format.hiRes ? "Hi-Res " : ""}${formatLine(format)}` : playing.text}
-              </Text>
-            )}
-            {QUALITIES.map((q) => (
-              <Pressable
-                key={q.mode}
-                accessibilityState={{ selected: quality === q.mode }}
-                style={styles.qualityRow}
-                onPress={() => {
-                  setQuality(q.mode);
-                  setQualityOpen(false);
-                }}
-              >
-                <View style={styles.qualityText}>
-                  <Text style={[styles.menuText, quality === q.mode && { color: colors.accent }]}>{q.title}</Text>
-                  <Text style={styles.qualityLine}>{q.line}</Text>
-                </View>
-                {quality === q.mode && <Check size={20} color={colors.accent} />}
-              </Pressable>
-            ))}
-            {!!audio && <Text style={styles.audioLine}>{audio}</Text>}
-          </View>
-        </Pressable>
-      </Modal>
+      <SheetFrame visible={qualityOpen} onClose={() => setQualityOpen(false)}>
+        <SheetHead title={T("Quality")} />
+        {!!playing && (
+          <Text style={[styles.playingLine, { color: qualityColors[playing.tier] }]}>{T("Playing now: {value}", { value: isTheFile && format ? `${format.hiRes ? "Hi-Res " : ""}${formatLine(format)}` : playing.text })}
+          </Text>
+        )}
+        {QUALITIES.map((q) => (
+          <Pressable
+            key={q.mode}
+            accessibilityState={{ selected: quality === q.mode }}
+            android_ripple={{ color: "rgba(255,255,255,0.08)" }}
+            style={styles.qualityRow}
+            onPress={() => {
+              feel("tick");
+              setQuality(q.mode);
+              setQualityOpen(false);
+            }}
+          >
+            <View style={styles.qualityText}>
+              <Text style={[styles.menuText, quality === q.mode && { color: colors.accent }]}>{q.title}</Text>
+              <Text style={styles.qualityLine}>{q.line}</Text>
+            </View>
+            {quality === q.mode && <Check size={20} color={colors.accent} />}
+          </Pressable>
+        ))}
+        {!!audio && <Text style={styles.audioLine}>{audio}</Text>}
+      </SheetFrame>
     </>
   );
 }
@@ -466,14 +438,10 @@ const styles = StyleSheet.create({
   miniButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   progressTrack: { height: 2, marginHorizontal: 8, backgroundColor: "rgba(255,255,255,0.25)" },
   progressFill: { height: 2, backgroundColor: colors.ink },
-  menuBack: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  menu: { backgroundColor: colors.sheet, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 10 },
-  menuRow: { height: 52, justifyContent: "center", paddingHorizontal: 20 },
-  menuText: { color: colors.ink, fontSize: 16 },
-  menuHeading: { color: colors.ink, fontSize: 18, fontWeight: "700", paddingHorizontal: 20, paddingTop: 6, paddingBottom: 8 },
-  playingLine: { fontSize: 13, fontWeight: "600", paddingHorizontal: 20, paddingBottom: 6 },
-  qualityRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 62, paddingHorizontal: 20 },
+  menuText: { color: colors.ink, fontSize: 15.5 },
+  playingLine: { fontSize: 13, fontWeight: "600", paddingHorizontal: 18, paddingTop: 6, paddingBottom: 6 },
+  qualityRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 62, paddingHorizontal: 18 },
   qualityText: { flex: 1, minWidth: 0 },
   qualityLine: { color: colors.dim, fontSize: 13, marginTop: 2 },
-  audioLine: { color: colors.dim, fontSize: 11, paddingHorizontal: 20, paddingTop: 8 },
+  audioLine: { color: colors.dim, fontSize: 11, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 4 },
 });

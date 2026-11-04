@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToPlaylistSheet } from "./src/components/PlaylistSheets";
+import { PopupHost } from "./src/components/PopupHost";
 import { SongMenu } from "./src/components/SongMenu";
 import { CoverKeeper } from "./src/components/ui";
 import { AppNavigation } from "./src/navigation";
@@ -11,6 +12,7 @@ import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { watchConnection } from "./src/stores/connection";
 import { useDownloads } from "./src/stores/downloads";
 import { useLibrary } from "./src/stores/library";
+import { useLocalMusic } from "./src/stores/localMusic";
 import { usePlayer, watchPlayer } from "./src/stores/player";
 import { watchZones } from "./src/stores/zones";
 import { usePlaylists } from "./src/stores/playlists";
@@ -38,30 +40,36 @@ export default function App() {
   const ready = useSession((s) => s.ready);
   // Who, not where: the address can move while the same person listens on.
   const signedIn = useSession((s) => s.session?.token ?? null);
+  const localReady = useLocalMusic((s) => s.restored);
+  const noServer = useLocalMusic((s) => s.withoutServer && !s.addingServer);
+  // In the app with a server, or with just the music on this phone. A new login is somebody else's library.
+  const inside = signedIn ?? (noServer ? "this phone" : null);
   const loaded = useLibrary((s) => s.loaded);
   const queueRestored = useRef(false);
 
   useEffect(() => {
     void useSession.getState().restore();
+    void useLocalMusic.getState().restore();
   }, []);
 
   // Everything the phone remembers comes first; the server tells what's new when it can.
   useEffect(() => {
-    if (signedIn) {
+    if (inside) {
       void useLibrary.getState().restore();
       void usePlaylists.getState().restore();
       void useDownloads.getState().restore();
     }
+    if (signedIn) useLocalMusic.getState().setAddingServer(false);
     queueRestored.current = false;
-  }, [signedIn]);
+  }, [inside, signedIn]);
 
   // Where playback stopped comes back once the library can say what the songs are.
   useEffect(() => {
-    if (!signedIn || !loaded || queueRestored.current) return;
+    if (!inside || !loaded || queueRestored.current) return;
     queueRestored.current = true;
     // The sync comes after: it decides from what the phone remembers whether another device is newer.
     void usePlayer.getState().restore().then(startSync);
-  }, [signedIn, loaded]);
+  }, [inside, loaded]);
 
   useEffect(() => {
     if (!signedIn) stopSync();
@@ -71,11 +79,12 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="light" />
       <View style={styles.root}>
-        {ready && (signedIn ? <AppNavigation /> : <ConnectScreen />)}
+        {ready && localReady && (inside ? <AppNavigation /> : <ConnectScreen />)}
         <AddToPlaylistSheet />
         <SongMenu />
-        {!!signedIn && <CoverKeeper />}
+        {!!inside && <CoverKeeper />}
         <StatusScrim />
+        <PopupHost />
       </View>
     </SafeAreaProvider>
   );

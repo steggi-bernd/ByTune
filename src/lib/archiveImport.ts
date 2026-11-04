@@ -9,6 +9,7 @@ import type { LocalFolderEntry } from "../../electron/local-library";
 import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
 import { ipcErrorText } from "./ipcError";
+import { T } from "./i18n";
 
 /**
  * Where a bought album may go: the folders the user picked. Not the
@@ -45,20 +46,20 @@ export async function importPurchase(zipPath?: string, at?: { x: number; y: numb
     )
   );
   if (!folders.length) {
-    ui.toast("Add a music folder first — Local Music → Add folders", "info");
+    ui.toast(T("Add a music folder first — Local Music → Add folders"), "info");
     return;
   }
   const name = file.split(/[\\/]/).pop() ?? file;
   const unpack = async (folder: { path: string; name: string }): Promise<void> => {
-    ui.toast(`Unpacking "${name}"…`, "info");
+    ui.toast(T("Unpacking \"{name}\"…", { name }), "info");
     try {
       const res = await bridge.importArchive(file, folder.path);
       const scanned = await bridge.scanLibrary(useSettings.getState().filterNonMusicAudio);
       window.dispatchEvent(new CustomEvent("bytune:local-library-updated", { detail: scanned }));
       const album = res.folder.split(/[\\/]/).pop();
-      ui.toast(`Added ${res.songs} song${res.songs === 1 ? "" : "s"} — "${album}" in ${folder.name}`, "success");
+      ui.toast(T("Added {songs} song{value} — \"{album}\" in {name}", { songs: res.songs, value: res.songs === 1 ? "" : "s", album, name: folder.name }), "success");
     } catch (err) {
-      ui.toast(ipcErrorText(err, "Couldn't import that archive"), "error");
+      ui.toast(ipcErrorText(err, T("Couldn't import that archive")), "error");
     }
   };
   if (folders.length === 1) {
@@ -68,7 +69,7 @@ export async function importPurchase(zipPath?: string, at?: { x: number; y: numb
   ui.openContextMenu(
     at?.x ?? window.innerWidth / 2,
     at?.y ?? window.innerHeight / 3,
-    folders.map((f) => ({ label: `Into "${f.name}"`, icon: FolderOpen, action: () => void unpack(f) }))
+    folders.map((f) => ({ label: T("Into \"{name}\"", { name: f.name }), icon: FolderOpen, action: () => void unpack(f) }))
   );
 }
 
@@ -83,7 +84,7 @@ export function watchArchiveDrops(): () => void {
     e.preventDefault();
     const zips = [...(e.dataTransfer?.files ?? [])].filter((f) => /\.zip$/i.test(f.name));
     if (!zips.length) {
-      useUI.getState().toast("Drop a store's ZIP here to add the album to your library", "info");
+      useUI.getState().toast(T("Drop a store's ZIP here to add the album to your library"), "info");
       return;
     }
     for (const zip of zips) {

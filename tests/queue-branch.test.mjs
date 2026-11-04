@@ -35,6 +35,9 @@ const out = await build({
         b.onLoad({ filter: /[\\/]lib[\\/]downloads\.ts$/ }, () =>
           stub(`export const SERVER_SONG = /^(jf|ss):/; export const downloadForOffline = () => 0; export const startDownload = async () => {};`)
         );
+        // The "Play on" submenu: no devices around in this test.
+        b.onLoad({ filter: /[\\/]lib[\\/]cast\.ts$/ }, () => stub(`export const useCast = { getState: () => ({ devices: [] }) };`));
+        b.onLoad({ filter: /[\\/]lib[\\/]zones\.ts$/ }, () => stub(`export const startZone = async () => "";`));
       },
     },
   ],
@@ -48,7 +51,8 @@ const LIST = { name: "Mixtape", tracks: [t("x1"), t("x2"), t("x3"), t("b")], ind
 
 beforeEach(() => {
   globalThis.__toasts = [];
-  usePlayer.setState({ queue: [t("a"), t("b"), t("c")], index: 0, playing: true, position: 0 });
+  usePlayer.getState().clearUpcoming();
+  usePlayer.setState({ queue: [t("a"), t("b"), t("c")], index: 0, playing: true, position: 0, lineEnd: 0, branches: [] });
 });
 
 test("a song goes in where it is put — never before the playing one", () => {
@@ -101,10 +105,24 @@ test("after a drop, Branch off continues the list behind the dropped song, where
   assert.deepEqual(ids(), before);
 });
 
-test("the menu offers Branch off right under Play next — only when the list goes on", () => {
+test("the menu has one way to queue, Branch off right under it — only when the list goes on", () => {
   const labels = (items) => items.map((i) => i.label);
   const withList = labels(m.trackMenuItems(t("x2"), LIST));
-  assert.equal(withList[withList.indexOf("Play next") + 1], "Branch off into “Mixtape”");
+  assert.equal(withList.includes("Play next"), false);
+  assert.equal(withList[withList.indexOf("Add to queue") + 1], "Branch off into “Mixtape”");
   assert.equal(labels(m.trackMenuItems(t("x2"))).some((l) => l?.startsWith("Branch off")), false);
   assert.equal(labels(m.trackMenuItems(t("b"), { ...LIST, index: 3 })).some((l) => l?.startsWith("Branch off")), false);
+});
+
+test("on the chosen song the menu takes the branch back", () => {
+  const labels = (items) => items.map((i) => i.label);
+  m.branchOff(LIST);
+  const onChosen = m.trackMenuItems(t("x2"), LIST);
+  const undo = onChosen.find((i) => i.label === "Undo branch");
+  assert.ok(undo, "the chosen song offers it");
+  assert.equal(labels(m.trackMenuItems(t("x3"), { ...LIST, index: 2 })).includes("Undo branch"), false, "another song of the list branches from there instead");
+  undo.action();
+  assert.deepEqual(ids(), ["a", "b", "c"]);
+  assert.deepEqual(usePlayer.getState().branches, []);
+  assert.equal(globalThis.__toasts.at(-1), "Branch taken back");
 });

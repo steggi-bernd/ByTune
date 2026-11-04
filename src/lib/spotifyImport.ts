@@ -25,6 +25,7 @@
 import type { Track } from "../types";
 import { foldTag, titleKey } from "./duplicates";
 import { splitCredits } from "./libraryTracks";
+import { T } from "./i18n";
 
 export interface SpotifyEntry {
   title: string;
@@ -315,7 +316,7 @@ export function parsePlaylistExport(text: string, fileName: string): SpotifyPlay
             .slice(0, MAX_ENTRIES)
             .map(fromPlaylistItem)
             .filter((e: SpotifyEntry | null): e is SpotifyEntry => !!e && (!e.uri || (!seen.has(e.uri) && !!seen.add(e.uri))));
-          return { name: (typeof p?.name === "string" && p.name.trim()) || "Untitled playlist", entries };
+          return { name: (typeof p?.name === "string" && p.name.trim()) || T("Untitled playlist"), entries };
         })
         .filter((p: SpotifyPlaylist) => p.entries.length > 0);
       if (!lists.length) throw new Error("No playlist with songs in this file.");

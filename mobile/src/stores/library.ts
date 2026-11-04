@@ -9,7 +9,10 @@ import { artistPhotoUrl, fetchLibrary, isNoAnswer, markPlayed, setFavorite, type
 import { allMixes, buildAlbums, buildArtists, buildGenres, likedInOrder, oneCopyEach, sameSong, songFinder, songIdentity, toWireTrack, type LibAlbum, type LibArtist, type LibGenre, type Mix, type Track, type WireTrack } from "../shared";
 import { readJson, removeJson, writeJson } from "../storage";
 import { useConnection } from "./connection";
+import { localSongs, setServerSongFiles, useLocalMusic } from "./localMusic";
 import { useSession } from "./session";
+import { useSettings } from "./settings";
+import { T } from "../shared";
 
 const FILE = "library.json";
 const LIKED_ORDER_FILE = "liked-order.json";
@@ -49,6 +52,8 @@ interface LibraryState {
   applyMuted(tracks: WireTrack[], at: number): void;
   restore(): Promise<void>;
   refresh(): Promise<void>;
+  /** The folders on this phone changed. */
+  applyLocal(): void;
   setLikedOrder(order: WireTrack[]): void;
   toggleFavorite(track: Track): void;
   notePlayed(track: Track): void;
@@ -72,6 +77,31 @@ function derive(data: ServerLibrary) {
 }
 
 const session = (): Session | null => useSession.getState().session;
+
+/** The server's songs and what only this phone has. A song on both stays one: the server's, playing from the file. */
+function withLocal(data: ServerLibrary): ServerLibrary {
+  const onServer = data.tracks.filter((t) => !t.localPath);
+  const identities = new Map<string, Track[]>();
+  for (const t of onServer) {
+    const key = songIdentity(t);
+    const list = identities.get(key);
+    if (list) list.push(t);
+    else identities.set(key, [t]);
+  }
+  const files = new Map<string, string>();
+  const onlyHere: Track[] = [];
+  for (const local of localSongs()) {
+    const same = identities.get(songIdentity(local))?.filter((t) => sameSong(t, local));
+    if (same?.length) for (const t of same) files.set(t.id, local.localPath as string);
+    else onlyHere.push(local);
+  }
+  setServerSongFiles(files);
+  return { ...data, tracks: [...onServer, ...onlyHere] };
+}
+
+/** What's in the file is the server's copy: the folders are read anew. */
+const forFile = (data: ServerLibrary): ServerLibrary => ({ ...data, tracks: data.tracks.filter((t) => !t.localPath) });
+const isLocalId = (id: string): boolean => id.startsWith("local:");
 
 /** What the server hears next time; its list until then doesn't know yet. */
 function withOutbox(favorites: string[]): string[] {
@@ -104,7 +134,8 @@ async function sendOutbox(s: Session, byId: Map<string, Track>): Promise<void> {
 function keepPlaces(before: string[], listed: string[]): string[] {
   const known = new Set(before);
   const still = new Set(listed);
-  return [...listed.filter((id) => !known.has(id)), ...before.filter((id) => still.has(id))];
+  // The server has never heard of the phone's own files.
+  return [...listed.filter((id) => !known.has(id)), ...before.filter((id) => still.has(id) || isLocalId(id))];
 }
 
 function arranged(data: ServerLibrary, order: WireTrack[]): ServerLibrary {
@@ -153,42 +184,55 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     ]);
     if (likedOrder) set({ likedOrder });
     if (savedOutbox) outbox = savedOutbox;
-    if (saved?.tracks) set({ ...derive(saved), loaded: true });
+    if (saved?.tracks) set({ ...derive(withLocal(saved)), loaded: true });
+    else set(derive(withLocal(EMPTY)));
     if (savedMuted) set({ mutedTracks: savedMuted.tracks, mutedAt: savedMuted.at, muted: mutedIds(savedMuted.tracks, saved?.tracks ?? []) });
     void get().refresh();
   },
 
   async refresh() {
-    if (!session() || get().refreshing) return;
+    if (!session()) {
+      get().applyLocal();
+      set({ loaded: true, error: null });
+      return;
+    }
+    if (get().refreshing) return;
     set({ refreshing: true, error: null });
     try {
       // The address may have moved, or there may be no way to the server at all.
       const reach = await useConnection.getState().check();
       const s = session();
       if (!s || reach === "offline") {
-        set({ refreshing: false, loaded: true, error: "Can't reach your server" });
+        set({ refreshing: false, loaded: true, error: T("Can't reach your server") });
         return;
       }
       await sendOutbox(s, get().byId);
       const listed = await fetchLibrary(s);
-      const data = arranged({ ...listed, favorites: withOutbox(keepPlaces(get().data.favorites, listed.favorites)) }, get().likedOrder);
-      writeJson(FILE, data);
+      // Plays of the phone's own files aren't the server's to know.
+      const counts = { ...listed.counts };
+      for (const [id, count] of Object.entries(get().data.counts)) if (isLocalId(id)) counts[id] = count;
+      const data = arranged(withLocal({ ...listed, counts, favorites: withOutbox(keepPlaces(get().data.favorites, listed.favorites)) }), get().likedOrder);
+      writeJson(FILE, forFile(data));
       set({ ...derive(data), loaded: true, refreshing: false, muted: mutedIds(get().mutedTracks, data.tracks) });
     } catch (err) {
-      set({ refreshing: false, loaded: true, error: err instanceof Error ? err.message : "The library did not load" });
+      set({ refreshing: false, loaded: true, error: err instanceof Error ? err.message : T("The library did not load") });
     }
+  },
+
+  applyLocal() {
+    const data = withLocal(get().data);
+    set({ ...derive(data), muted: mutedIds(get().mutedTracks, data.tracks) });
   },
 
   setLikedOrder(likedOrder) {
     writeJson(LIKED_ORDER_FILE, likedOrder);
     const data = arranged(get().data, likedOrder);
-    writeJson(FILE, data);
+    writeJson(FILE, forFile(data));
     set({ likedOrder, data });
   },
 
   toggleFavorite(track) {
     const s = session();
-    if (!s) return;
     const { data } = get();
     const liked = !data.favorites.includes(track.id);
     // Every copy on the server: the computer counts them as one song.
@@ -198,7 +242,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     // The latest like comes first, as in Liked Songs on the desktop.
     const favorites = liked ? [...copyIds, ...others] : others;
     const next = { ...data, favorites };
-    writeJson(FILE, next);
+    writeJson(FILE, forFile(next));
     set({ data: next, favorites: new Set(favorites) });
     // Changed again before the server heard: the older wish must not come back after a restart.
     if (copies.some((t) => t.id in outbox.likes)) {
@@ -206,6 +250,8 @@ export const useLibrary = create<LibraryState>((set, get) => ({
       writeJson(OUTBOX_FILE, outbox);
     }
     for (const copy of copies) {
+      // The phone's own files have no server to tell.
+      if (!s || copy.localPath) continue;
       void setFavorite(s, copy, liked)
         .then(() => tellLikes?.())
         .catch((err) => {
@@ -247,13 +293,13 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
   notePlayed(track) {
     const s = session();
-    if (!s) return;
     const { data } = get();
     const plays = (data.counts[track.id]?.plays ?? 0) + 1;
     const at = Date.now();
     const next = { ...data, counts: { ...data.counts, [track.id]: { plays, lastAt: at } } };
     set({ data: next });
-    writeJson(FILE, next);
+    writeJson(FILE, forFile(next));
+    if (!s || track.localPath || !useSettings.getState().serverPlays) return;
     void markPlayed(s, track, new Date(at)).catch((err) => {
       if (!isNoAnswer(err)) return;
       outbox.plays.push({ id: track.id, at });
@@ -268,7 +314,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     removeJson(MUTED_FILE);
     outbox = { likes: {}, plays: [] };
     set({ muted: new Set<string>(), mutedTracks: [], mutedAt: 0 });
-    set({ ...derive(EMPTY), likedOrder: [], loaded: false, error: null });
+    set({ ...derive(withLocal(EMPTY)), likedOrder: [], loaded: false, error: null });
   },
 }));
 
@@ -277,6 +323,14 @@ let tellLikes: (() => void) | null = null;
 export function onLikesSent(listener: (() => void) | null): void {
   tellLikes = listener;
 }
+
+// Another folder, a rescan, or the filter for what's music.
+useLocalMusic.subscribe((s, prev) => {
+  if (s.files !== prev.files) useLibrary.getState().applyLocal();
+});
+useSettings.subscribe((s, prev) => {
+  if (s.filterNonMusic !== prev.filterNonMusic) useLibrary.getState().applyLocal();
+});
 
 // Back within reach: what changed in the meantime.
 useConnection.subscribe((s, prev) => {

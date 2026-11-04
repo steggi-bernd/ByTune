@@ -21,14 +21,15 @@ import type { HomeSection } from "../lib/recs/sections";
 import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI } from "../stores/ui";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 function greeting(): string {
   const h = new Date().getHours();
-  if (h < 5) return "Up late?";
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  if (h < 22) return "Good evening";
-  return "Good night";
+  if (h < 5) return T("Up late?");
+  if (h < 12) return T("Good morning");
+  if (h < 17) return T("Good afternoon");
+  if (h < 22) return T("Good evening");
+  return T("Good night");
 }
 
 /** Quick-resume tiles — the compact 2×3 grid straight from history. Hovering
@@ -171,7 +172,7 @@ export function HomeView() {
           <h1 className="font-display text-[34px] font-extrabold tracking-[-0.03em] text-ink-hi leading-tight">
             {greeting()}
           </h1>
-          <p className="text-[14px] text-ink-dim mt-1">What do you feel like listening to?</p>
+          <p className="text-[14px] text-ink-dim mt-1">{T("What do you feel like listening to?")}</p>
         </div>
 
         {sections.map((section) => (

@@ -60,7 +60,9 @@ import { ArtistLinks } from "./ArtistLinks";
 import { describePlayback, formatLine } from "../lib/playbackFormat";
 import { useHomeSync } from "../lib/homeSync";
 import { useCast, useVolumeTarget } from "../lib/cast";
+import { useDeviceNames } from "../stores/deviceNames";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 const SOURCE_NAME = { local: "a file on this device", jellyfin: "Jellyfin", subsonic: "Navidrome" } as const;
 
@@ -76,12 +78,12 @@ function PlaybackFormatLine({ track }: { track: Track }) {
   const version = listed ?? playingFrom;
   const format = describePlayback(version);
   if (!format) return null;
-  const tier = format.hiRes ? "Hi-Res" : format.lossless ? "Lossless" : "Lossy";
+  const tier = format.hiRes ? "Hi-Res" : format.lossless ? T("Lossless") : T("Lossy");
   const line = formatLine(format);
   const from = SOURCE_NAME[sourceOf(version) ?? "local"];
   const details = [
-    `${format.hiRes ? "Hi-Res lossless" : format.lossless ? "Lossless" : "Lossy"} · ${line}`,
-    `Playing from ${from}`,
+    `${format.hiRes ? T("Hi-Res lossless") : format.lossless ? T("Lossless") : T("Lossy")} · ${line}`,
+    T("Playing from {from}", { from }),
     format.note ? `${format.note.charAt(0).toUpperCase()}${format.note.slice(1)}` : null,
   ]
     .filter(Boolean)
@@ -125,8 +127,8 @@ function TrackMeta({ track }: { track: Track | null }) {
   if (!track) {
     return (
       <div className="ml-2.5 min-w-0">
-        <span className="block truncate text-[14px] leading-[19px] text-white">Nothing playing</span>
-        <span className="block truncate text-[12px] leading-[17px] text-[#b3b3b3]">Search for something to play</span>
+        <span className="block truncate text-[14px] leading-[19px] text-white">{T("Nothing playing")}</span>
+        <span className="block truncate text-[12px] leading-[17px] text-[#b3b3b3]">{T("Search for something to play")}</span>
       </div>
     );
   }
@@ -138,7 +140,7 @@ function TrackMeta({ track }: { track: Track | null }) {
         {album ? (
           <span
             {...linkProps(() => navigate({ name: "album", param: album }))}
-            title={track.album ? `Go to ${track.album}` : undefined}
+            title={track.album ? T("Go to {album}", { album: track.album }) : undefined}
             className="cursor-pointer hover:underline"
           >
             {track.title}
@@ -218,13 +220,23 @@ function BarButton({
   );
 }
 
+/** Where the music is, by the names you gave your devices: "Kitchen + Patio". */
+function useCastingLabel(): string | undefined {
+  const active = useCast((s) => s.active);
+  const members = useCast((s) => s.members);
+  const names = useDeviceNames((s) => s.names);
+  if (!active) return undefined;
+  return (members.length > 1 ? members : [active]).map((d) => names[d.id] ?? d.name).join(" + ");
+}
+
 /** Opens the devices: where the music plays, here or anywhere else. */
 function DevicesButton() {
   const active = useCast((s) => s.active);
   const connecting = useCast((s) => s.connecting);
   const followed = useHomeSync((s) => s.followed);
   const open = useUI((s) => s.rightPanel === "devices");
-  const elsewhere = active?.name ?? followed?.name;
+  const castingLabel = useCastingLabel();
+  const elsewhere = castingLabel ?? followed?.name;
   return (
     <button
       onPointerDown={(e) => e.stopPropagation()}
@@ -232,8 +244,8 @@ function DevicesButton() {
         e.stopPropagation();
         useUI.setState({ rightPanel: open ? "details" : "devices" });
       }}
-      title={elsewhere ? `Playing on ${elsewhere}` : "Devices"}
-      aria-label={elsewhere ? `Playing on ${elsewhere}` : "Devices"}
+      title={elsewhere ? T("Playing on {elsewhere}", { elsewhere }) : T("Devices")}
+      aria-label={elsewhere ? T("Playing on {elsewhere}", { elsewhere }) : T("Devices")}
       aria-pressed={open}
       className={`relative grid h-8 w-8 place-items-center rounded-full transition-colors ${
         elsewhere || open ? "text-accent" : "text-white/70 hover:text-white"
@@ -259,6 +271,7 @@ export function PlayerBar() {
   // While a network player has the music, its volume (lib/cast.ts).
   const { value: volume, muted } = useVolumeTarget();
   const castingTo = useCast((s) => s.active);
+  const castingLabel = useCastingLabel();
   const followed = useHomeSync((s) => s.followed);
 
   const liked = useLibrary((s) => (track ? s.liked.some((t) => t.id === track.id) : false));
@@ -282,44 +295,44 @@ export function PlayerBar() {
     const lib = useLibrary.getState();
     const items: MenuItem[] = [
       {
-        label: liked ? "Remove from Liked Songs" : "Add to Liked Songs",
+        label: liked ? T("Remove from Liked Songs") : T("Add to Liked Songs"),
         icon: Heart,
         action: () => lib.toggleLike(track),
       },
       {
-        label: "Add to playlist",
+        label: T("Add to playlist"),
         icon: ListMusic,
         children: [
           ...lib.playlists.map((p) => {
             const inList = p.tracks.some((t) => t.id === track.id);
             return {
               icon: inList ? Check : undefined,
-              label: inList ? `Remove from "${p.name}"` : `Add to "${p.name}"`,
+              label: inList ? T("Remove from \"{name}\"", { name: p.name }) : T("Add to \"{name}\"", { name: p.name }),
               action: () => {
                 if (inList) {
                   useLibrary.getState().removeFromPlaylist(p.id, track.id);
-                  useUI.getState().toast(`Removed from "${p.name}"`);
+                  useUI.getState().toast(T("Removed from \"{name}\"", { name: p.name }));
                 } else {
                   const added = useLibrary.getState().addToPlaylist(p.id, track);
-                  useUI.getState().toast(added ? `Added to "${p.name}"` : "Already in this playlist");
+                  useUI.getState().toast(added ? T("Added to \"{name}\"", { name: p.name }) : T("Already in this playlist"));
                 }
               },
             };
           }),
           {
             separatorBefore: lib.playlists.length > 0,
-            label: "New playlist",
+            label: T("New playlist"),
             icon: ListPlus,
             action: () => {
               // Name it before it exists — cancel adds nothing. Blank
               // confirm keeps the numbered default.
               const suggested = `Playlist ${useLibrary.getState().playlists.length + 1}`;
               useUI.getState().openDialog({
-                title: "New playlist",
-                body: `Add "${track.title}" to a new playlist.`,
+                title: T("New playlist"),
+                body: T("Add \"{title}\" to a new playlist.", { title: track.title }),
                 initialValue: suggested,
-                placeholder: "Playlist name",
-                confirmLabel: "Create",
+                placeholder: T("Playlist name"),
+                confirmLabel: T("Create"),
                 onConfirm: (value) => {
                   const fresh = useLibrary.getState();
                   const playlist = fresh.createPlaylist(value.trim() || suggested);
@@ -367,15 +380,15 @@ export function PlayerBar() {
       <div
         className="h-[88px] grid grid-cols-[3fr_4fr_3fr] items-center"
         role="contentinfo"
-        aria-label="Now playing bar"
+        aria-label={T("Now playing bar")}
       >
         {/* Track info — click opens the Now Playing view. */}
         <div className="flex items-center min-w-0 pl-2">
           <button
             onClick={toggleNowPlaying}
             {...(track ? coverDrag.props : {})}
-            title="Now playing view — drag to a playlist to add this song"
-            aria-label="Now playing view"
+            title={T("Now playing view — drag to a playlist to add this song")}
+            aria-label={T("Now playing view")}
             className={`h-14 w-14 shrink-0 overflow-hidden rounded-[4px] bg-[#282828] focus:outline-none ${
               track && coverDrag.dragging ? "opacity-50" : ""
             }`}
@@ -409,8 +422,8 @@ export function PlayerBar() {
                 e.stopPropagation();
                 openAddToPlaylist();
               }}
-              title="Add to playlist"
-              aria-label="Add to playlist"
+              title={T("Add to playlist")}
+              aria-label={T("Add to playlist")}
               aria-haspopup="menu"
               className="ml-4 flex h-8 w-4 shrink-0 items-center justify-center text-[#b3b3b3] transition-all hover:scale-105 hover:text-white active:scale-95"
             >
@@ -425,17 +438,17 @@ export function PlayerBar() {
         <div className="flex h-14 flex-col justify-center gap-2">
           <div className="flex w-full items-center gap-4">
             <div className="flex flex-1 items-center justify-end gap-2">
-              <TransportButton onClick={toggleShuffle} active={shuffle} title={shuffle ? "Disable Shuffle" : "Enable Shuffle"}>
+              <TransportButton onClick={toggleShuffle} active={shuffle} title={shuffle ? T("Disable Shuffle") : T("Enable Shuffle")}>
                 <SpShuffle />
               </TransportButton>
-              <TransportButton onClick={() => prev()} title="Previous">
+              <TransportButton onClick={() => prev()} title={T("Previous")}>
                 <SpPrev />
               </TransportButton>
             </div>
             <button
               onClick={toggle}
-              title={playing ? "Pause" : "Play"}
-              aria-label={playing ? "Pause" : "Play"}
+              title={playing ? T("Pause") : T("Play")}
+              aria-label={playing ? T("Pause") : T("Play")}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-black transition-transform hover:scale-[1.06] active:scale-95"
             >
               {buffering ? (
@@ -447,13 +460,13 @@ export function PlayerBar() {
               )}
             </button>
             <div className="flex flex-1 items-center gap-2">
-              <TransportButton onClick={() => next(true)} title="Next">
+              <TransportButton onClick={() => next(true)} title={T("Next")}>
                 <SpNext />
               </TransportButton>
               <TransportButton
                 onClick={cycleRepeat}
                 active={repeat !== "off"}
-                title={repeat === "off" ? "Enable repeat" : repeat === "all" ? "Disable repeat" : "Enable repeat one"}
+                title={repeat === "off" ? T("Enable repeat") : repeat === "all" ? T("Disable repeat") : T("Enable repeat one")}
               >
                 {repeat === "one" ? <SpRepeatOne /> : <SpRepeat />}
               </TransportButton>
@@ -464,10 +477,10 @@ export function PlayerBar() {
 
         {/* Right — lyrics, queue, volume, miniplayer, fullscreen. */}
         <div className="flex items-center justify-end">
-          <BarButton onClick={toggleLyrics} title="Lyrics" active={lyricsCenter}>
+          <BarButton onClick={toggleLyrics} title={T("Lyrics")} active={lyricsCenter}>
             <SpLyrics />
           </BarButton>
-          <BarButton onClick={toggleQueue} title="Queue" active={rightPanel === "queue"}>
+          <BarButton onClick={toggleQueue} title={T("Queue")} active={rightPanel === "queue"}>
             <SpQueue />
           </BarButton>
           <DevicesButton />
@@ -475,14 +488,14 @@ export function PlayerBar() {
           <BarButton
             onClick={toggleMiniPlayer}
             active={pipOpen}
-            title={pipOpen ? "Close Miniplayer" : "Open Miniplayer"}
+            title={pipOpen ? T("Close Miniplayer") : T("Open Miniplayer")}
             className="ml-2"
           >
             <SpMiniplayer />
           </BarButton>
           <BarButton
             onClick={toggleNowPlaying}
-            title={nowPlayingOpen ? "Exit Full screen" : "Enter Full screen"}
+            title={nowPlayingOpen ? T("Exit Full screen") : T("Enter Full screen")}
           >
             {nowPlayingOpen ? <SpExitFullscreen /> : <SpFullscreen />}
           </BarButton>
@@ -490,14 +503,12 @@ export function PlayerBar() {
       </div>
       {followed && !castingTo && (
         <div className="-mx-2 flex h-6 items-center justify-end gap-1.5 bg-primary px-4 text-[12px] font-semibold text-on-primary">
-          <Smartphone className="h-3.5 w-3.5" />
-          Playing on {followed.name}
+          <Smartphone className="h-3.5 w-3.5" />{T("Playing on {name}", { name: followed.name })}
         </div>
       )}
       {castingTo && (
         <div className="-mx-2 flex h-6 items-center justify-end gap-1.5 bg-primary px-4 text-[12px] font-semibold text-on-primary">
-          <Speaker className="h-3.5 w-3.5" />
-          Playing on {castingTo.name}
+          <Speaker className="h-3.5 w-3.5" />{T("Playing on {castingLabel}", { castingLabel })}
         </div>
       )}
     </footer>

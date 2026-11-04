@@ -19,14 +19,15 @@ import { usePlayer } from "../stores/player";
 import { useRecents } from "../stores/recents";
 import { tintHoverHandlers, useUI } from "../stores/ui";
 import type { BrowseItem, SearchFilter, SearchPageResult, SearchRow, Track } from "../types";
+import { T } from "../lib/i18n";
 
 const FILTERS: { key: SearchFilter; label: string; icon: LucideIcon }[] = [
-  { key: "all", label: "All", icon: LayoutGrid },
-  { key: "songs", label: "Songs", icon: Music2 },
-  { key: "videos", label: "Videos", icon: Play },
-  { key: "albums", label: "Albums", icon: Disc3 },
-  { key: "artists", label: "Artists", icon: User },
-  { key: "playlists", label: "Playlists", icon: ListMusic },
+  { key: "all", label: T("All"), icon: LayoutGrid },
+  { key: "songs", label: T("Songs"), icon: Music2 },
+  { key: "videos", label: T("Videos"), icon: Play },
+  { key: "albums", label: T("Albums"), icon: Disc3 },
+  { key: "artists", label: T("Artists"), icon: User },
+  { key: "playlists", label: T("Playlists"), icon: ListMusic },
 ];
 
 /** The All tab's mixed page, grouped the way the mobile app groups it. */
@@ -38,11 +39,11 @@ interface SearchSection {
 function searchSections(rows: SearchRow[], filter: SearchFilter): SearchSection[] {
   if (filter !== "all") return [{ title: "", rows }];
   const sections: SearchSection[] = [
-    { title: "Songs", rows: rows.filter((r) => r.kind === "track") },
-    { title: "Artists", rows: rows.filter((r) => r.kind === "browse" && r.item.type === "artist") },
-    { title: "Albums", rows: rows.filter((r) => r.kind === "browse" && r.item.type === "album") },
-    { title: "Playlists", rows: rows.filter((r) => r.kind === "browse" && r.item.type === "playlist") },
-    { title: "More", rows: rows.filter((r) => r.kind === "browse" && r.item.type === "other") },
+    { title: T("Songs"), rows: rows.filter((r) => r.kind === "track") },
+    { title: T("Artists"), rows: rows.filter((r) => r.kind === "browse" && r.item.type === "artist") },
+    { title: T("Albums"), rows: rows.filter((r) => r.kind === "browse" && r.item.type === "album") },
+    { title: T("Playlists"), rows: rows.filter((r) => r.kind === "browse" && r.item.type === "playlist") },
+    { title: T("More"), rows: rows.filter((r) => r.kind === "browse" && r.item.type === "other") },
   ];
   return sections.filter((section) => section.rows.length > 0);
 }
@@ -91,8 +92,8 @@ function SongSearchRow({ song, onPlay }: { song: Track; onPlay: () => void }) {
           e.stopPropagation();
           openMenu(e.clientX, e.clientY);
         }}
-        title="More options"
-        aria-label={`More options for ${song.title}`}
+        title={T("More options")}
+        aria-label={T("More options for {title}", { title: song.title })}
         className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
       >
         <MoreVertical className="w-4 h-4" />
@@ -102,10 +103,10 @@ function SongSearchRow({ song, onPlay }: { song: Track; onPlay: () => void }) {
 }
 
 const TYPE_LABEL: Record<string, string> = {
-  album: "Album",
-  artist: "Artist",
-  playlist: "Playlist",
-  other: "More",
+  album: T("Album"),
+  artist: T("Artist"),
+  playlist: T("Playlist"),
+  other: T("More"),
 };
 
 function BrowseSearchRow({ item }: { item: BrowseItem }) {
@@ -135,7 +136,7 @@ function BrowseSearchRow({ item }: { item: BrowseItem }) {
     } else {
       // Profiles and podcasts open their page on the phone; the desktop only
       // browses music pages, so say so rather than dead-click.
-      toast("This result isn't browsable on Songsta desktop", "info");
+      toast(T("This result isn't browsable on Songsta desktop"), "info");
     }
   };
 
@@ -144,7 +145,7 @@ function BrowseSearchRow({ item }: { item: BrowseItem }) {
       {...tintHoverHandlers(item.thumb)}
       onClick={onOpen}
       {...(draggableItem ? drag.props : {})}
-      title={isPlaylist ? "Drag into Your Library to import this playlist" : isArtist ? "Drag into Your Library to import this artist's top songs" : isAlbum ? "Drag into Your Library to import this album" : undefined}
+      title={isPlaylist ? T("Drag into Your Library to import this playlist") : isArtist ? T("Drag into Your Library to import this artist's top songs") : isAlbum ? T("Drag into Your Library to import this album") : undefined}
       className={`flex items-center gap-3.5 h-[68px] px-3 rounded-lg cursor-pointer select-none hover:bg-ink-hi/[0.05] ${
         drag.dragging ? "opacity-40" : ""
       }`}
@@ -172,7 +173,7 @@ function TopResultCard({ song, onPlay }: { song: Track; onPlay: () => void }) {
   const drag = useDrag({ track: song });
   return (
     <section className="animate-slide-up">
-      <h2 className="section-title text-[21px] mb-4">Top result</h2>
+      <h2 className="section-title text-[21px] mb-4">{T("Top result")}</h2>
       <div
         {...tintHoverHandlers(song.thumb)}
         {...drag.props}
@@ -194,8 +195,8 @@ function TopResultCard({ song, onPlay }: { song: Track; onPlay: () => void }) {
           <div className="text-[13.5px] text-ink-dim truncate mt-1">{song.artist}</div>
         </div>
         <button
-          title="More options"
-          aria-label="More options"
+          title={T("More options")}
+          aria-label={T("More options")}
           onClick={(e) => {
             e.stopPropagation();
             openContextMenu(e.clientX, e.clientY, trackMenuItems(song));
@@ -210,16 +211,12 @@ function TopResultCard({ song, onPlay }: { song: Track; onPlay: () => void }) {
           onClick={onPlay}
           className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-ink-hi/25 text-[13.5px] font-semibold text-ink-hi hover:border-ink-hi/50 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
         >
-          <Play className="w-4 h-4 fill-current" />
-          Play
-        </button>
+          <Play className="w-4 h-4 fill-current" />{T("Play")}</button>
         <button
           onClick={() => navigate({ name: "playlists" })}
           className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-ink-hi/25 text-[13.5px] font-semibold text-ink-hi hover:border-ink-hi/50 hover:bg-ink-hi/[0.06] transition-all active:scale-[0.98]"
         >
-          <ListPlus className="w-4 h-4" />
-          Playlist
-        </button>
+          <ListPlus className="w-4 h-4" />{T("Playlist")}</button>
       </div>
     </section>
   );
@@ -240,21 +237,19 @@ function RecentSearches() {
   return (
     <section className="animate-slide-up">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="section-title text-[21px]">Recent searches</h2>
-        <button onClick={clearSearches} className="text-xs text-ink-faint hover:text-ink transition-colors">
-          Clear all
-        </button>
+        <h2 className="section-title text-[21px]">{T("Recent searches")}</h2>
+        <button onClick={clearSearches} className="text-xs text-ink-faint hover:text-ink transition-colors">{T("Clear all")}</button>
       </div>
       <div className="flex flex-wrap gap-2">
         {recents.map((q) => (
           <span key={q} className="group flex items-center gap-1 pl-3.5 pr-1.5 py-1.5 rounded-full glass text-[13px] text-ink">
-            <button className="hover:text-ink-hi transition-colors" onClick={() => setQuery(q)} title={`Search "${q}"`}>
+            <button className="hover:text-ink-hi transition-colors" onClick={() => setQuery(q)} title={T("Search \"{q}\"", { q })}>
               {q}
             </button>
             <button
               onClick={() => removeSearch(q)}
-              title="Remove"
-              aria-label={`Remove "${q}" from recent searches`}
+              title={T("Remove")}
+              aria-label={T("Remove \"{q}\" from recent searches", { q })}
               className="p-1 rounded-full text-ink-ghost hover:text-ink-hi hover:bg-ink-hi/10 opacity-60 group-hover:opacity-100 transition-all"
             >
               <X className="w-3 h-3" />
@@ -381,10 +376,8 @@ export function SearchView() {
         <RecentSearches />
         <div className="flex flex-col items-center text-center py-16">
           <SearchX className="w-10 h-10 text-ink-ghost mb-4" />
-          <div className="text-[15px] font-semibold text-ink-hi">Search Songsta</div>
-          <p className="text-[13px] text-ink-dim mt-1.5 max-w-sm leading-relaxed">
-            Find songs, albums, artists and playlists from YouTube Music. Press {isMac ? "⌘F" : "Ctrl+F"} anywhere to jump into search.
-          </p>
+          <div className="text-[15px] font-semibold text-ink-hi">{T("Search Songsta")}</div>
+          <p className="text-[13px] text-ink-dim mt-1.5 max-w-sm leading-relaxed">{T("Find songs, albums, artists and playlists from YouTube Music. Press {value} anywhere to jump into search.", { value: isMac ? "⌘F" : T("Ctrl+F") })}</p>
         </div>
       </div>
     );
@@ -416,7 +409,7 @@ export function SearchView() {
           {loading && (
             <span
               className="ml-1 w-4 h-4 shrink-0 rounded-full border-2 border-ink-hi/15 border-t-accent animate-spin"
-              aria-label="Loading"
+              aria-label={T("Loading")}
             />
           )}
         </div>
@@ -424,8 +417,8 @@ export function SearchView() {
 
       {error && (
         <ErrorState
-          title="Search didn't go through"
-          body="This is usually a connection hiccup. Give it another try."
+          title={T("Search didn't go through")}
+          body={T("This is usually a connection hiccup. Give it another try.")}
           onRetry={() => setRetryNonce((n) => n + 1)}
         />
       )}
@@ -435,8 +428,8 @@ export function SearchView() {
       {!error && !loading && rows.length === 0 && (
         <div className="flex flex-col items-center text-center py-16 animate-fade-in">
           <SearchX className="w-10 h-10 text-ink-ghost mb-4" />
-          <div className="text-[15px] font-semibold text-ink-hi">No results for “{trimmed}”</div>
-          <p className="text-[13px] text-ink-dim mt-1.5">Check the spelling, or try a different keyword.</p>
+          <div className="text-[15px] font-semibold text-ink-hi">{T("No results for “{trimmed}”", { trimmed })}</div>
+          <p className="text-[13px] text-ink-dim mt-1.5">{T("Check the spelling, or try a different keyword.")}</p>
         </div>
       )}
 

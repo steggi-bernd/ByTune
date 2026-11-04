@@ -15,6 +15,7 @@ import { readJson, writeJson } from "../storage";
 import { useConnection } from "./connection";
 import { useLibrary } from "./library";
 import { here, useSession } from "./session";
+import { T } from "../shared";
 
 const FILE = "downloads.json";
 /** Handed over at a time: the native side works through them while timers here stand still in the background. */
@@ -105,6 +106,8 @@ export const useDownloads = create<DownloadsState>((set, get) => ({
     const { kept, loading } = get();
     const next = { ...loading };
     for (const t of tracks) {
+      // Already on the phone, in a folder.
+      if (t.localPath) continue;
       if (kept[t.id] || (next[t.id] && !next[t.id].failed)) continue;
       next[t.id] = { job: null, fileName: "", compact: false, tries: 0, wantsWifi: false, failed: false };
     }
@@ -244,7 +247,7 @@ async function handOver(): Promise<void> {
       patch(id, { job, fileName: plan.fileName, compact: plan.compact });
       running += 1;
     } catch (err) {
-      useDownloads.setState({ lastProblem: err instanceof Error ? err.message : "The download didn't start" });
+      useDownloads.setState({ lastProblem: err instanceof Error ? err.message : T("The download didn't start") });
       retry(id, song);
     }
   }
@@ -272,7 +275,7 @@ async function follow(): Promise<void> {
         void Player.downloadCancel(song.job);
         patch(id, { job: null, wantsWifi: false });
       } else if (row.status === "failed") {
-        useDownloads.setState({ lastProblem: row.problem || "The download stopped" });
+        useDownloads.setState({ lastProblem: row.problem || T("The download stopped") });
         retry(id, song);
       }
       else if (row.status === "done") await finished(id, song);

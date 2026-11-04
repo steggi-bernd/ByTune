@@ -8,6 +8,7 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -42,6 +43,8 @@ object PlaybackAuth {
   @Volatile var addresses: List<String> = emptyList()
   @Volatile var headers: Map<String, String> = emptyMap()
 }
+
+private const val FADE_TICK_MS = 100L
 
 /** What the sound is going through, for a look when something sounds off. */
 object AudioInfo {
@@ -83,6 +86,19 @@ private class SongRenderers(context: Context) : DefaultRenderersFactory(context)
 
 const val GAIN_EXTRA = "gainDb"
 
+/** What Settings asks of the sound; the service takes it whenever it runs. */
+@UnstableApi
+object PlaybackTuning {
+  @Volatile var skipSilence = false
+  @Volatile var speed = 1f
+  @Volatile var fadeSeconds = 0
+  @Volatile var seamless = true
+  @Volatile var eqOn = false
+  @Volatile var eqBands = IntArray(0)
+  @Volatile var eqGains = FloatArray(0)
+  @Volatile var service: PlaybackService? = null
+}
+
 /**
  * Plays the queue: one ExoPlayer in a media session, so it keeps going in the
  * background and answers the lock screen, the notification and headset
@@ -91,6 +107,61 @@ const val GAIN_EXTRA = "gainDb"
 @UnstableApi
 class PlaybackService : MediaSessionService() {
   private var session: MediaSession? = null
+  private var exo: ExoPlayer? = null
+  private var equalizer: SoundEqualizer? = null
+  private val main = Handler(Looper.getMainLooper())
+  /** the song's own level, from its leveling gain; a fade works on top of it */
+  private var songVolume = 1f
+  /** this song came in by a fade */
+  private var fadeIn = false
+  /** the album of the song that's playing, to tell if the next one runs straight on */
+  private var playingAlbum: String? = null
+
+  /** Ten times a second: near a song's end the volume goes down, at the next one's start up again. */
+  private val fadeTick = object : Runnable {
+    override fun run() {
+      val player = exo ?: return
+      val fade = PlaybackTuning.fadeSeconds * 1000L
+      if (fade <= 0L) {
+        player.volume = songVolume
+        return
+      }
+      var part = 1f
+      if (player.isPlaying) {
+        val at = player.currentPosition
+        val left = player.duration - at
+        if (player.duration != C.TIME_UNSET && left < fade && fadesIntoNext(player)) part = left.toFloat() / fade
+        if (fadeIn && at < fade) part = minOf(part, at.toFloat() / fade)
+      }
+      player.volume = songVolume * part.coerceIn(0f, 1f)
+      main.postDelayed(this, FADE_TICK_MS)
+    }
+  }
+
+  /** Something comes after it, and it isn't the next song of the same album, which should run on. */
+  private fun fadesIntoNext(player: Player): Boolean {
+    if (!player.hasNextMediaItem() || player.repeatMode == Player.REPEAT_MODE_ONE) return false
+    return !runsOn(player.mediaMetadata.albumTitle?.toString(), player.getMediaItemAt(player.nextMediaItemIndex).mediaMetadata.albumTitle?.toString())
+  }
+
+  /** The next song of the same album, which plays without a break. */
+  private fun runsOn(album: String?, next: String?): Boolean = PlaybackTuning.seamless && !album.isNullOrEmpty() && album == next
+
+  /** What Settings says now. */
+  fun applyTuning() {
+    val player = exo ?: return
+    player.skipSilenceEnabled = PlaybackTuning.skipSilence
+    player.setPlaybackSpeed(PlaybackTuning.speed)
+    equalizer?.apply(player.audioSessionId)
+    main.removeCallbacks(fadeTick)
+    if (PlaybackTuning.fadeSeconds > 0) main.post(fadeTick) else player.volume = songVolume
+  }
+
+  /** The playing song's level, from the leveling setting. */
+  fun setSongVolume(volume: Float) {
+    songVolume = volume
+    if (PlaybackTuning.fadeSeconds <= 0) exo?.volume = volume
+  }
 
   override fun onCreate() {
     super.onCreate()
@@ -124,9 +195,24 @@ class PlaybackService : MediaSessionService() {
       .setHandleAudioBecomingNoisy(true)
       .setWakeMode(C.WAKE_MODE_NETWORK)
       .build()
+    exo = player
+    equalizer = SoundEqualizer()
+    PlaybackTuning.service = this
     player.addListener(object : Player.Listener {
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         applyGain(player, mediaItem)
+        val album = mediaItem?.mediaMetadata?.albumTitle?.toString()
+        fadeIn = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && PlaybackTuning.fadeSeconds > 0 && !runsOn(playingAlbum, album)
+        playingAlbum = album
+      }
+
+      override fun onAudioSessionIdChanged(audioSessionId: Int) {
+        equalizer?.apply(audioSessionId)
+      }
+
+      override fun onIsPlayingChanged(isPlaying: Boolean) {
+        main.removeCallbacks(fadeTick)
+        if (isPlaying && PlaybackTuning.fadeSeconds > 0) main.post(fadeTick)
       }
 
       override fun onIsLoadingChanged(isLoading: Boolean) {
@@ -157,6 +243,7 @@ class PlaybackService : MediaSessionService() {
     val builder = MediaSession.Builder(this, player).setCallback(SessionCallback())
     if (open != null) builder.setSessionActivity(open)
     session = builder.build()
+    applyTuning()
     // The app's mark in the status bar and on the media notification, not Media3's own.
     setMediaNotificationProvider(
       DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.notification_mark) }
@@ -167,7 +254,8 @@ class PlaybackService : MediaSessionService() {
   private fun applyGain(player: Player, item: MediaItem?) {
     val extras = item?.mediaMetadata?.extras
     val gain = if (extras?.containsKey(GAIN_EXTRA) == true) extras.getDouble(GAIN_EXTRA) else 0.0
-    player.volume = min(1.0, 10.0.pow(gain / 20.0)).toFloat()
+    songVolume = min(1.0, 10.0.pow(gain / 20.0)).toFloat()
+    if (PlaybackTuning.fadeSeconds <= 0) player.volume = songVolume
   }
 
   /** A controller's items carry their address in the request metadata; the player needs it as the URI. */
@@ -193,6 +281,11 @@ class PlaybackService : MediaSessionService() {
   }
 
   override fun onDestroy() {
+    main.removeCallbacks(fadeTick)
+    equalizer?.release()
+    equalizer = null
+    if (PlaybackTuning.service === this) PlaybackTuning.service = null
+    exo = null
     session?.run {
       player.release()
       release()

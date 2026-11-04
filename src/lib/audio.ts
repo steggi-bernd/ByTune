@@ -39,6 +39,7 @@
  */
 import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
+import { placeOf } from "./queueSections";
 import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
 import { isEarlyExit, useListening } from "../stores/listening";
@@ -61,6 +62,7 @@ import {
   type OutputDeviceChoice,
   type OutputSnapshot,
 } from "./audio-output";
+import { T } from "./i18n";
 
 let elements: [HTMLAudioElement, HTMLAudioElement] | null = null;
 /** which element is the session player right now */
@@ -699,7 +701,7 @@ function seamlessNext(): boolean {
   const state = usePlayer.getState();
   const cur = state.queue[state.index];
   const next = state.queue[state.index + 1];
-  if (!useSettings.getState().seamlessAlbums || !cur || !next || state.shuffle || state.repeat === "one") return false;
+  if (!useSettings.getState().seamlessAlbums || !cur || !next || state.repeat === "one") return false;
   return runsOn(cur, next, { cur: soundOf(cur), next: soundOf(next) });
 }
 
@@ -709,7 +711,6 @@ function maybeArmTransition(): void {
   const fadeMs = gapless ? GAPLESS_MS : fadeMsForNext();
   if (!gapless && fadeMs < 500) return;
   const state = usePlayer.getState();
-  if (state.shuffle) return; // random next can't be pre-picked
   if (state.repeat === "one") return;
   if (!state.queue.length || state.index >= state.queue.length - 1) return;
   const a = el();
@@ -807,7 +808,7 @@ async function beginFade(nextTrack: Track, fadeMs: number): Promise<void> {
       pausedAt: null,
     };
     if (plan.smart) {
-      useUI.getState().toast(`Automix: ${plan.reason}`, "info");
+      useUI.getState().toast(T("Automix: {reason}", { reason: plan.reason }), "info");
     }
     try {
       void stand.play();
@@ -885,7 +886,7 @@ function completeTransition(reason: "blend-complete" | "outgoing-ended" | "incom
   stopFadeTimer();
   try {
     const state = usePlayer.getState();
-    const ni = state.queue.findIndex((t) => t.id === f.toId);
+    const ni = placeOf(state.queue, f.toId, state.index, 1);
     if (ni < 0) {
       // The incoming track left the queue mid-blend (it was removed, or the
       // queue was truncated). Nothing owns that deck any more, so stop it —
@@ -1669,18 +1670,18 @@ function handleFailure(track: Track, err?: unknown): void {
   const ext = (track.localPath?.split(".").pop() ?? "").toUpperCase();
   const localGoneMsg =
     reason === "ffmpeg-missing"
-      ? `"${track.title}" is a ${ext} file — playing it needs FFmpeg. Install it (for example with "winget install ffmpeg"), then play it again.`
+      ? T('"{title}" is a {ext} file — playing it needs FFmpeg. Install it (for example with "winget install ffmpeg"), then play it again.', { title: track.title, ext })
       : reason === "transcode-failed"
-        ? `Couldn't convert "${track.title}" for playback — the file may be damaged.`
-        : `Couldn't play "${track.title}" — its local file can't be reached on this device. Re-add the folder in Local Music to relink your songs.`;
-  const unreachableMsg = `"${track.title}" can't be reached right now — its drive or server is away.`;
+        ? T('Couldn\'t convert "{title}" for playback — the file may be damaged.', { title: track.title })
+        : T('Couldn\'t play "{title}" — its local file can\'t be reached on this device. Re-add the folder in Local Music to relink your songs.', { title: track.title });
+  const unreachableMsg = T('"{title}" can\'t be reached right now — its drive or server is away.', { title: track.title });
   if (state.playing && consecutiveFailures <= MAX_SKIPS) {
     console.warn(`[bytune] playback failed for ${track.id}`, err);
     if (reason === "unreachable") {
       // One note per streak: a queue full of away songs must not stack toasts.
       if (!unreachableToasted) {
         unreachableToasted = true;
-        useUI.getState().toast(`${unreachableMsg} Skipping what can't play.`, "warning", 6000);
+        useUI.getState().toast(T("{unreachableMsg} Skipping what can't play.", { unreachableMsg }), "warning", 6000);
       }
     } else if (isLocal) {
       // One explainer per failing streak — a whole playlist of unlinked
@@ -1690,11 +1691,11 @@ function handleFailure(track: Track, err?: unknown): void {
         useUI.getState().toast(localGoneMsg, "warning", 7000);
       }
     } else {
-      useUI.getState().toast(`Couldn't play "${track.title}" — skipping`, "error");
+      useUI.getState().toast(T("Couldn't play \"{title}\" — skipping", { title: track.title }), "error");
     }
     state.next(false);
   } else {
-    usePlayer.setState({ playing: false, error: "Playback failed" });
+    usePlayer.setState({ playing: false, error: T("Playback failed") });
     if (reason === "unreachable") {
       unreachableToasted = false;
       useUI.getState().toast(unreachableMsg, "warning", 6000);
@@ -1702,7 +1703,7 @@ function handleFailure(track: Track, err?: unknown): void {
       localMissingToasted = false;
       useUI.getState().toast(localGoneMsg, "warning", 7000);
     } else {
-      useUI.getState().toast(`Couldn't play "${track.title}"`, "error");
+      useUI.getState().toast(T("Couldn't play \"{title}\"", { title: track.title }), "error");
     }
   }
 }

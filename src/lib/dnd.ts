@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Album, Track } from "../types";
 import { upgradeArtwork } from "./artwork";
+import { T } from "./i18n";
 
 export const TRACK_MIME = "application/x-bytune-track";
 export const PLAYLIST_MIME = "application/x-bytune-playlist";
@@ -170,24 +171,24 @@ export function beginTrackDrag(e: React.DragEvent, track: Track): void {
 export function beginPlaylistDrag(e: React.DragEvent, playlist: PlaylistPayload): void {
   e.dataTransfer.effectAllowed = "copy";
   e.dataTransfer.setData(PLAYLIST_MIME, JSON.stringify(playlist));
-  e.dataTransfer.setData("text/plain", `${playlist.title} — Playlist`);
-  composeGhost(e, { thumb: playlist.thumb, title: playlist.title, sub: "Playlist" });
+  e.dataTransfer.setData("text/plain", T("{title} — Playlist", { title: playlist.title }));
+  composeGhost(e, { thumb: playlist.thumb, title: playlist.title, sub: T("Playlist") });
 }
 
 /** Call from a card's onDragStart to make it an artist source. */
 export function beginArtistDrag(e: React.DragEvent, artist: ArtistPayload): void {
   e.dataTransfer.effectAllowed = "copy";
   e.dataTransfer.setData(ARTIST_MIME, JSON.stringify(artist));
-  e.dataTransfer.setData("text/plain", `${artist.name} — Artist`);
-  composeGhost(e, { thumb: artist.thumb, title: artist.name, sub: "Artist" });
+  e.dataTransfer.setData("text/plain", T("{name} — Artist", { name: artist.name }));
+  composeGhost(e, { thumb: artist.thumb, title: artist.name, sub: T("Artist") });
 }
 
 /** Call from a card's onDragStart to make it an album source. */
 export function beginAlbumDrag(e: React.DragEvent, album: AlbumPayload): void {
   e.dataTransfer.effectAllowed = "copy";
   e.dataTransfer.setData(ALBUM_MIME, JSON.stringify(album));
-  e.dataTransfer.setData("text/plain", `${album.title} — Album`);
-  composeGhost(e, { thumb: album.thumb, title: album.title, sub: album.artist || "Album" });
+  e.dataTransfer.setData("text/plain", T("{title} — Album", { title: album.title }));
+  composeGhost(e, { thumb: album.thumb, title: album.title, sub: album.artist || T("Album") });
 }
 
 /**

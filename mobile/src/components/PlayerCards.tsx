@@ -14,6 +14,7 @@ import { useArtistPhoto } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors } from "../theme";
 import { Cover, picture } from "./ui";
+import { T } from "../shared";
 
 const NEXT_UP_SHOWN = 3;
 const CREDITS_SHOWN = 4;
@@ -30,9 +31,9 @@ export function NextUpCard() {
   return (
     <View style={styles.card}>
       <View style={styles.head}>
-        <Text style={styles.title}>Next up</Text>
+        <Text style={styles.title}>{T("Next up")}</Text>
         <Pressable onPress={() => nav.navigate("Queue")} hitSlop={10}>
-          <Text style={styles.link}>Open queue</Text>
+          <Text style={styles.link}>{T("Open queue")}</Text>
         </Pressable>
       </View>
       {next.map((t, i) => (
@@ -80,8 +81,8 @@ export function AboutSongCard({ track, active }: { track: Track; active: boolean
   return (
     <View style={styles.card}>
       <View style={styles.head}>
-        <Text style={styles.title}>About the song</Text>
-        <Pill label="Genius" onPress={() => void Linking.openURL(info.url)} />
+        <Text style={styles.title}>{T("About the song")}</Text>
+        <Pill label={T("Genius")} onPress={() => void Linking.openURL(info.url)} />
       </View>
       {!!when && (
         <Text numberOfLines={1} style={styles.line}>
@@ -98,11 +99,11 @@ export function AboutSongCard({ track, active }: { track: Track; active: boolean
           {c.names.join(", ")}
         </Fact>
       ))}
-      {open && info.samples.length > 0 && <Fact label="Samples">{info.samples.map((x) => (x.artist ? `${x.title} · ${x.artist}` : x.title)).join("\n")}</Fact>}
-      {open && !!info.recordedAt && <Fact label="Recorded at">{info.recordedAt}</Fact>}
+      {open && info.samples.length > 0 && <Fact label={T("Samples")}>{info.samples.map((x) => (x.artist ? `${x.title} · ${x.artist}` : x.title)).join("\n")}</Fact>}
+      {open && !!info.recordedAt && <Fact label={T("Recorded at")}>{info.recordedAt}</Fact>}
       {more && (
         <Pressable onPress={() => setOpen(!open)} hitSlop={10} style={styles.more}>
-          <Text style={styles.link}>{open ? "Show less" : "Show more"}</Text>
+          <Text style={styles.link}>{open ? T("Show less") : T("Show more")}</Text>
         </Pressable>
       )}
     </View>
@@ -118,7 +119,7 @@ export function AboutArtistCard({ track, active, onOpen }: { track: Track; activ
   const ownShown = own && own !== ownFailed ? own : null;
   const source = ownShown ? picture(ownShown) : about.image ? { uri: about.image, headers: { "User-Agent": OPEN_DATA_AGENT } } : null;
   return (
-    <Pressable onPress={onOpen} accessibilityLabel={`About the artist: open ${about.name}`} style={[styles.card, styles.artistCard]}>
+    <Pressable onPress={onOpen} accessibilityLabel={T("About the artist: open {name}", { name: about.name })} style={[styles.card, styles.artistCard]}>
       {source ? (
         <View style={styles.photo}>
           <Image
@@ -133,10 +134,10 @@ export function AboutArtistCard({ track, active, onOpen }: { track: Track; activ
             }}
           />
           <LinearGradient colors={["rgba(0,0,0,0.55)", "rgba(0,0,0,0.1)", "transparent"]} style={StyleSheet.absoluteFill} />
-          <Text style={[styles.title, styles.photoTitle]}>About the artist</Text>
+          <Text style={[styles.title, styles.photoTitle]}>{T("About the artist")}</Text>
         </View>
       ) : (
-        <Text style={[styles.title, styles.plainTitle]}>About the artist</Text>
+        <Text style={[styles.title, styles.plainTitle]}>{T("About the artist")}</Text>
       )}
       <View style={styles.artistBody}>
         <Text numberOfLines={1} style={styles.name}>
@@ -149,9 +150,9 @@ export function AboutArtistCard({ track, active, onOpen }: { track: Track; activ
         )}
         <View style={styles.factsRow}>
           <Text numberOfLines={1} style={styles.facts}>
-            {about.facts ?? "Artist"}
+            {about.facts ?? T("Artist")}
           </Text>
-          {!!about.wikiUrl && <Pill label="Wikipedia" onPress={() => void Linking.openURL(about.wikiUrl as string)} />}
+          {!!about.wikiUrl && <Pill label={T("Wikipedia")} onPress={() => void Linking.openURL(about.wikiUrl as string)} />}
         </View>
         {!!about.description && (
           <Text numberOfLines={LINES_SHOWN} style={styles.story}>

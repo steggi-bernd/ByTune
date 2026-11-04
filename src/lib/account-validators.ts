@@ -1,3 +1,4 @@
+import { T } from "./i18n";
 /**
  * Account validation rules — shared by the Electron main process (the
  * authority, talks to Supabase) and the renderer (live inline feedback), so
@@ -32,14 +33,14 @@ export function usernameTypable(username: string): string {
  */
 export function usernameProblem(username: string): string | null {
   const clean = normalizeUsername(username);
-  if (clean.length < USERNAME_MIN) return `Username must be at least ${USERNAME_MIN} characters.`;
-  if (clean.length > USERNAME_MAX) return `Username must be at most ${USERNAME_MAX} characters.`;
-  if (!USERNAME_RE.test(clean)) return "Use letters, numbers, _ and @ only.";
+  if (clean.length < USERNAME_MIN) return T("Username must be at least {USERNAME_MIN} characters.", { USERNAME_MIN });
+  if (clean.length > USERNAME_MAX) return T("Username must be at most {USERNAME_MAX} characters.", { USERNAME_MAX });
+  if (!USERNAME_RE.test(clean)) return T("Use letters, numbers, _ and @ only.");
   return null;
 }
 
 export function passwordProblem(password: string): string | null {
-  if (password.length < PASSWORD_MIN) return `Password must be at least ${PASSWORD_MIN} characters.`;
+  if (password.length < PASSWORD_MIN) return T("Password must be at least {PASSWORD_MIN} characters.", { PASSWORD_MIN });
   return null;
 }
 

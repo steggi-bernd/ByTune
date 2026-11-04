@@ -16,7 +16,8 @@ import { RELEASE_LABEL } from "../lib/releases";
 import { useAlbumEdits } from "../stores/albumEdits";
 import { versionsOf } from "../stores/catalog";
 import { useUI } from "../stores/ui";
-import { Artwork, Btn, IconBtn } from "./primitives";
+import { Artwork, Btn, IconBtn, SearchClear } from "./primitives";
+import { T } from "../lib/i18n";
 
 /** Which album page should open its editor (set by the library panel's "Edit album…"). */
 export const useAlbumEditorRequest = create<{ key: string | null }>(() => ({ key: null }));
@@ -29,7 +30,7 @@ function AlbumRow({ album, action }: { album: LibAlbum; action: React.ReactNode 
         <div className="text-[14px] font-semibold text-ink-hi truncate">{album.title}</div>
         <div className="text-[12.5px] text-ink-dim truncate">
           {album.artist} · {album.year ? `${album.year} · ` : ""}
-          {RELEASE_LABEL[album.kind]} · {album.tracks.length} {album.tracks.length === 1 ? "song" : "songs"}
+          {RELEASE_LABEL[album.kind]} · {album.tracks.length} {album.tracks.length === 1 ? T("song") : T("songs")}
         </div>
       </div>
       {action}
@@ -96,7 +97,7 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
     const ids = putOn.flatMap((t) => [t.id, ...versionsOf(t).map((v) => v.id)]);
     useAlbumEdits.getState().clearSongs(ids);
     const n = putOn.length;
-    toast(`${n} ${n === 1 ? "song is" : "songs are"} without an album again`);
+    toast(T("{n} {value} without an album again", { n, value: n === 1 ? T("song is") : T("songs are") }));
     if (n === album.tracks.length) {
       onClose();
       navigate({ name: "loose" });
@@ -110,28 +111,27 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-label="Edit album" className="w-[min(680px,94vw)] max-h-[86vh] flex flex-col rounded-2xl glass-strong-solid shadow-float">
+      <div role="dialog" aria-label={T("Edit album")} className="w-[min(680px,94vw)] max-h-[86vh] flex flex-col rounded-2xl glass-strong-solid shadow-float">
         <div className="flex items-start gap-3 p-5 pb-3">
           <Artwork src={album.thumb} className="w-14 h-14 rounded-md shrink-0" iconClassName="w-5 h-5" alt="" />
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Edit album</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{T("Edit album")}</div>
             <div className="text-[18px] font-bold text-ink-hi truncate">{album.title}</div>
-            <div className="text-[12.5px] text-ink-dim">Changes stay in Songsta — your files and servers aren't touched.</div>
+            <div className="text-[12.5px] text-ink-dim">{T("Changes stay in Songsta — your files and servers aren't touched.")}</div>
           </div>
-          <IconBtn icon={X} title="Close" onClick={onClose} className="rounded-full" />
+          <IconBtn icon={X} title={T("Close")} onClick={onClose} className="rounded-full" />
         </div>
 
         <div className="overflow-y-auto min-h-0 px-5 pb-5 space-y-6">
           <section>
             <div className="flex items-baseline justify-between">
-              <h3 className="text-[14px] font-bold text-ink-hi">Artists</h3>
+              <h3 className="text-[14px] font-bold text-ink-hi">{T("Artists")}</h3>
               {credit && (
                 <button
                   onClick={() => useAlbumEdits.getState().setArtists(album.key, null)}
                   className="inline-flex items-center gap-1 text-[12.5px] text-ink-dim hover:text-ink-hi"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Back to the tags
-                </button>
+                  <RotateCcw className="w-3.5 h-3.5" />{" "}{T("Back to the tags")}</button>
               )}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
@@ -141,8 +141,8 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
                   <button
                     onClick={() => setNames(names.filter((x) => x !== n))}
                     disabled={names.length < 2}
-                    title={names.length < 2 ? "An album keeps at least one artist" : `Remove ${n}`}
-                    aria-label={`Remove ${n}`}
+                    title={names.length < 2 ? T("An album keeps at least one artist") : T("Remove {n}", { n })}
+                    aria-label={T("Remove {n}", { n })}
                     className="w-6 h-6 grid place-items-center rounded-full text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.1] disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -161,7 +161,7 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
                 value={adding}
                 onChange={(e) => setAdding(e.target.value)}
                 list="album-editor-artists"
-                placeholder="Add an artist"
+                placeholder={T("Add an artist")}
                 className="flex-1 h-9 px-4 rounded-full bg-ink-hi/[0.07] text-[13.5px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
               />
               <datalist id="album-editor-artists">
@@ -169,34 +169,25 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
                   <option key={a.route} value={a.name} />
                 ))}
               </datalist>
-              <Btn variant="glass" size="md" icon={Plus} type="submit" disabled={!adding.trim()}>
-                Add
-              </Btn>
+              <Btn variant="glass" size="md" icon={Plus} type="submit" disabled={!adding.trim()}>{T("Add")}</Btn>
             </form>
           </section>
 
           {putOn.length > 0 && (
             <section>
-              <h3 className="text-[14px] font-bold text-ink-hi">Put together by hand</h3>
+              <h3 className="text-[14px] font-bold text-ink-hi">{T("Put together by hand")}</h3>
               <div className="flex items-center gap-3 mt-2">
                 <p className="min-w-0 flex-1 text-[13px] text-ink-dim">
-                  {putOn.length === album.tracks.length ? "Its songs were" : `${putOn.length} of its songs were`} put on this album by hand —
-                  their tags name no album.
-                </p>
-                <Btn variant="glass" size="sm" icon={Split} onClick={takeOff}>
-                  Take {putOn.length === 1 ? "it" : "them"} off
-                </Btn>
+                  {T("{value} put on this album by hand — their tags name no album.", { value: putOn.length === album.tracks.length ? T("Its songs were") : T("{count} of its songs were", { count: putOn.length }) })}</p>
+                <Btn variant="glass" size="sm" icon={Split} onClick={takeOff}>{T("Take {value} off", { value: putOn.length === 1 ? "it" : "them" })}</Btn>
               </div>
             </section>
           )}
 
           <section>
-            <h3 className="text-[14px] font-bold text-ink-hi">Parts of this album</h3>
+            <h3 className="text-[14px] font-bold text-ink-hi">{T("Parts of this album")}</h3>
             {parts.length === 0 ? (
-              <p className="text-[13px] text-ink-dim mt-2">
-                No other album is shown as part of this one. If your tags split it — “Disc 2”, or a song with another album
-                artist — add that album below.
-              </p>
+              <p className="text-[13px] text-ink-dim mt-2">{T("No other album is shown as part of this one. If your tags split it — “Disc 2”, or a song with another album artist — add that album below.")}</p>
             ) : (
               <div className="mt-2 space-y-0.5">
                 {parts.map((p) => (
@@ -204,7 +195,7 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
                     <div className="min-w-0 flex-1">
                       <div className="text-[14px] font-semibold text-ink-hi truncate">{p.title}</div>
                       <div className="text-[12.5px] text-ink-dim truncate">
-                        {p.artist} · {p.count} {p.count === 1 ? "song" : "songs"}
+                        {p.artist} · {p.count} {p.count === 1 ? T("song") : T("songs")}
                       </div>
                     </div>
                     <Btn
@@ -213,11 +204,9 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
                       icon={Split}
                       onClick={() => {
                         useAlbumEdits.getState().split(p.key);
-                        toast(`“${p.title}” is its own album again`);
+                        toast(T("“{title}” is its own album again", { title: p.title }));
                       }}
-                    >
-                      Separate
-                    </Btn>
+                    >{T("Separate")}</Btn>
                   </div>
                 ))}
               </div>
@@ -225,19 +214,20 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
           </section>
 
           <section>
-            <h3 className="text-[14px] font-bold text-ink-hi">Add an album to this one</h3>
+            <h3 className="text-[14px] font-bold text-ink-hi">{T("Add an album to this one")}</h3>
             <div className="relative mt-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-hi/50 pointer-events-none" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search albums"
-                className="w-full h-9 pl-9 pr-4 rounded-full bg-ink-hi/[0.07] text-[13.5px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
+                placeholder={T("Search albums")}
+                className="w-full h-9 pl-9 pr-9 rounded-full bg-ink-hi/[0.07] text-[13.5px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
               />
+              <SearchClear value={query} onClear={() => setQuery("")} />
             </div>
             <div className="mt-2 space-y-0.5">
               {candidates.length === 0 ? (
-                <p className="text-[13px] text-ink-dim py-3">{query ? "No album matches." : "No similar albums — search for one."}</p>
+                <p className="text-[13px] text-ink-dim py-3">{query ? T("No album matches.") : T("No similar albums — search for one.")}</p>
               ) : (
                 candidates.map((a) => (
                   <AlbumRow
@@ -250,11 +240,9 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
                         icon={Plus}
                         onClick={() => {
                           useAlbumEdits.getState().merge(a.key, album.key);
-                          toast(`“${a.title}” is now part of “${album.title}”`, "success");
+                          toast(T("“{title}” is now part of “{title2}”", { title: a.title, title2: album.title }), "success");
                         }}
-                      >
-                        Merge
-                      </Btn>
+                      >{T("Merge")}</Btn>
                     }
                   />
                 ))

@@ -1,3 +1,4 @@
+import { T } from "./i18n";
 /**
  * "The active output disappeared" detection — pure snapshot + decision.
  *
@@ -117,7 +118,7 @@ export function deviceChoices(devices: readonly DeviceInfoLike[]): OutputDeviceC
     }
   }
   const choices: OutputDeviceChoice[] = [
-    { deviceId: "", label: "System default", isDefault: true, activeDefault: true },
+    { deviceId: "", label: T("System default"), isDefault: true, activeDefault: true },
   ];
   const seen = new Set<string>();
   let unnamed = 0;
@@ -130,7 +131,7 @@ export function deviceChoices(devices: readonly DeviceInfoLike[]): OutputDeviceC
     const label = d.label?.trim();
     choices.push({
       deviceId: d.deviceId,
-      label: label || `Speaker ${++unnamed}`,
+      label: label || T("Speaker {value}", { value: ++unnamed }),
       isDefault: false,
       activeDefault: defaultGroup !== null && d.groupId === defaultGroup,
     });

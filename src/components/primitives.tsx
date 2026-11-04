@@ -5,14 +5,26 @@
  * stay consistent across the entire application.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Music2, Pause, Play, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Music2, Pause, Play, Split, X, type LucideIcon } from "lucide-react";
 import { extractPalette, type Palette } from "../lib/ambient";
 import { upgradeArtwork } from "../lib/artwork";
+import { useBranchChosen } from "../stores/player";
 import { useUI } from "../stores/ui";
 
 /* ============================================================ layout */
 
 /** Standard padded page container. */
+/** On a song chosen to branch off from, until it comes on. */
+export function BranchMark({ id }: { id: string }) {
+  const chosen = useBranchChosen(id);
+  if (!chosen) return null;
+  return (
+    <span title={T("The branch starts here")} className="shrink-0 text-accent">
+      <Split className="h-3.5 w-3.5" aria-label={T("The branch starts here")} />
+    </span>
+  );
+}
+
 export function Page({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`px-8 pt-6 pb-12 max-w-[1600px] ${className}`}>{children}</div>;
 }
@@ -125,7 +137,7 @@ export function ShelfScroller({
       >
         <button
           type="button"
-          aria-label={dir === 1 ? "Scroll shelf right" : "Scroll shelf left"}
+          aria-label={dir === 1 ? T("Scroll shelf right") : T("Scroll shelf left")}
           onClick={() => page(dir)}
           className="grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-white/10 bg-black/65 text-ink-hi shadow-elev transition-all duration-150 ease-out hover:scale-110 hover:bg-black/85 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         >
@@ -394,10 +406,10 @@ export function EmptyState({
 
 /** Human-readable error with a retry path — never raw exceptions. */
 export function ErrorState({
-  title = "Something went wrong",
+  title = T("Something went wrong"),
   body,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel = T("Try again"),
   className = "",
 }: {
   title?: string;
@@ -498,8 +510,8 @@ export function ExplicitBadge() {
   return (
     <span
       className="inline-grid place-items-center shrink-0 w-[15px] h-[15px] text-[10px] font-semibold text-ink-faint border border-ink-hi/40 rounded-[2px] leading-none"
-      title="Explicit"
-      aria-label="Explicit"
+      title={T("Explicit")}
+      aria-label={T("Explicit")}
     >
       E
     </span>
@@ -511,7 +523,7 @@ export function ExplicitBadge() {
 /** Animated "now playing" indicator. */
 export function EqBars() {
   return (
-    <span className="flex items-end gap-0.5 h-3.5" aria-label="Playing">
+    <span className="flex items-end gap-0.5 h-3.5" aria-label={T("Playing")}>
       <span className="eq-bar w-0.5 h-full rounded-sm bg-accent" style={{ animationDelay: "0ms" }} />
       <span className="eq-bar w-0.5 h-full rounded-sm bg-accent" style={{ animationDelay: "160ms" }} />
       <span className="eq-bar w-0.5 h-full rounded-sm bg-accent" style={{ animationDelay: "320ms" }} />
@@ -527,8 +539,8 @@ export function EqBars() {
  * instead of the card and the drag would never start. While its collection
  * plays it shows pause and stays visible, Spotify's way.
  */
-export function PlayOverlay({ onClick, title = "Play", playing = false }: { onClick: () => void; title?: string; playing?: boolean }) {
-  const label = playing ? "Pause" : title;
+export function PlayOverlay({ onClick, title = T("Play"), playing = false }: { onClick: () => void; title?: string; playing?: boolean }) {
+  const label = playing ? T("Pause") : title;
   return (
     <button
       title={label}
@@ -627,7 +639,7 @@ export function Dialog() {
 
         <div className="flex items-center justify-end gap-2 mt-6">
           <Btn variant="ghost" size="md" className="!rounded-xl" onClick={close}>
-            {req.cancelLabel ?? "Cancel"}
+            {req.cancelLabel ?? T("Cancel")}
           </Btn>
           <button
             onClick={() => {
@@ -641,7 +653,7 @@ export function Dialog() {
                 : "bg-accent text-on-primary hover:brightness-110"
             }`}
           >
-            {req.confirmLabel ?? (req.danger ? "Delete" : "Confirm")}
+            {req.confirmLabel ?? (req.danger ? T("Delete") : T("Confirm"))}
           </button>
         </div>
       </div>
@@ -652,6 +664,7 @@ export function Dialog() {
 /* ============================================================ palette hook */
 
 import { useArtworkPalette as usePageArtworkPalette } from "../lib/palette";
+import { T } from "../lib/i18n";
 export { usePageArtworkPalette as useArtworkPaletteV2 };
 
 /** Per-page ArtworkPalette (delegates to lib/palette.ts). Returns the new
@@ -659,4 +672,20 @@ export { usePageArtworkPalette as useArtworkPaletteV2 };
  *  directly. Old call sites using `Palette` from `lib/ambient` still work. */
 export function useArtworkPalette(url: string | undefined | null) {
   return usePageArtworkPalette(url ?? null);
+}
+
+/** The X at the end of a search field. The field needs room for it on its right. */
+export function SearchClear({ value, onClear }: { value: string; onClear: () => void }) {
+  if (!value) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      title={T("Clear the search")}
+      aria-label={T("Clear the search")}
+      className="absolute right-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-ink-dim transition-colors hover:bg-ink-hi/[0.08] hover:text-ink-hi"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  );
 }

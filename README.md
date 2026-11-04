@@ -37,7 +37,7 @@ Songsta comes in three parts. The desktop app stands on its own; the other two b
 | | What it's for | What it needs |
 |---|---|---|
 | **Desktop app** (Windows, Linux) | Your whole library, from local folders and servers, and everything under [Features](#features) | Nothing |
-| **[Android app](#on-your-phone)** | Your server's music on your phone, downloads for when there's no connection, and steering the speakers at home | A Jellyfin server |
+| **[Android app](#on-your-phone)** | Your server's music and folders on your phone, downloads for when there's no connection, and steering the speakers at home | A Jellyfin server, folders on the phone, or both |
 | **[Sync service](#the-same-on-all-your-devices)** | Playlists, where you stopped, muted songs and the order of Liked Songs the same everywhere, and devices that see and steer each other | Docker next to Jellyfin |
 
 All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest); [Install](#install) says how to set each of them up.
@@ -103,8 +103,14 @@ Songsta keeps these edits itself; your files and servers stay exactly as they ar
 - **Search by lyrics:** a line you remember finds the song, among the lyrics already on this computer.
 - **Full-screen Now Playing** (<kbd>N</kbd>) with cover, lyrics and queue, tinted by the cover's colors.
 - **Mini player:** an always-on-top picture-in-picture window.
-- **A real queue:** drag to reorder, *Play next*, *Add to queue*. A song you have in several places still plays only once.
+- **A real queue:** drag to reorder. *Add to queue* puts a song behind everything you asked for before it, first come, first played, in an area of its own above the rest of the list; if it's further down the list already, it comes up from there. A branch goes there too, as a block with the list's name: long ones fold, and its cross takes the whole branch back. A song you have in several places still plays only once.
+- **Shuffle that goes one way:** it mixes what's coming, so the list you see is what plays, and *Previous* goes back to the song you really heard.
+- **Branch off:** a song next, the rest of its list behind it. A small mark shows which song you chose until it comes on, and the same action on that song takes it back.
 - **Replay:** your listening over time — top artists and songs, hours listened, monthly and hourly patterns.
+
+### In your language
+
+The computer and the phone speak English and German, following your system unless you choose under *Settings → Appearance*. Another language is one more file in `src/locales`, with the English text as the key.
 
 ## Spotify import
 
@@ -134,11 +140,13 @@ The Discord desktop app has to be running; Songsta connects as soon as it starts
 
 ![The phone app: Home with your mixes, the player with its quality in gold, and the devices with a group of speakers and a second room playing something else](docs/screenshots/phone/phone.jpg)
 
-The Android app plays the music on your Jellyfin server, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work. [Install](#android) says how to get it.
+The Android app plays the music on your Jellyfin server and in folders you pick on the phone, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work. [Install](#android) says how to get it.
 
 - **Away from home:** give your server a second address, a tunnel or proxy, in the app's settings. The app takes the direct way at home and the other one anywhere else, and a song under way goes on from there.
 - **The player:** the name of what's playing leads to its album, the artist to the artist, "Playing from" back to where it started. Under it lie the lyrics, what comes next, and about the song and the artist, as in the desktop app's side panel.
-- **Swipes:** pull a song left in any list: let go quickly and it joins the queue; hold it a moment and it branches off, with the rest of its list behind it, as in the desktop app. Pull it right to mute it.
+- **Your own files:** pick one or more folders in Settings, as on the computer. Their songs join the library, a song your server has too stays one song and plays from the file, and without a server the app works from the folders alone.
+- **Swipes:** pull a song right in any list: let go quickly and it joins the queue, behind everything you asked for before it; hold it a moment and it branches off, with the rest of its list behind it. A small mark shows which song you chose, and pulling that song again takes the branch back. Pull a song left to mute it. In the queue a pull to the right or the small cross takes a song out, and in Your Library a pull to the right pins a playlist, album, mix or artist on top. Settings has two feels for this.
+- **Settings:** streaming quality, fades between songs, skip silence, playback speed, autoplay, volume leveling, a ten-band equalizer, lyrics, accent colour, reduced animation and more.
 - **Devices:** the speaker in the mini player or the player opens them, see [below](#your-devices-in-one-place).
 - **Downloads:** the arrow in the player, the ⋮ on a song, or the arrow on an album or playlist, with each song's progress on its row. The app fetches them, also with the screen off, as the file itself or as a 192 kbps MP3; over mobile data only if you allow it.
 - **Without a connection** the app opens from what it remembers: the library, playlists, covers and the lyrics it has shown. Downloaded songs play, the rest is greyed out.
@@ -150,7 +158,7 @@ The app is young and has run in an emulator far more than on real phones. [mobil
 
 Which songs you like and how often they played go through your server's own favorites and play counts (**Settings → Server sync**). Playlists, where you stopped and the order of Liked Songs need a small [sync service](sync-server/README.md) next to Jellyfin: a Docker container without any music in it, signed in to with your Jellyfin login ([how to set it up](#sync-service)). With it running, a playlist made on one device arrives on the others within moments, the phone lists Liked Songs in the order you have them on the computer, and muted songs stay muted everywhere.
 
-A device that isn't playing shows what another one plays and steers it, itself silent, like Spotify Connect: pause on the phone, and the computer pauses. Start a song on it and it plays by itself again. With no device playing, one picks up where another stopped, paused until you press play.
+There is one stream, like Spotify Connect: a device that isn't playing shows what another one plays and steers it, itself silent. Pause on the phone and the computer pauses; start a song or change the volume there and the computer does that, and the computer can steer a phone in your pocket the same way. *This phone* or *This computer* under Devices brings the music over: it stops there and goes on here. Only when you choose *Start a second stream* on that same tile does each device go its own way, with its own songs, until you end it. With no device playing, one picks up where another stopped, paused until you press play.
 
 ## Your devices in one place
 
@@ -159,15 +167,15 @@ A device that isn't playing shows what another one plays and steers it, itself s
 The speaker button next to the volume on the computer, and in the mini player or the player on the phone, opens a small smart-home room for everything that can make sound:
 
 - **One press moves the music:** to this device and its outputs (Bluetooth speakers, headphones), to your other computers and phones with Songsta on them, or to anything on your network that plays by itself: receivers and network speakers over UPnP/DLNA, Chromecast, Google TV and Nest speakers over Cast. It goes on from the same place in the song.
-- **Several at once:** the plus lets another device play along, each with its own volume.
-- **Different music per device:** a device's menu has *Play something else here*. Whatever you start next plays there, with its own queue and controls, while your own music goes on. On the phone it keeps running with the screen off, with a notification to steer it.
+- **Several at once:** the plus lets another device play along, each with its own volume. Or hold a tile on the phone, right-click one on the computer, and choose as many as you like; on the phone this device can be one of them.
+- **Different music per device:** a device's menu lets you choose music for it, on the phone right there from your playlists, albums and songs, and a song's own menu has *Play on*. It gets its own queue and controls, while your own music goes on. On the phone it keeps running with the screen off, with a notification to steer it.
 - **Rename** anything. On the phone a device that doesn't announce itself can be added by its address.
 
-A group of separate devices isn't sample-exact: each one fetches and buffers by itself, which you can hear between two speakers in one room. A Cast group made in Google's own app is exact, and shows up here as one device. Amazon lets no app send music to an Echo or Fire TV directly, so those are listed with how to pair them over Bluetooth.
+A group of separate devices isn't sample-exact: each one fetches and buffers by itself, which you can hear between two speakers in one room. A Cast group made in Google's own app is exact, and shows up here as one device. Amazon lets no app send music to an Echo or Fire TV directly, so those are listed with how to pair them over Bluetooth. A song that's only in a folder on the phone can't go to a device on the network, which fetches its songs from your server.
 
 ## Muting songs
 
-Pull a song right on the phone, or choose *Mute song* in its menu on either app, and it's greyed out with a red name and skipped in every album, playlist and shuffle. It plays only when you ask for it by name, tap it or put it in the queue. The same way unmutes it.
+Pull a song left on the phone, or choose *Mute song* in its menu on either app, and it's greyed out with a red name and skipped in every album, playlist and shuffle. It plays only when you ask for it by name, tap it or put it in the queue. The same way unmutes it.
 
 ## Install
 
@@ -205,7 +213,7 @@ For Android 7 or newer on a 64-bit phone, which is nearly all of them. Get `Song
 
 - The app isn't on a store. Google Play Protect may ask whether you trust it: *More details → Install anyway*.
 - It's signed with the standard development key, not one of its own. That's fine for your own phone, but should a later version get a real key, it needs one fresh install.
-- It plays from Jellyfin only; local folders and Navidrome are the desktop app's.
+- At the first start, enter your server or choose *No server* and pick a folder; either can be added later in Settings. Navidrome is the desktop app's only.
 
 ### Sync service
 

@@ -5,10 +5,14 @@
  * song here too: the queue never holds two copies of it, and "play this
  * song" finds it whichever copy it is handed. Which copy sounds is the
  * engine's business at play time (local first) — invisible to the queue.
+ *
+ * Shuffling reorders what comes next, so the list on screen is what actually
+ * plays: Next goes down it, Previous back up to the song that was heard.
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { withoutOtherCopies } from "../lib/duplicates";
+import { placeOf, putBack, tendedBranches, withoutSongs, type QueueBranch } from "../lib/queueSections";
 // Coalescing, lazily serialized storage: the engine bumps `position` ~4Hz and
 // persist saves on every change — that would stringify the whole queue and
 // hit disk/IPC several times a second.
@@ -25,6 +29,63 @@ export function setPlayHook(hook: typeof playHook): void {
   playHook = hook;
 }
 
+/**
+ * While this computer follows another device, what's asked of the player here
+ * is for that one: one stream, wherever you stand (lib/homeSync.ts).
+ */
+export interface Steering {
+  /** this list from this song; `keepOrder` when it's in its final order already */
+  play(tracks: Track[], start: number, keepOrder: boolean): void;
+  /** what comes after the playing song, edited here */
+  upcoming(tracks: Track[]): void;
+  add(tracks: Track[]): void;
+  jump(track: Track): void;
+  branchOff(tracks: Track[], name: string): void;
+  cancelBranch(name: string): void;
+  shuffle(on: boolean): void;
+  repeat(mode: RepeatMode): void;
+  next(): void;
+  previous(): void;
+  volume(level: number): void;
+}
+let steering: Steering | null = null;
+export function setSteering(next: Steering | null): void {
+  steering = next;
+}
+
+/** What a branch changed, by the list it came from, while it can still be taken back. */
+const branchUndo = new Map<string, { before: Track[]; unshuffled: Track[] | null }>();
+
+/** The queue with a branch taken back: what it took out of what was coming goes back to where it was, unless it was heard meanwhile. */
+function withoutBranch(s: Pick<PlayerState, "queue" | "index" | "lineEnd" | "unshuffled" | "branches">, branch: QueueBranch): Partial<PlayerState> {
+  const { queue, index, lineEnd, unshuffled, branches } = s;
+  const undo = branchUndo.get(branch.name);
+  branchUndo.delete(branch.name);
+  const ids = new Set(branch.ids.map(songKey));
+  const brought = (t: Track): boolean => ids.has(songKey(t.id));
+  const end = Math.min(queue.length, Math.max(index + 1, lineEnd));
+  const line = queue.slice(index + 1, end).filter((t) => !brought(t));
+  const left = queue.slice(end).filter((t) => !brought(t));
+  const heard = new Set(queue.slice(0, index + 1).map((t) => songKey(t.id)));
+  const coming = undo ? putBack(undo.before, left, (t) => brought(t) && !heard.has(songKey(t.id)), (t) => songKey(t.id)) : left;
+  const inOrder = new Set(undo?.unshuffled?.map((t) => songKey(t.id)));
+  return {
+    queue: [...queue.slice(0, index + 1), ...line, ...coming],
+    lineEnd: index + 1 + line.length,
+    unshuffled: undo?.unshuffled && unshuffled ? [...undo.unshuffled, ...unshuffled.filter((t) => !inOrder.has(songKey(t.id)) && !brought(t))] : unshuffled && unshuffled.filter((t) => !brought(t)),
+    branches: branches.filter((b) => b.name !== branch.name),
+  };
+}
+
+export function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 interface PlayerState {
   queue: Track[];
   index: number;
@@ -38,6 +99,13 @@ interface PlayerState {
   muted: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
+  /** the list's own order, to go back to when shuffle is turned off */
+  unshuffled: Track[] | null;
+  /** where the songs asked for by hand end in the queue, branches included: the next one asked for goes here */
+  lineEnd: number;
+  branches: QueueBranch[];
+  /** the volume of the device this computer follows */
+  remoteVolume: number | null;
   /** bumped whenever the engine should hard-seek to `position` */
   seekNonce: number;
   error: string | null;
@@ -50,7 +118,20 @@ interface PlayerState {
   /** A whole list from its Play or Shuffle button: nothing in it is asked for by name, so nothing muted plays. */
   playAll(tracks: Track[], random?: boolean): void;
   playTrack(track: Track): void;
-  addToQueue(tracks: Track | Track[], playNext?: boolean): void;
+  /** To a song of the queue. Shuffled and further down, it comes next: what it jumped stays to come, and Previous finds the song that was on. */
+  jumpTo(at: number): void;
+  /** Right behind the playing song and what was asked for before: first come, first played. Answers how many are in that line now. */
+  addToQueue(tracks: Track | Track[]): number;
+  /** The song next, the rest of its list after it, what was coming behind them, each once. `at`: where it was dropped. */
+  branchOff(tracks: Track[], name: string, at?: number): void;
+  /** The branch into this list that starts from this song, if there is one. */
+  branchFrom(trackId: string, name: string): QueueBranch | undefined;
+  /** The branch into this list goes, and what it took out of what was coming comes back. Without a name, the newest one. */
+  cancelBranch(name?: string): void;
+  /** What comes after the playing song, as another device edited it; `line` of them were asked for by hand. */
+  replaceUpcoming(tracks: Track[], line?: number): void;
+  /** Only what was asked for by hand goes. */
+  clearLine(): void;
   /**
    * Songs into the queue at `at` (after the playing song at the earliest).
    * `dropCopies`: songs coming up that they already bring are dropped — each plays once.
@@ -81,6 +162,16 @@ interface PlayerState {
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
+/** Songs asked for, in the list's own order: right where they were asked for, once shuffle goes off. */
+function intoOrder(order: Track[], current: Track | undefined, skip: number, tracks: Track[]): Track[] {
+  const asked = new Set(tracks.map((t) => t.id));
+  const from = order.findIndex((t) => t.id === current?.id) + 1 + skip;
+  return [...order.slice(0, from).filter((t) => !asked.has(t.id)), ...tracks, ...order.slice(from).filter((t) => !asked.has(t.id))];
+}
+
+/** What the volume was before it was muted from here, on the device this computer follows. */
+let lastRemoteVolume = 0.5;
+
 export const usePlayer = create<PlayerState>()(
   persist(
     (set, get) => ({
@@ -95,6 +186,10 @@ export const usePlayer = create<PlayerState>()(
       muted: false,
       shuffle: false,
       repeat: "off",
+      unshuffled: null,
+      lineEnd: 0,
+      branches: [],
+      remoteVolume: null,
       seekNonce: 0,
       error: null,
       sources: {},
@@ -112,9 +207,19 @@ export const usePlayer = create<PlayerState>()(
         // A list holding two copies of a song (a playlist with the local file
         // and its server copy) still queues it once — the clicked one stays.
         const { list, keep } = withoutOtherCopies(open, songKey, open.indexOf(asked));
+        const at = Math.max(0, keep);
+        if (steering) {
+          steering.play(list, at, false);
+          return;
+        }
+        const { shuffle } = get();
+        branchUndo.clear();
         set({
-          queue: list,
-          index: Math.max(0, keep),
+          queue: shuffle ? [list[at], ...shuffled(list.filter((_, i) => i !== at))] : list,
+          index: shuffle ? 0 : at,
+          unshuffled: shuffle ? list : null,
+          lineEnd: 0,
+          branches: [],
           playing: true,
           position: 0,
           error: null,
@@ -123,34 +228,129 @@ export const usePlayer = create<PlayerState>()(
 
       playAll(tracks, random = false) {
         const open = tracks.filter((t) => !isMuted(t.id));
-        if (open.length) get().playQueue(open, random ? Math.floor(Math.random() * open.length) : 0);
+        if (open.length) get().playQueue(open, random || get().shuffle ? Math.floor(Math.random() * open.length) : 0);
       },
 
       playTrack(track) {
         const { queue, index } = get();
-        const key = songKey(track.id);
-        const at = queue.findIndex((t) => songKey(t.id) === key);
+        const at = placeOf(queue, songKey(track.id), index, undefined, (t) => songKey(t.id));
         if (at >= 0) {
-          set({ index: at, playing: true, position: 0, error: null });
-        } else {
-          const q = [...queue.slice(0, index + 1), track, ...queue.slice(index + 1)];
-          set({ queue: q, index: index + 1, playing: true, position: 0, error: null });
-        }
-      },
-
-      addToQueue(tracks, playNext = false) {
-        const list = withoutOtherCopies(Array.isArray(tracks) ? tracks : [tracks], songKey).list;
-        if (!list.length) return;
-        const { queue, index } = get();
-        if (!queue.length) {
-          set({ queue: list, index: 0, playing: false, position: 0 });
+          get().jumpTo(at);
           return;
         }
-        if (playNext) {
-          set({ queue: [...queue.slice(0, index + 1), ...list, ...queue.slice(index + 1)] });
-        } else {
-          set({ queue: [...queue, ...list] });
+        const q = [...queue.slice(0, index + 1), track, ...queue.slice(index + 1)];
+        if (steering) {
+          steering.play(q, index + 1, true);
+          return;
         }
+        const { lineEnd, unshuffled } = get();
+        set({
+          queue: q,
+          index: index + 1,
+          lineEnd: lineEnd > index + 1 ? lineEnd + 1 : lineEnd,
+          unshuffled: unshuffled && intoOrder(unshuffled, queue[index], 0, [track]),
+          playing: true,
+          position: 0,
+          error: null,
+        });
+      },
+
+      jumpTo(at) {
+        const { queue, index, shuffle, lineEnd } = get();
+        if (at < 0 || at >= queue.length) return;
+        if (steering) {
+          steering.jump(queue[at]);
+          return;
+        }
+        if (shuffle && at > index + 1) {
+          const q = [...queue];
+          const [song] = q.splice(at, 1);
+          q.splice(index + 1, 0, song);
+          set({ queue: q, index: index + 1, lineEnd: at >= lineEnd && lineEnd > index + 1 ? lineEnd + 1 : lineEnd, playing: true, position: 0, error: null });
+          return;
+        }
+        set({ index: at, playing: true, position: 0, error: null });
+      },
+
+      addToQueue(tracks) {
+        const list = withoutOtherCopies(Array.isArray(tracks) ? tracks : [tracks], songKey).list;
+        if (!list.length) return 0;
+        steering?.add(list);
+        const { queue, index, lineEnd, unshuffled, branches } = get();
+        if (!queue.length) {
+          set({ queue: list, index: 0, playing: false, position: 0, lineEnd: 0 });
+          return 0;
+        }
+        const at = clamp(lineEnd, index + 1, queue.length);
+        // In the line already: it stays where it is.
+        const waiting = new Set(queue.slice(index + 1, at).map((t) => songKey(t.id)));
+        const fresh = list.filter((t) => !waiting.has(songKey(t.id)));
+        // Further down the list: it comes up from there, it doesn't play twice.
+        const asked = new Set(fresh.map((t) => songKey(t.id)));
+        set({
+          queue: [...queue.slice(0, at), ...fresh, ...queue.slice(at).filter((t) => !asked.has(songKey(t.id)))],
+          lineEnd: at + fresh.length,
+          unshuffled: unshuffled && intoOrder(unshuffled, queue[index], at - index - 1, fresh),
+          branches: withoutSongs(branches, new Set(fresh.map((t) => t.id))),
+        });
+        return at + fresh.length - index - 1;
+      },
+
+      branchOff(rest, name, at) {
+        if (!rest.length) return;
+        steering?.branchOff(rest, name);
+        // Another song of the same list: the branch starts there instead.
+        const same = get().branches.find((b) => b.name === name);
+        if (same) set(withoutBranch(get(), same));
+        const { queue, index, lineEnd, unshuffled, branches } = get();
+        if (!queue.length) {
+          if (!steering) get().playQueue(rest, 0);
+          return;
+        }
+        // From the very song that's playing: it just plays on, with its list behind it.
+        const startsHere = songKey(rest[0].id) === songKey(queue[index]?.id ?? "");
+        const next = startsHere ? rest.slice(1) : rest;
+        // Behind everything asked for by hand, and part of it: what's asked for next comes behind the whole branch.
+        const end = clamp(lineEnd, index + 1, queue.length);
+        const pos = clamp(at === undefined ? end : Math.round(at), index + 1, queue.length);
+        const keys = new Set(rest.map((t) => songKey(t.id)));
+        const keep = (t: Track): boolean => !keys.has(songKey(t.id));
+        branchUndo.set(name, { before: queue.slice(end), unshuffled });
+        // A song of the branch that was asked for already plays with the branch, once.
+        const head = queue.slice(index + 1, pos).filter(keep);
+        const gone = queue.slice(index + 1, end).filter((t) => !keep(t)).length;
+        set({
+          queue: [...queue.slice(0, index + 1), ...head, ...next, ...queue.slice(pos).filter(keep)],
+          lineEnd: end - gone + (pos <= end ? next.length : 0),
+          unshuffled: unshuffled && intoOrder(unshuffled.filter(keep), queue[index], end - index - 1 - gone, next),
+          branches: [...withoutSongs(branches, new Set(rest.map((t) => t.id))), { name, trackId: rest[0].id, started: startsHere, ids: rest.map((t) => t.id) }],
+        });
+      },
+
+      branchFrom(trackId, name) {
+        return get().branches.find((b) => b.trackId === trackId && b.name === name);
+      },
+
+      cancelBranch(name) {
+        const { branches } = get();
+        const branch = name === undefined ? branches[branches.length - 1] : branches.find((b) => b.name === name);
+        if (!branch) return;
+        steering?.cancelBranch(branch.name);
+        set(withoutBranch(get(), branch));
+      },
+
+      replaceUpcoming(tracks, line = 0) {
+        const { queue, index } = get();
+        set({ queue: [...queue.slice(0, index + 1), ...tracks], lineEnd: line ? index + 1 + line : 0 });
+      },
+
+      clearLine() {
+        for (const b of get().branches) set(withoutBranch(get(), b));
+        const { queue, index, lineEnd } = get();
+        const end = clamp(lineEnd, index + 1, queue.length);
+        const q = [...queue.slice(0, index + 1), ...queue.slice(end)];
+        set({ queue: q, lineEnd: 0 });
+        steering?.upcoming(q.slice(index + 1));
       },
 
       insertInQueue(tracks, at, dropCopies = false) {
@@ -165,9 +365,13 @@ export const usePlayer = create<PlayerState>()(
         // What is coming up, either side of the new songs (the playing one stays as it is).
         const keys = new Set(list.map((t) => songKey(t.id)));
         const keep = (t: Track): boolean => !dropCopies || !keys.has(songKey(t.id));
-        set({
-          queue: [...queue.slice(0, index + 1), ...queue.slice(index + 1, pos).filter(keep), ...list, ...queue.slice(pos).filter(keep)],
-        });
+        // Dropped among what was asked for by hand, or right at its end: it's one of those now.
+        const end = clamp(get().lineEnd, index + 1, queue.length);
+        const gone = queue.slice(index + 1, end).filter((t) => !keep(t)).length;
+        const head = queue.slice(index + 1, pos).filter(keep);
+        const q = [...queue.slice(0, index + 1), ...head, ...list, ...queue.slice(pos).filter(keep)];
+        set({ queue: q, lineEnd: end - gone + (pos <= end ? list.length : 0) });
+        steering?.upcoming(q.slice(index + 1));
       },
 
       removeAt(i) {
@@ -177,7 +381,17 @@ export const usePlayer = create<PlayerState>()(
         let ni = index;
         if (i < index) ni = index - 1;
         else if (i === index) ni = Math.min(index, Math.max(q.length - 1, 0));
-        set({ queue: q, index: ni });
+        // It stays out, also when shuffle goes off or a branch is taken back.
+        const { lineEnd, unshuffled, branches } = get();
+        const gone = queue[i].id;
+        set({
+          queue: q,
+          index: ni,
+          lineEnd: i < lineEnd ? lineEnd - 1 : lineEnd,
+          unshuffled: unshuffled && unshuffled.filter((t) => t.id !== gone),
+          branches: withoutSongs(branches, new Set([gone])),
+        });
+        steering?.upcoming(q.slice(ni + 1));
       },
 
       moveInQueue(from, to) {
@@ -190,12 +404,18 @@ export const usePlayer = create<PlayerState>()(
         if (from === index) ni = to;
         else if (from > index && to <= index) ni = index + 1;
         else if (from < index && to >= index) ni = index - 1;
-        set({ queue: q, index: ni });
+        // Moved out of the line or into it.
+        const { lineEnd } = get();
+        const inLine = (i: number): boolean => i > index && i < lineEnd;
+        set({ queue: q, index: ni, lineEnd: inLine(from) && !inLine(to) ? lineEnd - 1 : !inLine(from) && inLine(to) ? lineEnd + 1 : lineEnd });
+        steering?.upcoming(q.slice(ni + 1));
       },
 
       clearUpcoming() {
         const { index } = get();
-        set({ queue: get().queue.slice(0, index + 1) });
+        branchUndo.clear();
+        set({ queue: get().queue.slice(0, index + 1), lineEnd: 0, branches: [] });
+        steering?.upcoming([]);
       },
 
       collapseCopies() {
@@ -203,29 +423,29 @@ export const usePlayer = create<PlayerState>()(
         // the engine never reloads it — only other copies of songs go.
         const { queue, index } = get();
         const { list, keep } = withoutOtherCopies(queue, songKey, index);
-        if (list.length !== queue.length) set({ queue: list, index: Math.max(0, keep) });
+        if (list.length === queue.length) return;
+        // The line loses what went from it.
+        const stays = new Set(list);
+        set({ queue: list, index: Math.max(0, keep), lineEnd: queue.slice(0, get().lineEnd).filter((t) => stays.has(t)).length });
       },
 
       next(manual = false) {
-        const { queue, index, shuffle, repeat } = get();
+        if (steering) {
+          steering.next();
+          return;
+        }
+        const { queue, index, repeat } = get();
         if (!queue.length) {
           set({ playing: false });
           return;
         }
-        let ni: number;
-        if (shuffle && queue.length > 1) {
-          do {
-            ni = Math.floor(Math.random() * queue.length);
-          } while (ni === index);
-        } else {
-          ni = index + 1;
-          if (ni >= queue.length) {
-            if (manual || repeat === "all") {
-              ni = 0;
-            } else {
-              set({ playing: false, position: 0 });
-              return;
-            }
+        let ni = index + 1;
+        if (ni >= queue.length) {
+          if (manual || repeat === "all") {
+            ni = 0;
+          } else {
+            set({ playing: false, position: 0 });
+            return;
           }
         }
         if (ni === index) {
@@ -238,13 +458,18 @@ export const usePlayer = create<PlayerState>()(
       },
 
       prev() {
+        if (steering) {
+          steering.previous();
+          return;
+        }
         if (get().position > 3) {
           set({ position: 0, seekNonce: get().seekNonce + 1 });
           return;
         }
-        const { queue, index } = get();
+        const { queue, index, repeat } = get();
         if (!queue.length) return;
-        const ni = index > 0 ? index - 1 : queue.length - 1;
+        // At the very start only Repeat goes round; otherwise the song starts over.
+        const ni = index > 0 ? index - 1 : repeat === "all" ? queue.length - 1 : index;
         if (ni === index) {
           set({ position: 0, seekNonce: get().seekNonce + 1 });
           return;
@@ -276,20 +501,56 @@ export const usePlayer = create<PlayerState>()(
       },
 
       setVolume(v) {
+        if (steering) {
+          const level = clamp(v, 0, 1);
+          if (level > 0) lastRemoteVolume = level;
+          steering.volume(level);
+          set({ remoteVolume: level });
+          return;
+        }
         set({ volume: clamp(v, 0, 1), muted: false });
       },
 
       toggleMute() {
+        if (steering) {
+          const { remoteVolume } = get();
+          if (remoteVolume !== null) get().setVolume(remoteVolume > 0 ? 0 : lastRemoteVolume);
+          return;
+        }
         set({ muted: !get().muted });
       },
 
       toggleShuffle() {
-        set({ shuffle: !get().shuffle });
+        const { shuffle, queue, index, unshuffled, lineEnd } = get();
+        if (steering) {
+          steering.shuffle(!shuffle);
+          set({ shuffle: !shuffle });
+          return;
+        }
+        const current = queue[index];
+        if (!current) {
+          set({ shuffle: !shuffle });
+          return;
+        }
+        // What was asked to come next stays next.
+        const end = clamp(lineEnd, index + 1, queue.length);
+        if (!shuffle) {
+          set({ shuffle: true, unshuffled: queue, queue: [...queue.slice(0, end), ...shuffled(queue.slice(end))] });
+          return;
+        }
+        // The list's own order again, from the song playing on.
+        const list = unshuffled ?? queue;
+        const at = list.findIndex((t) => t.id === current.id);
+        const line = new Set(queue.slice(index + 1, end).map((t) => t.id));
+        const upcoming = (at >= 0 ? list.slice(at + 1) : queue.slice(end)).filter((t) => !line.has(t.id) && !isMuted(t.id));
+        set({ shuffle: false, unshuffled: null, queue: [...queue.slice(0, end), ...upcoming] });
       },
 
       cycleRepeat() {
         const order: RepeatMode[] = ["off", "all", "one"];
-        set({ repeat: order[(order.indexOf(get().repeat) + 1) % order.length] });
+        const repeat = order[(order.indexOf(get().repeat) + 1) % order.length];
+        steering?.repeat(repeat);
+        set({ repeat });
       },
 
       _setTime(position, duration) {
@@ -324,11 +585,17 @@ export const usePlayer = create<PlayerState>()(
       // v1: the volume slider is perceptual (output gain = slider³, see
       // lib/audio.ts). The stored value used to BE the gain — move the slider
       // to the position that produces it, so nothing sounds different.
-      version: 1,
+      // v2: shuffle orders the queue itself, Next no longer picks at random.
+      version: 2,
       migrate: (persisted, version) => {
         const s = persisted as Partial<PlayerState> | null;
         if (s && version < 1 && typeof s.volume === "number" && Number.isFinite(s.volume)) {
           s.volume = Math.cbrt(clamp(s.volume, 0, 1));
+        }
+        if (s && version < 2 && s.shuffle && Array.isArray(s.queue)) {
+          const at = typeof s.index === "number" ? s.index : 0;
+          s.unshuffled = s.queue;
+          s.queue = [...s.queue.slice(0, at + 1), ...shuffled(s.queue.slice(at + 1))];
         }
         return s as PlayerState;
       },
@@ -342,7 +609,23 @@ export const usePlayer = create<PlayerState>()(
           muted: s.muted,
           shuffle: s.shuffle,
           repeat: s.repeat,
+          unshuffled: s.unshuffled,
+          lineEnd: s.lineEnd,
+          branches: s.branches,
         }) as unknown as PlayerState,
     }
   )
 );
+
+// A branch's first song came on: nothing is chosen any more; it can still be taken back until its songs are through.
+usePlayer.subscribe((s, prev) => {
+  if (!s.branches.length || (s.index === prev.index && s.queue === prev.queue)) return;
+  const branches = tendedBranches(s.branches, s.queue, s.index);
+  if (branches === s.branches) return;
+  for (const b of s.branches) if (!branches.some((kept) => kept.name === b.name)) branchUndo.delete(b.name);
+  usePlayer.setState({ branches });
+});
+
+/** A song chosen to branch off from, until it comes on. */
+export const useBranchChosen = (trackId: string): boolean =>
+  usePlayer((s) => s.branches.some((b) => !b.started && songKey(b.trackId) === songKey(trackId)));

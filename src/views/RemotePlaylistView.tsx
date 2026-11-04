@@ -5,7 +5,7 @@
  * the playlist's own numbered track rows.
  */
 import { useEffect, useState } from "react";
-import { ListMusic, MoreHorizontal, Play, Shuffle } from "lucide-react";
+import { ListMusic, MoreHorizontal, Play, Shuffle, ListPlus } from "lucide-react";
 import { Artwork, ErrorState, ExplicitBadge, HeroSkeleton, ListSkeleton } from "../components/primitives";
 import { trackMenuItems } from "../lib/trackActions";
 import { useDrag } from "../lib/dnd";
@@ -15,6 +15,7 @@ import { upgradeArtwork } from "../lib/artwork";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { RemotePlaylistPage, Track } from "../types";
+import { T } from "../lib/i18n";
 
 function PlaylistTrackRow({
   song,
@@ -59,8 +60,8 @@ function PlaylistTrackRow({
               playQueue(queue, index);
             }}
             className="hidden group-hover:block text-ink-hi hover:text-ink-hi transition-colors"
-            title={`Play ${song.title}`}
-            aria-label={`Play ${song.title}`}
+            title={T("Play {title}", { title: song.title })}
+            aria-label={T("Play {title}", { title: song.title })}
           >
             <Play className="w-3.5 h-3.5 fill-current" />
           </button>
@@ -82,8 +83,8 @@ function PlaylistTrackRow({
           e.stopPropagation();
           openMenu(e.clientX, e.clientY);
         }}
-        title="More options"
-        aria-label={`More options for ${song.title}`}
+        title={T("More options")}
+        aria-label={T("More options for {title}", { title: song.title })}
         className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />
@@ -121,8 +122,8 @@ export function RemotePlaylistView({ playlistId }: { playlistId: string }) {
   if (error) {
     return (
       <ErrorState
-        title="Couldn't load this playlist"
-        body="This is usually a connection hiccup. Give it another try."
+        title={T("Couldn't load this playlist")}
+        body={T("This is usually a connection hiccup. Give it another try.")}
         onRetry={() => setNonce((n) => n + 1)}
         className="pt-10"
       />
@@ -191,8 +192,8 @@ export function RemotePlaylistView({ playlistId }: { playlistId: string }) {
             <button
               onClick={() => play(true)}
               disabled={!tracks.length}
-              title="Shuffle"
-              aria-label="Shuffle"
+              title={T("Shuffle")}
+              aria-label={T("Shuffle")}
               className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >
               <Shuffle className="w-[18px] h-[18px]" />
@@ -202,23 +203,22 @@ export function RemotePlaylistView({ playlistId }: { playlistId: string }) {
               disabled={!tracks.length}
               className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-black/45 border border-white/10 text-[14.5px] font-semibold text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >
-              <Play className="w-[18px] h-[18px] fill-current" />
-              Play
-            </button>
+              <Play className="w-[18px] h-[18px] fill-current" />{T("Play")}</button>
             <button
               onClick={(e) =>
                 useUI.getState().openContextMenu(e.clientX, e.clientY, [
                   {
-                    label: "Add all to queue",
+                    label: T("Add all to queue"),
+                    icon: ListPlus,
                     action: () => {
                       usePlayer.getState().addToQueue(tracks);
-                      toast("Playlist added to queue");
+                      toast(T("Playlist added to queue"));
                     },
                   },
                 ])
               }
-              title="More options"
-              aria-label="More options"
+              title={T("More options")}
+              aria-label={T("More options")}
               className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
             >
               <MoreHorizontal className="w-[18px] h-[18px]" />
@@ -238,7 +238,7 @@ export function RemotePlaylistView({ playlistId }: { playlistId: string }) {
             ))}
           </div>
         ) : (
-          <div className="text-[13px] text-ink-dim py-10 text-center">This playlist is empty.</div>
+          <div className="text-[13px] text-ink-dim py-10 text-center">{T("This playlist is empty.")}</div>
         )}
       </div>
     </div>

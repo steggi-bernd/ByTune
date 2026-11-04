@@ -9,6 +9,7 @@ import { mixById, momentMix } from "../lib/mixes";
 import { useMomentScores } from "../lib/moments";
 import { energyOf, useSound } from "../stores/sound";
 import { songKey, useCatalog, useFreshPlayCounts } from "../stores/catalog";
+import { T } from "../lib/i18n";
 
 export function MixView({ param }: { param: string }) {
   const { tracks, loaded } = useLibraryIndex();
@@ -25,12 +26,12 @@ export function MixView({ param }: { param: string }) {
   );
 
   if (!loaded) return null;
-  if (!mix) return <EmptyState icon={Sparkles} title="This mix is empty" body="Mixes need at least eight matching songs." />;
+  if (!mix) return <EmptyState icon={Sparkles} title={T("This mix is empty")} body={T("Mixes need at least eight matching songs.")} />;
 
   return (
     <div className="space-y-6">
-      <CollectionHeader label="Mix" title={mix.title} subtitle={mix.subtitle} tracks={mix.tracks} />
-      <TrackList tracks={mix.tracks} showAlbum sourceName={mix.title} emptyLabel="No songs." />
+      <CollectionHeader label={T("Mix")} title={mix.title} subtitle={mix.subtitle} tracks={mix.tracks} />
+      <TrackList tracks={mix.tracks} showAlbum sourceName={mix.title} emptyLabel={T("No songs.")} />
     </div>
   );
 }

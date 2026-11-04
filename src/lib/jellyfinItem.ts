@@ -6,6 +6,7 @@
 import { isoDate } from "../../electron/release-date";
 import type { Track } from "../types";
 import { withRoutes } from "./libraryCore";
+import { T } from "./i18n";
 
 export interface JellyfinTrack {
   /** "jf:<itemId>" — the id prefix routes playback to this module */
@@ -50,7 +51,7 @@ export function jellyfinItemToTrack(item: any, artUrl: (itemId: string, tag: str
   return {
     id: `jf:${item.Id}`,
     itemId: String(item.Id),
-    title: bounded(item.Name) || "Unknown title",
+    title: bounded(item.Name) || T("Unknown title"),
     artist: bounded(artists.join(", ")) || bounded(item.AlbumArtist) || "Unknown artist",
     album: bounded(item.Album) || "Unknown album",
     albumId: item.AlbumId ? String(item.AlbumId) : undefined,

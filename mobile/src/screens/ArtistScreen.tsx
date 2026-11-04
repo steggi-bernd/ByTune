@@ -1,6 +1,6 @@
 /**
- * An artist: the photo with the name on it, play and shuffle, what you play
- * most, a strip leading to the songs of theirs you've liked, their releases.
+ * An artist: the photo with the name on it, play and shuffle, a strip leading
+ * to the songs of theirs you've liked, what you play most, their releases.
  */
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
@@ -14,6 +14,7 @@ import { artistAlbums, artistTracks, byPlays, likedAmong, plural, RELEASE_LABEL,
 import { likedSongIds, useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors, PAGE_END } from "../theme";
+import { T } from "../shared";
 
 /** The liked songs among these, the latest like first. One server: a song's id is its only copy. */
 export function useLiked(songs: Track[]): Track[] {
@@ -73,7 +74,7 @@ export function ArtistScreen() {
           />
         )}
         <LinearGradient colors={["rgba(0,0,0,0.12)", "rgba(0,0,0,0.18)", "rgba(0,0,0,0.82)"]} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
-        <Pressable onPress={() => nav.goBack()} accessibilityLabel="Go back" style={[styles.back, { top: insets.top + 2 }]}>
+        <Pressable onPress={() => nav.goBack()} accessibilityLabel={T("Go back")} style={[styles.back, { top: insets.top + 2 }]}>
           <ChevronLeft size={28} color={colors.ink} />
         </Pressable>
         <Text numberOfLines={2} style={[styles.name, name.length > 18 && styles.nameLong]}>
@@ -83,17 +84,16 @@ export function ArtistScreen() {
 
       <View style={styles.actions}>
         <Text numberOfLines={1} style={styles.counts}>
-          {plural(songs.length, "song", "songs")} · {plural(own.length, "release", "releases")} in your library
-        </Text>
+          {T("{count} · {count2} in your library", { count: plural(songs.length, T("song"), T("songs")), count2: plural(own.length, T("release"), T("releases")) })}</Text>
         <Pressable
-          accessibilityLabel="Shuffle"
+          accessibilityLabel={T("Shuffle")}
           onPress={() => usePlayer.getState().playAll(songs, name, true)}
           style={styles.shuffle}
         >
           <Shuffle size={24} color={colors.ink} />
         </Pressable>
         <Pressable
-          accessibilityLabel={pause ? "Pause" : `Play ${name}`}
+          accessibilityLabel={pause ? T("Pause") : T("Play {name}", { name })}
           onPress={() => (playingHere ? toggle() : usePlayer.getState().playAll(popular, name))}
           style={styles.play}
         >
@@ -101,7 +101,22 @@ export function ArtistScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.heading}>Popular</Text>
+      {liked.length > 0 && (
+        <Pressable onPress={() => nav.navigate("Collection", { kind: "artistLiked", name })} style={styles.strip}>
+          <LinearGradient colors={[colors.accent, "#3F3463"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.stripCover}>
+            <Heart size={20} color={colors.ink} fill={colors.ink} />
+          </LinearGradient>
+          <View style={styles.stripText}>
+            <Text style={styles.stripTitle}>{T("Liked songs")}</Text>
+            <Text numberOfLines={1} style={styles.stripSub}>
+              {T("{count} by {name}", { count: plural(liked.length, T("song"), T("songs")), name })}
+            </Text>
+          </View>
+          <ChevronRight size={20} color={colors.soft} />
+        </Pressable>
+      )}
+
+      <Text style={styles.heading}>{T("Popular")}</Text>
       {top.map((t, i) => {
         const plays = counts[t.id]?.plays ?? 0;
         return (
@@ -109,35 +124,20 @@ export function ArtistScreen() {
             key={t.id}
             track={t}
             number={i + 1}
-            subtitle={plays ? plural(plays, "play", "plays") : t.artist}
+            subtitle={plays ? plural(plays, T("play"), T("plays")) : t.artist}
             list={{ tracks: popular, name }}
             onPress={() => playTracks(popular, i, name, false)}
           />
         );
       })}
 
-      {liked.length > 0 && (
-        <Pressable onPress={() => nav.navigate("Collection", { kind: "artistLiked", name })} style={styles.strip}>
-          <LinearGradient colors={[colors.accent, "#3F3463"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.stripCover}>
-            <Heart size={20} color={colors.ink} fill={colors.ink} />
-          </LinearGradient>
-          <View style={styles.stripText}>
-            <Text style={styles.stripTitle}>Liked songs</Text>
-            <Text numberOfLines={1} style={styles.stripSub}>
-              {plural(liked.length, "song", "songs")} by {name}
-            </Text>
-          </View>
-          <ChevronRight size={20} color={colors.soft} />
-        </Pressable>
-      )}
-
       {own.length > 0 && (
-        <Shelf title="Discography">
+        <Shelf title={T("Discography")}>
           {own.map((a) => releaseCard(a, `${a.year ? `${a.year} · ` : ""}${RELEASE_LABEL[a.kind]}`))}
         </Shelf>
       )}
       {appearsOn.length > 0 && (
-        <Shelf title="Appears on">
+        <Shelf title={T("Appears on")}>
           {appearsOn.map((a) => releaseCard(a, `${a.year ? `${a.year} · ` : ""}${a.artist}`))}
         </Shelf>
       )}
@@ -163,6 +163,7 @@ const styles = StyleSheet.create({
     height: 64,
     marginHorizontal: 16,
     marginTop: 12,
+    marginBottom: 16,
     paddingLeft: 8,
     paddingRight: 10,
     borderRadius: 8,

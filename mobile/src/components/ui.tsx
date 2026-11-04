@@ -1,19 +1,22 @@
 /** The small parts every screen is built from: covers, chips, shelves, song rows. */
 import { Image } from "expo-image";
-import { CircleArrowDown, EllipsisVertical, Heart, Music2, VolumeX } from "lucide-react-native";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { PixelRatio, Pressable, ScrollView, StyleSheet, Text, View, type ImageStyle, type ViewStyle } from "react-native";
+import { CircleArrowDown, EllipsisVertical, Heart, Music2, Search, Split, VolumeX, X } from "lucide-react-native";
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { PixelRatio, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageStyle, type StyleProp, type ViewStyle } from "react-native";
 import { withoutServer } from "../addresses";
 import type { Track } from "../shared";
 import { readJson, writeJson } from "../storage";
 import { useConnection } from "../stores/connection";
 import { downloadOf, percentOf, useDownloads } from "../stores/downloads";
 import { useLibrary } from "../stores/library";
+import { fileOfSong } from "../stores/localMusic";
 import { usePlayer } from "../stores/player";
 import { here, useSession } from "../stores/session";
+import { feel } from "../stores/settings";
 import { colors } from "../theme";
 import { useSongMenu } from "./SongMenu";
 import { SwipeRow, type RowList } from "./SwipeRow";
+import { T } from "../shared";
 
 /** Jellyfin scales pictures to order: a row's 48 points don't need the player's 800 pixels. */
 const PICTURE_WIDTHS = [200, 480];
@@ -118,7 +121,13 @@ export function CoverGrid({ tracks, size, radius = 4 }: { tracks: Track[]; size:
 
 export function Chip({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+    <Pressable
+      onPress={() => {
+        feel("tick");
+        onPress();
+      }}
+      style={[styles.chip, active && styles.chipActive]}
+    >
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -165,14 +174,70 @@ export function Card({
 
 export const CARD_SIZE = 148;
 
+/** A search: its X empties it and the keyboard stays; with nothing left to empty it closes the search, if that's a thing here. */
+export function SearchField({
+  value,
+  onChange,
+  placeholder,
+  label,
+  autoFocus,
+  onClose,
+  style,
+}: {
+  value: string;
+  onChange: (text: string) => void;
+  placeholder: string;
+  label?: string;
+  autoFocus?: boolean;
+  onClose?: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  return (
+    <View style={[styles.search, style]}>
+      <Search size={20} color={colors.soft} strokeWidth={2.2} />
+      <TextInput
+        ref={input}
+        accessibilityLabel={label ?? placeholder}
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={colors.soft}
+        autoFocus={autoFocus}
+        autoCorrect={false}
+        returnKeyType="search"
+        style={styles.searchInput}
+      />
+      {(!!value || !!onClose) && (
+        <Pressable
+          onPress={() => {
+            if (value) {
+              onChange("");
+              input.current?.focus();
+            } else onClose?.();
+          }}
+          hitSlop={10}
+          accessibilityLabel={value ? T("Clear the search") : T("Close the search")}
+          style={styles.searchClear}
+        >
+          <X size={20} color={colors.soft} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 export function LikeButton({ track, size = 20 }: { track: Track; size?: number }) {
   const liked = useLibrary((s) => s.favorites.has(track.id));
   const toggle = useLibrary((s) => s.toggleFavorite);
   return (
     <Pressable
-      onPress={() => toggle(track)}
+      onPress={() => {
+        feel("press");
+        toggle(track);
+      }}
       hitSlop={6}
-      accessibilityLabel={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+      accessibilityLabel={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
       style={styles.iconButton}
     >
       <Heart size={size} color={liked ? colors.accent : colors.dim} fill={liked ? colors.accent : "transparent"} />
@@ -183,7 +248,7 @@ export function LikeButton({ track, size = 20 }: { track: Track; size?: number }
 /** Playing: three little bars, the desktop's mark for the song on air. */
 export function EqBars({ color = colors.accent }: { color?: string }) {
   return (
-    <View accessibilityLabel="Playing" style={styles.eq}>
+    <View accessibilityLabel={T("Playing")} style={styles.eq}>
       {[8, 13, 6].map((h, i) => (
         <View key={i} style={{ width: 3, height: h, borderRadius: 1, backgroundColor: color }} />
       ))}
@@ -218,14 +283,20 @@ export function TrackRow({
   const download = useDownloads((s) => downloadOf(s, track.id));
   const percent = useDownloads((s) => percentOf(s, track.id));
   const muted = useLibrary((s) => s.muted.has(track.id));
+  // Chosen to branch off from, until it comes on.
+  const chosen = usePlayer((s) => s.branches.some((b) => !b.started && b.trackId === track.id));
   // Without a way to the server only what's on the phone can play.
-  const outOfReach = useConnection((s) => s.reach === "offline") && download !== "kept";
-  const openMenu = onLongPress ?? (() => useSongMenu.getState().open(track));
+  const outOfReach = useConnection((s) => s.reach === "offline") && download !== "kept" && !fileOfSong(track);
+  const openMenu = (): void => {
+    feel("press");
+    if (onLongPress) onLongPress();
+    else useSongMenu.getState().open(track);
+  };
   let line = subtitle ?? track.artist;
-  if (missing) line = "Not on this server";
-  else if (download === "wifi") line = "Waiting for Wi-Fi";
-  else if (download === "failed") line = "Didn't download";
-  else if (download === "loading") line = percent === null ? "Waiting to download" : percent < 0 ? "Downloading…" : `Downloading ${percent}%`;
+  if (missing) line = T("Not on this server");
+  else if (download === "wifi") line = T("Waiting for Wi-Fi");
+  else if (download === "failed") line = T("Didn't download");
+  else if (download === "loading") line = percent === null ? T("Waiting to download") : percent < 0 ? T("Downloading…") : T("Downloading {percent}%", { percent });
   const row = (
     <Pressable
       disabled={missing && !onLongPress}
@@ -244,9 +315,10 @@ export function TrackRow({
           {track.title}
         </Text>
         <View style={styles.rowSubline}>
+          {chosen && <Split size={13} color={colors.accent} strokeWidth={2.6} accessibilityLabel={T("The branch starts here")} />}
           {muted && <VolumeX size={13} color={colors.mutedSong} />}
           {(download === "kept" || download === "loading" || download === "wifi") && (
-            <CircleArrowDown size={13} color={download === "kept" ? colors.onAccent : colors.dim} fill={download === "kept" ? colors.accent : "transparent"} accessibilityLabel={download === "kept" ? "Downloaded" : "Downloading"} />
+            <CircleArrowDown size={13} color={download === "kept" ? colors.onAccent : colors.dim} fill={download === "kept" ? colors.accent : "transparent"} accessibilityLabel={download === "kept" ? T("Downloaded") : T("Downloading")} />
           )}
           <Text numberOfLines={1} style={[styles.rowSubtitle, muted && styles.rowSubtitleMuted]}>
             {line}
@@ -260,7 +332,7 @@ export function TrackRow({
       </View>
       {!missing && <LikeButton track={track} />}
       {(!missing || !!onLongPress) && (
-        <Pressable onPress={openMenu} hitSlop={4} accessibilityLabel={`More options for ${track.title}`} style={styles.rowMore}>
+        <Pressable onPress={openMenu} hitSlop={4} accessibilityLabel={T("More options for {title}", { title: track.title })} style={styles.rowMore}>
           <EllipsisVertical size={20} color={colors.dim} />
         </Pressable>
       )}
@@ -288,6 +360,9 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.ink, fontSize: 13.5, fontWeight: "600", marginTop: 8 },
   cardSubtitle: { color: colors.dim, fontSize: 12.5, marginTop: 2 },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  search: { flexDirection: "row", alignItems: "center", gap: 10, height: 48, paddingLeft: 14, paddingRight: 6, borderRadius: 8, backgroundColor: colors.chip },
+  searchInput: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15, fontWeight: "500", padding: 0 },
+  searchClear: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   eq: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 14 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, height: 62, paddingLeft: 16, paddingRight: 2 },
   rowPlain: { height: 60 },

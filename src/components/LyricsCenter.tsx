@@ -14,6 +14,7 @@ import { useUI } from "../stores/ui";
 import { useArtworkPalette } from "../lib/palette";
 import { requestLyricsAlignment, useLyricsAlign } from "../lib/lyricsOffset";
 import type { LyricsResult, Track } from "../types";
+import { T } from "../lib/i18n";
 
 /* Lyrics are fetched the moment a track starts (see prefetchLyrics) so the
    view opens with words already on screen instead of a spinner over silence.
@@ -101,8 +102,8 @@ export function LyricsCenter() {
 
       <button
         onClick={close}
-        title="Close lyrics (Esc)"
-        aria-label="Close lyrics"
+        title={T("Close lyrics (Esc)")}
+        aria-label={T("Close lyrics")}
         className="absolute top-4 right-4 z-10 w-9 h-9 grid place-items-center rounded-full bg-black/40 text-ink-hi/75 hover:text-ink-hi hover:bg-black/60 transition-colors"
       >
         <X className="w-[18px] h-[18px]" />
@@ -116,7 +117,7 @@ export function LyricsCenter() {
           <LyricsView key={track.id} trackKey={track.id} lyrics={lyrics} loading={loading} large offset={offset} />
         ) : (
           <div className="flex-1 grid place-items-center">
-            <p className="text-[15px] text-ink-hi/60">Play something to sing along.</p>
+            <p className="text-[15px] text-ink-hi/60">{T("Play something to sing along.")}</p>
           </div>
         )}
       </div>

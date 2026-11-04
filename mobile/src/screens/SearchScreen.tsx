@@ -1,15 +1,15 @@
 /** Search over the library on this phone; before anything is typed, Explore. */
 import { useNavigation } from "@react-navigation/native";
-import { Search } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Cover, TrackRow } from "../components/ui";
+import { Cover, SearchField, TrackRow } from "../components/ui";
 import { matchesQuery } from "../shared";
 import { useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors, PAGE_END } from "../theme";
 import { ExploreList } from "./ExploreList";
+import { T } from "../shared";
 
 function ArtistResult({ name, thumb }: { name: string; thumb: string }) {
   const nav = useNavigation<any>();
@@ -21,7 +21,7 @@ function ArtistResult({ name, thumb }: { name: string; thumb: string }) {
         <Text numberOfLines={1} style={styles.resultTitle}>
           {name}
         </Text>
-        <Text style={styles.resultSub}>Artist</Text>
+        <Text style={styles.resultSub}>{T("Artist")}</Text>
       </View>
     </Pressable>
   );
@@ -51,19 +51,8 @@ export function SearchScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 14 }]}>
-      <Text style={styles.title}>Search</Text>
-      <View style={styles.field}>
-        <Search size={20} color={colors.soft} strokeWidth={2.2} />
-        <TextInput
-          accessibilityLabel="Search your library"
-          value={text}
-          onChangeText={setText}
-          placeholder="What do you want to play?"
-          placeholderTextColor={colors.soft}
-          autoCorrect={false}
-          style={styles.input}
-        />
-      </View>
+      <Text style={styles.title}>{T("Search")}</Text>
+      <SearchField value={text} onChange={setText} placeholder={T("What do you want to play?")} label={T("Search your library")} style={styles.field} />
       {results ? (
         <FlatList
           data={results.songs}
@@ -82,16 +71,15 @@ export function SearchScreen() {
                     <Text numberOfLines={1} style={styles.resultTitle}>
                       {a.title}
                     </Text>
-                    <Text numberOfLines={1} style={styles.resultSub}>
-                      Album · {a.artist}
+                    <Text numberOfLines={1} style={styles.resultSub}>{T("Album · {artist}", { artist: a.artist })}
                     </Text>
                   </View>
                 </Pressable>
               ))}
-              {none && <Text style={styles.none}>Nothing in your library matches “{q}”.</Text>}
+              {none && <Text style={styles.none}>{T("Nothing in your library matches “{q}”.", { q })}</Text>}
             </View>
           }
-          renderItem={({ item, index }) => <TrackRow track={item} list={{ tracks: results.songs, name: "Search" }} onPress={() => playTracks(results.songs, index, "Search")} />}
+          renderItem={({ item, index }) => <TrackRow track={item} list={{ tracks: results.songs, name: T("Search") }} onPress={() => playTracks(results.songs, index, T("Search"))} />}
         />
       ) : (
         <ExploreList />
@@ -114,7 +102,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#2C2C2E",
   },
-  input: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 15, fontWeight: "500", padding: 0 },
   result: { flexDirection: "row", alignItems: "center", gap: 12, height: 62, paddingHorizontal: 16 },
   resultText: { flex: 1, minWidth: 0 },
   resultTitle: { color: colors.ink, fontSize: 15, fontWeight: "500" },

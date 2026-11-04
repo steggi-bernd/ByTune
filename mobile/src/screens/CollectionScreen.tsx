@@ -7,22 +7,25 @@
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronLeft, EllipsisVertical, Pause, Play, Search, Shuffle, X } from "lucide-react-native";
+import { ChevronLeft, CircleMinus, EllipsisVertical, Pause, Pencil, Pin, PinOff, Play, Search, Shuffle, Trash2 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NameDialog } from "../components/PlaylistSheets";
+import { MenuSheet } from "../components/Sheet";
 import { DownloadButton, useSongMenu } from "../components/SongMenu";
-import { picture as pictureSource, TrackRow } from "../components/ui";
+import { CoverGrid, picture as pictureSource, SearchField, TrackRow } from "../components/ui";
 import { artistTracks, fmtTime, matchesQuery, plural, type Track } from "../shared";
 import { sizeLine, useDownloads } from "../stores/downloads";
 import { likedSongIds, useArtistPhoto, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { playlistTracks, usePlaylists, type PlaylistTrack } from "../stores/playlists";
+import { showDialog } from "../stores/popups";
 import { colors, PAGE_END } from "../theme";
 import { useLiked } from "./ArtistScreen";
+import { T } from "../shared";
 
-type Params = { kind: "playlist"; id: string } | { kind: "liked" } | { kind: "downloads" } | { kind: "mix"; id: string } | { kind: "genre"; key: string } | { kind: "artistLiked"; name: string };
+type Params = { kind: "playlist"; id: string } | { kind: "liked" } | { kind: "downloads" } | { kind: "local" } | { kind: "mix"; id: string } | { kind: "genre"; key: string } | { kind: "artistLiked"; name: string };
 
 export function CollectionScreen() {
   const nav = useNavigation<any>();
@@ -57,24 +60,26 @@ export function CollectionScreen() {
   const { title, tracks: shown } = useMemo((): { title: string; tracks: PlaylistTrack[] } => {
     switch (params.kind) {
       case "playlist":
-        return { title: playlist?.name ?? "Playlist", tracks: playlist ? playlistTracks(playlist) : [] };
+        return { title: playlist?.name ?? T("Playlist"), tracks: playlist ? playlistTracks(playlist) : [] };
       case "liked":
-        return { title: "Liked Songs", tracks: likedSongIds(data.favorites, byId).map((id) => byId.get(id)).filter((t): t is Track => !!t) };
+        return { title: T("Liked Songs"), tracks: likedSongIds(data.favorites, byId).map((id) => byId.get(id)).filter((t): t is Track => !!t) };
       case "downloads":
         return {
-          title: "Downloads",
+          title: T("Downloads"),
           tracks: [...onItsWay.split("|"), ...Object.keys(kept)].map((id) => byId.get(id)).filter((t): t is Track => !!t),
         };
+      case "local":
+        return { title: T("On this phone"), tracks: data.tracks.filter((t) => t.localPath) };
       case "mix": {
         const mix = mixes.find((m) => m.id === params.id);
-        return { title: mix?.title ?? "Mix", tracks: mix?.tracks ?? [] };
+        return { title: mix?.title ?? T("Mix"), tracks: mix?.tracks ?? [] };
       }
       case "genre": {
         const genre = genres.find((g) => g.key === params.key);
-        return { title: genre?.name ?? "Genre", tracks: genre?.tracks ?? [] };
+        return { title: genre?.name ?? T("Genre"), tracks: genre?.tracks ?? [] };
       }
       case "artistLiked":
-        return { title: `Liked songs by ${params.name}`, tracks: artistLiked };
+        return { title: T("Liked songs by {name}", { name: params.name }), tracks: artistLiked };
     }
   }, [params, playlist, data.tracks, data.favorites, byId, mixes, genres, artistLiked, kept, onItsWay]);
   // What can play: a playlist's song this library doesn't have stays in the list only.
@@ -90,7 +95,7 @@ export function CollectionScreen() {
   const pause = playingHere && playWhenReady;
   const seconds = tracks.reduce((sum, t) => sum + t.duration, 0);
   const keptBytes = params.kind === "downloads" ? Object.values(kept).reduce((sum, k) => sum + k.bytes, 0) : 0;
-  const meta = [params.kind === "downloads" ? "On this phone" : "Playlist", shown.length ? plural(shown.length, "song", "songs") : "", keptBytes ? sizeLine(keptBytes) : seconds > 0 ? `about ${fmtTime(seconds)}` : ""]
+  const meta = [params.kind === "downloads" || params.kind === "local" ? T("On this phone") : T("Playlist"), shown.length ? plural(shown.length, T("song"), T("songs")) : "", keptBytes ? sizeLine(keptBytes) : seconds > 0 ? `about ${fmtTime(seconds)}` : ""]
     .filter(Boolean)
     .join(" • ")
     .toUpperCase();
@@ -113,32 +118,41 @@ export function CollectionScreen() {
               locations={[0, 0.5, 0.8, 1]}
               style={StyleSheet.absoluteFill}
             />
-            <Pressable onPress={() => nav.goBack()} accessibilityLabel="Go back" style={[styles.back, { top: insets.top + 2 }]}>
-              <ChevronLeft size={28} color={colors.ink} />
-            </Pressable>
-            {!!playlist && (
-              <Pressable onPress={() => setMenu(true)} accessibilityLabel="More options" style={[styles.more, { top: insets.top + 2 }]}>
-                <EllipsisVertical size={22} color={colors.ink} />
+            <View style={[styles.topRow, { top: insets.top + 2 }]}>
+              <Pressable onPress={() => nav.goBack()} accessibilityLabel={T("Go back")} style={styles.topButton}>
+                <ChevronLeft size={28} color={colors.ink} />
               </Pressable>
-            )}
+              {finding ? (
+                <SearchField
+                  autoFocus
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={T("Find in this list")}
+                  onClose={() => setFinding(false)}
+                  style={styles.find}
+                />
+              ) : (
+                <>
+                  <View style={styles.topGap} />
+                  <Pressable onPress={() => setFinding(true)} accessibilityLabel={T("Find a song in this list")} style={styles.topButton}>
+                    <Search size={22} color={colors.ink} />
+                  </Pressable>
+                  {!!playlist && (
+                    <Pressable onPress={() => setMenu(true)} accessibilityLabel={T("More options")} style={styles.topButton}>
+                      <EllipsisVertical size={22} color={colors.ink} />
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
             <Text numberOfLines={2} style={styles.title}>
               {title}
             </Text>
             <Text style={styles.meta}>{meta}</Text>
             <View style={styles.controls}>
-              {params.kind !== "downloads" && <DownloadButton tracks={tracks} size={20} style={styles.roundWide} />}
+              {params.kind !== "downloads" && tracks.some((t) => !t.localPath) && <DownloadButton tracks={tracks} size={20} style={styles.roundWide} />}
               <Pressable
-                accessibilityLabel={finding ? "Stop looking in this list" : "Find a song in this list"}
-                onPress={() => {
-                  setFinding(!finding);
-                  setQuery("");
-                }}
-                style={styles.round}
-              >
-                {finding ? <X size={18} color={colors.ink} /> : <Search size={18} color={colors.ink} />}
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Shuffle"
+                accessibilityLabel={T("Shuffle")}
                 onPress={() => playAll(tracks, title, true)}
                 style={styles.round}
               >
@@ -146,23 +160,12 @@ export function CollectionScreen() {
               </Pressable>
               <Pressable onPress={() => (playingHere ? toggle() : playAll(tracks, title))} style={styles.pill}>
                 {pause ? <Pause size={18} color={colors.ink} fill={colors.ink} /> : <Play size={18} color={colors.ink} fill={colors.ink} />}
-                <Text style={styles.pillText}>{pause ? "Pause" : "Play"}</Text>
+                <Text style={styles.pillText}>{pause ? T("Pause") : T("Play")}</Text>
               </Pressable>
             </View>
-            {finding && (
-              <TextInput
-                autoFocus
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Find in this list"
-                placeholderTextColor={colors.dim}
-                returnKeyType="search"
-                style={styles.find}
-              />
-            )}
           </View>
         }
-        ListEmptyComponent={<Text style={styles.empty}>{query.trim() ? "Nothing in this list by that name." : "No songs here yet."}</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{query.trim() ? T("Nothing in this list by that name.") : T("No songs here yet.")}</Text>}
         renderItem={({ item }) => (
           <TrackRow
             track={item}
@@ -173,7 +176,7 @@ export function CollectionScreen() {
                 ? () =>
                     useSongMenu.getState().open(item, {
                       plain: item.missing,
-                      extras: [{ label: "Remove from this playlist", run: () => usePlaylists.getState().removeTrack(playlist.id, item.entryId ?? item.id) }],
+                      extras: [{ label: T("Remove from this playlist"), Icon: CircleMinus, run: () => usePlaylists.getState().removeTrack(playlist.id, item.entryId ?? item.id) }],
                     })
                 : undefined
             }
@@ -183,39 +186,33 @@ export function CollectionScreen() {
       />
       {!!playlist && (
       <>
-        <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
-          <Pressable style={styles.menuBack} onPress={() => setMenu(false)}>
-            <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 10 }]}>
-              <Pressable
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenu(false);
-                  setRenaming(true);
-                }}
-              >
-                <Text style={styles.menuText}>Rename</Text>
-              </Pressable>
-              <Pressable
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenu(false);
-                  Alert.alert(`Delete “${playlist.name}”?`, "It goes from all your devices.", [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Delete", style: "destructive", onPress: () => usePlaylists.getState().remove(playlist.id) },
-                  ]);
-                }}
-              >
-                <Text style={[styles.menuText, styles.menuDanger]}>Delete</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
+        <MenuSheet
+          visible={menu}
+          art={<CoverGrid tracks={tracks} size={46} />}
+          title={playlist.name}
+          subtitle={plural(tracks.length, T("song"), T("songs"))}
+          onClose={() => setMenu(false)}
+          rows={[
+            { label: playlist.pinned ? T("Unpin from Your Library") : T("Pin to the top of Your Library"), Icon: playlist.pinned ? PinOff : Pin, run: () => usePlaylists.getState().togglePin(playlist.id) },
+            { label: T("Rename"), Icon: Pencil, run: () => setRenaming(true) },
+            {
+              label: T("Delete"),
+              Icon: Trash2,
+              danger: true,
+              run: () =>
+                showDialog(T("Delete “{name}”?", { name: playlist.name }), T("It goes from all your devices."), [
+                  { text: T("Cancel"), style: "cancel" },
+                  { text: T("Delete"), style: "destructive", onPress: () => usePlaylists.getState().remove(playlist.id) },
+                ]),
+            },
+          ]}
+        />
         <NameDialog
           visible={renaming}
-          title="Rename playlist"
-          placeholder="Name"
+          title={T("Rename playlist")}
+          placeholder={T("Name")}
           initial={playlist.name}
-          action="Save"
+          action={T("Save")}
           onCancel={() => setRenaming(false)}
           onDone={(name) => {
             usePlaylists.getState().rename(playlist.id, name);
@@ -231,13 +228,9 @@ export function CollectionScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.base },
   hero: { alignItems: "center", paddingTop: 176, paddingBottom: 14, paddingHorizontal: 20, overflow: "hidden" },
-  back: { position: "absolute", left: 6, width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  more: { position: "absolute", right: 6, width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  menuBack: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  menuSheet: { backgroundColor: colors.sheet, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 10 },
-  menuRow: { height: 52, justifyContent: "center", paddingHorizontal: 20 },
-  menuText: { color: colors.ink, fontSize: 16 },
-  menuDanger: { color: "#FF9D9D" },
+  topRow: { position: "absolute", left: 6, right: 6, flexDirection: "row", alignItems: "center", gap: 2 },
+  topButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  topGap: { flex: 1 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800", letterSpacing: -0.8, lineHeight: 34, textAlign: "center" },
   meta: { color: "rgba(255,255,255,0.78)", fontSize: 11, fontWeight: "600", letterSpacing: 1.5, marginTop: 6, textAlign: "center" },
   controls: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14 },
@@ -272,6 +265,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.45)",
   },
   pillText: { color: colors.ink, fontSize: 14.5, fontWeight: "600" },
-  find: { alignSelf: "stretch", height: 42, marginTop: 14, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.chip, color: colors.ink, fontSize: 15 },
+  find: { flex: 1, height: 44, marginRight: 6, backgroundColor: "rgba(0,0,0,0.55)" },
   empty: { color: colors.dim, fontSize: 14, textAlign: "center", marginTop: 24 },
 });

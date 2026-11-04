@@ -19,6 +19,7 @@ import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
 import type { LyricMatch } from "../../electron/lyrics-index";
+import { T } from "../lib/i18n";
 
 type Scope = "all" | "local" | "jellyfin" | "subsonic";
 
@@ -78,10 +79,10 @@ export function LibrarySearchView() {
   if (!loaded) return null;
 
   const scopeOptions: { key: Scope; label: string }[] = [
-    { key: "all", label: "Everything" },
-    ...(sources.has("local") ? [{ key: "local" as const, label: "On this device" }] : []),
-    ...(sources.has("jellyfin") ? [{ key: "jellyfin" as const, label: "Jellyfin" }] : []),
-    ...(sources.has("subsonic") ? [{ key: "subsonic" as const, label: "Navidrome" }] : []),
+    { key: "all", label: T("Everything") },
+    ...(sources.has("local") ? [{ key: "local" as const, label: T("On this device") }] : []),
+    ...(sources.has("jellyfin") ? [{ key: "jellyfin" as const, label: T("Jellyfin") }] : []),
+    ...(sources.has("subsonic") ? [{ key: "subsonic" as const, label: T("Navidrome") }] : []),
   ];
 
   return (
@@ -89,7 +90,7 @@ export function LibrarySearchView() {
       <div className="flex items-end justify-between gap-4 flex-wrap animate-slide-up">
         <div className="min-w-0">
           <h1 className="font-display text-[30px] font-bold tracking-[-0.03em] text-ink-hi truncate">
-            {q ? `“${q}”` : "Search"}
+            {q ? `“${q}”` : T("Search")}
           </h1>
           <p className="text-[13px] text-ink-faint mt-1">
             {resultsLine(songs.length, lyricSongs.length)}
@@ -100,7 +101,7 @@ export function LibrarySearchView() {
 
       {matchingArtists.length > 0 && (
         <section>
-          <h2 className="section-title text-[21px] mb-4">Artists</h2>
+          <h2 className="section-title text-[21px] mb-4">{T("Artists")}</h2>
           <ShelfScroller>
             {matchingArtists.map((a) => (
               <ArtistTile key={a.name} name={a.name} route={a.route} fallbackThumb={a.thumb} subtitle={`${a.trackCount} song${a.trackCount === 1 ? "" : "s"}`} />
@@ -111,7 +112,7 @@ export function LibrarySearchView() {
 
       {matchingAlbums.length > 0 && (
         <section>
-          <h2 className="section-title text-[21px] mb-4">Albums</h2>
+          <h2 className="section-title text-[21px] mb-4">{T("Albums")}</h2>
           <ShelfScroller>
             {matchingAlbums.map((a) => (
               <AlbumTile key={a.key} album={a} />
@@ -122,14 +123,14 @@ export function LibrarySearchView() {
 
       {songs.length > 0 && (
         <section>
-          <h2 className="section-title text-[21px] mb-3">Songs</h2>
-          <TrackList tracks={songs.slice(0, MAX_RESULTS)} showAlbum emptyLabel="No songs." />
+          <h2 className="section-title text-[21px] mb-3">{T("Songs")}</h2>
+          <TrackList tracks={songs.slice(0, MAX_RESULTS)} showAlbum emptyLabel={T("No songs.")} />
         </section>
       )}
 
       {lyricSongs.length > 0 && (
         <section>
-          <h2 className="section-title text-[21px] mb-3">In lyrics</h2>
+          <h2 className="section-title text-[21px] mb-3">{T("In lyrics")}</h2>
           <div className="space-y-0.5">
             {lyricSongs.map(({ track, hit }, i) => (
               <LyricHitRow
@@ -147,11 +148,9 @@ export function LibrarySearchView() {
       {songs.length === 0 && lyricSongs.length === 0 && (
         <EmptyState
           icon={Search}
-          title={q ? "Nothing in your library matches" : "Search your library"}
+          title={q ? T("Nothing in your library matches") : T("Search your library")}
           body={
-            q
-              ? "Search looks through titles, artists and albums of your local files and your servers, and through the lyrics already on this computer."
-              : "Type a song, artist or album in the search field above."
+            q ? T("Search looks through titles, artists and albums of your local files and your servers, and through the lyrics already on this computer.") : T("Type a song, artist or album in the search field above.")
           }
         />
       )}
@@ -161,11 +160,11 @@ export function LibrarySearchView() {
 
 /** "12 songs in your library · 3 by their lyrics" — only what was found. */
 function resultsLine(songs: number, byLyrics: number): string {
-  const plural = (n: number): string => `${n} song${n === 1 ? "" : "s"}`;
-  const found = songs > MAX_RESULTS ? `${MAX_RESULTS} of ${plural(songs)}` : plural(songs);
-  if (!byLyrics) return `${found} in your library`;
-  if (!songs) return `${plural(byLyrics)} by their lyrics`;
-  return `${found} in your library · ${byLyrics} by their lyrics`;
+  const plural = (n: number): string => T("{n} song{s}", { n, s: n === 1 ? "" : "s" });
+  const found = songs > MAX_RESULTS ? T("{MAX_RESULTS} of {count}", { MAX_RESULTS, count: plural(songs) }) : plural(songs);
+  if (!byLyrics) return T("{found} in your library", { found });
+  if (!songs) return T("{count} by their lyrics", { count: plural(byLyrics) });
+  return T("{found} in your library · {byLyrics} by their lyrics", { found, byLyrics });
 }
 
 /** The query marked in a line, wherever it reads the same ignoring case. */
@@ -186,7 +185,7 @@ function LyricHitRow({ track, hit, query, onPlay }: { track: Track; hit: LyricMa
   return (
     <button
       onClick={onPlay}
-      title={`Play ${track.title}`}
+      title={T("Play {title}", { title: track.title })}
       className="w-full flex items-center gap-3.5 h-[64px] px-3 rounded-lg text-left hover:bg-ink-hi/[0.05] transition-colors"
     >
       <Artwork src={track.thumb} className="w-[48px] h-[48px] rounded-lg shrink-0" iconClassName="w-4 h-4" alt="" />

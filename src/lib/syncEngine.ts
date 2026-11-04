@@ -11,10 +11,12 @@
  *  - changes: a long poll, so other devices hear within moments.
  *  - devices: each device says what it's doing and hears what the others do, so
  *    one shows what plays on another and can steer it; commands go through the
- *    service too, and one that isn't picked up within a minute is forgotten.
+ *    service too, and one that isn't picked up within a minute is forgotten. A
+ *    long list goes ahead as the queue document, and its command says to read it.
  *  - muted songs: one list for all devices; the newer list wins.
  */
 import { mergePlaylistDocs, sameDoc, sameLikes, toPlaylistDoc, type PlaylistDoc, type WireTrack } from "./playlistSync";
+import type { QueueBranch } from "./queueSections";
 
 export interface SyncReply {
   status: number;
@@ -32,6 +34,8 @@ export interface PlaybackNote {
   positionMs: number;
   track: WireTrack;
   queueId: string;
+  /** the song's place in that device's queue, for when a song is in it twice; the queue document says where its list starts */
+  place?: number;
   context?: string;
   /** what the player is doing with the sound, for a look when something sounds off */
   audio?: string;
@@ -41,6 +45,13 @@ export interface QueueDoc {
   id: string;
   context?: string;
   tracks: WireTrack[];
+  /** the place in the device's queue this list starts from */
+  from?: number;
+  /** where the songs asked for by hand end, in this list */
+  lineEnd?: number;
+  branches?: QueueBranch[];
+  /** what the list is called that comes after the branch playing now */
+  home?: string;
 }
 
 /** What a device says about itself to the others. */
@@ -53,6 +64,12 @@ export interface DevicePresence {
   track: WireTrack | null;
   queueId?: string;
   context?: string;
+  shuffle?: boolean;
+  repeat?: "off" | "all" | "one";
+  /** 0 to 1; without it, it can't be set from elsewhere */
+  volume?: number;
+  /** a second stream, by request: it goes its own way, nobody follows it or stops it by starting something */
+  separate?: boolean;
 }
 
 /** Another device as this one knows it. */
@@ -63,15 +80,34 @@ export interface RemoteDevice {
   presence: DevicePresence;
 }
 
+/** Songs with a command: right in it, or with `listId` in the queue document, for lists too long for a command. */
+interface WithSongs {
+  tracks?: WireTrack[];
+  listId?: string;
+}
+
 export type DeviceCommand =
   | { action: "play" | "pause" | "next" | "previous" | "syncLikes" }
+  /** the branch into this list taken back */
+  | { action: "cancelBranch"; name?: string }
   | { action: "seek"; positionMs: number }
   /** a song of its queue */
-  | { action: "jump"; trackId: string }
-  /** songs for its queue, next or at the end */
-  | { action: "enqueue"; tracks: WireTrack[]; next?: boolean }
+  | { action: "jump"; trackId: string; by?: number }
+  /** songs for its queue, behind the playing one and what was asked for before */
+  | ({ action: "enqueue"; next?: boolean } & WithSongs)
   /** go on from the position and queue documents, playing */
-  | { action: "takeOver" };
+  | { action: "takeOver" }
+  /** another device started the music: pause, and show that one */
+  | { action: "yield"; to: string }
+  | { action: "shuffle"; on: boolean }
+  | { action: "repeat"; mode: "off" | "all" | "one" }
+  | { action: "volume"; level: number }
+  /** a new list, from this song of it; `keepOrder` when it's in its final order already */
+  | ({ action: "playList"; start: number; context?: string; shuffle?: boolean; keepOrder?: boolean } & WithSongs)
+  /** what comes after the playing song, edited elsewhere; `line` of them were asked for by hand */
+  | ({ action: "setUpcoming"; line?: number } & WithSongs)
+  /** the first of these next and the rest after it, what was coming behind them */
+  | ({ action: "branchOff"; name: string } & WithSongs);
 
 export interface MutedDoc {
   /** when the list last changed (ms) */
@@ -107,6 +143,8 @@ export interface SyncHost {
   /** A newer list of muted songs from another device. */
   applyMuted?(doc: MutedDoc): void;
   onStatus?(status: SyncStatus): void;
+  /** A round of listening is over: the moment to stop, if there's no reason to go on. */
+  onListening?(): void;
 }
 
 const LONG_POLL_SEC = 25;
@@ -315,8 +353,18 @@ export function createSyncEngine(host: SyncHost) {
     for (const command of Array.isArray(got.body.commands) ? got.body.commands : []) {
       // Going on from where another device stands needs that device's latest word.
       if (command?.action === "takeOver") await takeOver();
+      else if (typeof command?.listId === "string") await takeList(command);
       else host.onCommand(command);
     }
+  }
+
+  /** A command whose songs went ahead as the queue document. A newer list written over it wins. */
+  async function takeList(command: DeviceCommand & WithSongs): Promise<void> {
+    const got = await host.request("GET", "/v1/docs/queue", undefined, REQUEST_TIMEOUT_MS);
+    // That document isn't this device's own list now: it goes out again with its next word.
+    sentQueueId = null;
+    const doc = got.status === 200 ? (got.body.doc as QueueDoc | null) : null;
+    if (doc && doc.id === command.listId && Array.isArray(doc.tracks)) host.onCommand?.({ ...command, tracks: doc.tracks } as DeviceCommand);
   }
 
   async function takeOver(): Promise<void> {
@@ -380,6 +428,7 @@ export function createSyncEngine(host: SyncHost) {
           if (!synced || Date.now() - lastPresenceAt > PRESENCE_EVERY_MS) await sendPresence();
         }
         synced = true;
+        host.onListening?.();
       } catch (err) {
         if (!running || mine !== session) return;
         const code = (err as { status?: number }).status;
@@ -501,6 +550,19 @@ export function createSyncEngine(host: SyncHost) {
       } catch {
         return false;
       }
+    },
+
+    /** A command with a list of songs of any length: they go ahead as the queue document. */
+    async sendList(deviceId: string, tracks: WireTrack[], context: string | undefined, command: DeviceCommand): Promise<boolean> {
+      const listId = `list${Date.now()}`;
+      try {
+        const put = await host.request("PUT", "/v1/docs/queue", { doc: { id: listId, context, tracks } }, REQUEST_TIMEOUT_MS);
+        if (put.status !== 200) return false;
+      } catch {
+        return false;
+      }
+      sentQueueId = null;
+      return this.sendCommand(deviceId, { ...command, listId } as DeviceCommand);
     },
 
     /** Hands the music to another device: where this one stands goes out first, and it goes on from there. */

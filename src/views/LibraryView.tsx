@@ -7,24 +7,7 @@
  * "Recently played" tab, not in the library.
  */
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  FileDown,
-  FileUp,
-  Folder,
-  FolderOpen,
-  Heart,
-  Library,
-  ListMusic,
-  Music2,
-  Pin,
-  PinOff,
-  Play,
-  Shuffle,
-  Trash2,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Download, FileDown, FileUp, Folder, FolderOpen, Heart, Library, ListMusic, Music2, Pin, PinOff, Play, Shuffle, Trash2, Pencil } from "lucide-react";
 import { TrackList } from "../components/TrackList";
 import { Btn, EmptyState, Pills, PlayOverlay } from "../components/primitives";
 import { CreateMenu } from "../components/CreateMenu";
@@ -38,6 +21,7 @@ import { plural } from "../lib/format";
 import { upgradeArtwork } from "../lib/artwork";
 import { exportM3uPlaylist } from "../lib/playlistFiles";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 type LibTab = "playlists" | "liked" | "downloaded";
 
@@ -69,7 +53,7 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
   return (
     <div
       {...drag.props}
-      title="Drag onto a sidebar folder to file it there"
+      title={T("Drag onto a sidebar folder to file it there")}
       className={`group relative w-44 text-left ${drag.dragging ? "opacity-40" : ""}`}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -86,8 +70,8 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
             e.stopPropagation();
             togglePin(playlist.id);
           }}
-          title={playlist.pinned ? "Unpin" : "Pin to top"}
-          aria-label={playlist.pinned ? "Unpin playlist" : "Pin playlist"}
+          title={playlist.pinned ? T("Unpin") : T("Pin to top")}
+          aria-label={playlist.pinned ? T("Unpin playlist") : T("Pin playlist")}
           className={`absolute top-1 right-1 z-10 p-1.5 rounded-md transition-opacity ${
             playlist.pinned
               ? "text-accent opacity-100"
@@ -138,7 +122,7 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
           )}
           <span className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors" aria-hidden />
           <PlayOverlay
-            title="Play playlist"
+            title={T("Play playlist")}
             onClick={() => {
               if (!playlist.tracks.length) {
                 navigate({ name: "playlist", param: playlist.id });
@@ -152,24 +136,24 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
         <div className="mt-3 flex items-start justify-between gap-1">
           <div className="min-w-0">
             <div className="text-sm font-medium text-ink truncate">{playlist.name}</div>
-            <div className="text-[13px] text-ink-faint mt-0.5">{plural(playlist.tracks.length, "song", "songs")}</div>
+            <div className="text-[13px] text-ink-faint mt-0.5">{plural(playlist.tracks.length, T("song"), T("songs"))}</div>
           </div>
           <button
             onClick={(e) => {
               e.stopPropagation();
               openDialog({
-                title: `Delete "${playlist.name}"?`,
-                body: "This can't be undone. The tracks themselves aren't affected.",
-                confirmLabel: "Delete",
+                title: T("Delete \"{name}\"?", { name: playlist.name }),
+                body: T("This can't be undone. The tracks themselves aren't affected."),
+                confirmLabel: T("Delete"),
                 danger: true,
                 onConfirm: () => {
                   deletePlaylist(playlist.id);
-                  toast("Playlist deleted", "info");
+                  toast(T("Playlist deleted"), "info");
                 },
               });
             }}
-            title="Delete playlist"
-            aria-label={`Delete ${playlist.name}`}
+            title={T("Delete playlist")}
+            aria-label={T("Delete {name}", { name: playlist.name })}
             className="p-1.5 rounded-md text-ink-ghost hover:text-red-400 hover:bg-ink-hi/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -219,14 +203,14 @@ function FolderSection({
       if (!pl) return;
       if (lib.playlists.some((p) => p.id === pl.id)) {
         lib.setPlaylistFolder(pl.id, folder.id);
-        ui.toast(`Moved “${pl.title}” into “${folder.name}”`, "success");
+        ui.toast(T("Moved “{title}” into “{name}”", { title: pl.title, name: folder.name }), "success");
         return;
       }
-      ui.toast(`Importing “${pl.title}”…`);
+      ui.toast(T("Importing “{title}”…", { title: pl.title }));
       void requireBridge()
         .getPlaylist(pl.id)
         .then((page) => {
-          const name = (page.title || pl.title).trim() || "Imported playlist";
+          const name = (page.title || pl.title).trim() || T("Imported playlist");
           const seen = new Set<string>();
           const tracks = (page.tracks ?? []).filter((t: Track) =>
             seen.has(t.id) ? false : (seen.add(t.id), true)
@@ -238,18 +222,18 @@ function FolderSection({
               p.id === created.id ? { ...p, tracks, folderId: folder.id } : p
             ),
           }));
-          ui.toast(`“${name}” · ${tracks.length} songs added to “${folder.name}”`, "success");
+          ui.toast(T("“{name}” · {count} songs added to “{name2}”", { name, count: tracks.length, name2: folder.name }), "success");
         })
-        .catch(() => ui.toast(`Couldn't import “${pl.title}”`, "error"));
+        .catch(() => ui.toast(T("Couldn't import “{title}”", { title: pl.title }), "error"));
       return;
     }
     const al = readAlbum(e);
     if (!al) return;
-    ui.toast(`Importing “${al.title}”…`);
+    ui.toast(T("Importing “{title}”…", { title: al.title }));
     void requireBridge()
       .getAlbum(al.id)
       .then((page) => {
-        const name = (page.album?.title || al.title).trim() || "Imported album";
+        const name = (page.album?.title || al.title).trim() || T("Imported album");
         const seen = new Set<string>();
         const tracks = (page.tracks ?? []).filter((t: Track) =>
           seen.has(t.id) ? false : (seen.add(t.id), true)
@@ -261,9 +245,9 @@ function FolderSection({
             p.id === created.id ? { ...p, tracks, folderId: folder.id } : p
           ),
         }));
-        ui.toast(`“${name}” · ${tracks.length} songs added to “${folder.name}”`, "success");
+        ui.toast(T("“{name}” · {count} songs added to “{name2}”", { name, count: tracks.length, name2: folder.name }), "success");
       })
-      .catch(() => ui.toast(`Couldn't import “${al.title}”`, "error"));
+      .catch(() => ui.toast(T("Couldn't import “{title}”", { title: al.title }), "error"));
   };
 
   return (
@@ -277,24 +261,26 @@ function FolderSection({
           e.preventDefault();
           openContextMenu(e.clientX, e.clientY, [
             {
-              label: "Rename folder",
+              label: T("Rename folder"),
+              icon: Pencil,
               action: () =>
                 openDialog({
-                  title: "Rename folder",
+                  title: T("Rename folder"),
                   initialValue: folder.name,
-                  placeholder: "Folder name",
-                  confirmLabel: "Save",
+                  placeholder: T("Folder name"),
+                  confirmLabel: T("Save"),
                   onConfirm: (value) => useLibrary.getState().renameFolder(folder.id, value),
                 }),
             },
             {
-              label: "Delete folder",
+              label: T("Delete folder"),
+              icon: Trash2,
               danger: true,
               action: () => useLibrary.getState().deleteFolder(folder.id),
             },
           ]);
         }}
-        title="Right-click to rename or delete — or drop a playlist here to file it"
+        title={T("Right-click to rename or delete — or drop a playlist here to file it")}
         className={`group flex items-center gap-3 py-1 pr-3 rounded-lg text-left hover:bg-ink-hi/[0.04] transition-colors w-full ${
           dropHover ? "ring-2 ring-inset ring-accent/60 bg-ink-hi/[0.08]" : ""
         }`}
@@ -310,7 +296,7 @@ function FolderSection({
         <span className="min-w-0">
           <span className="block text-[15px] font-semibold text-ink-hi truncate">{folder.name}</span>
           <span className="block text-[12.5px] text-ink-hi/55">
-            {plural(playlists.length, "playlist", "playlists")}
+            {plural(playlists.length, T("playlist"), T("playlists"))}
           </span>
         </span>
       </button>
@@ -319,9 +305,7 @@ function FolderSection({
           {playlists.length ? (
             playlists.map((p) => <LibraryPlaylistCard key={p.id} playlist={p} />)
           ) : (
-            <p className="text-[13px] text-ink-hi/45 py-2">
-              Empty folder — right-click a playlist in the sidebar and move it here.
-            </p>
+            <p className="text-[13px] text-ink-hi/45 py-2">{T("Empty folder — right-click a playlist in the sidebar and move it here.")}</p>
           )}
         </div>
       )}
@@ -356,7 +340,7 @@ function ShortcutTile({
         e.stopPropagation();
         openContextMenu(e.clientX, e.clientY, [
           {
-            label: pinned ? "Unpin" : "Pin to top",
+            label: pinned ? T("Unpin") : T("Pin to top"),
             icon: pinned ? PinOff : Pin,
             action: onTogglePin,
           },
@@ -369,8 +353,8 @@ function ShortcutTile({
             e.stopPropagation();
             onTogglePin();
           }}
-          title={pinned ? "Unpin" : "Pin to top"}
-          aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
+          title={pinned ? T("Unpin") : T("Pin to top")}
+          aria-label={pinned ? T("Unpin {title}", { title }) : T("Pin {title}", { title })}
           className={`absolute top-1 right-1 z-10 p-1.5 rounded-md transition-opacity ${
             pinned
               ? "text-accent opacity-100"
@@ -435,12 +419,12 @@ export function LibraryView() {
       <div>
         <div className="flex items-end justify-between gap-4 animate-slide-up">
           <div>
-            <div className="micro-label text-ink-faint mb-1.5">Collection</div>
-            <h1 className="font-display text-[28px] font-bold tracking-tight text-ink-hi">Your Library</h1>
+            <div className="micro-label text-ink-faint mb-1.5">{T("Collection")}</div>
+            <h1 className="font-display text-[28px] font-bold tracking-tight text-ink-hi">{T("Your Library")}</h1>
             <p className="text-sm text-ink-dim mt-1">
-              {plural(playlists.length, "playlist", "playlists")} ·{" "}
-              {plural(folders.length, "folder", "folders")} ·{" "}
-              {plural(liked.length, "liked song", "liked songs")}
+              {plural(playlists.length, T("playlist"), T("playlists"))} ·{" "}
+              {plural(folders.length, T("folder"), T("folders"))} ·{" "}
+              {plural(liked.length, T("liked song"), T("liked songs"))}
             </p>
           </div>
           <CreateMenu onFolderCreated={(f) => setExpandedFolders((prev) => new Set(prev).add(f.id))} />
@@ -449,9 +433,9 @@ export function LibraryView() {
         <div className="mt-5">
           <Pills
             options={[
-              { key: "playlists" as const, label: "Playlists", count: playlists.length },
-              { key: "liked" as const, label: "Liked", count: liked.length },
-              { key: "downloaded" as const, label: "Downloaded", count: downloadedTracks.length },
+              { key: "playlists" as const, label: T("Playlists"), count: playlists.length },
+              { key: "liked" as const, label: T("Liked"), count: liked.length },
+              { key: "downloaded" as const, label: T("Downloaded"), count: downloadedTracks.length },
             ]}
             value={tab}
             onChange={setTab}
@@ -475,8 +459,8 @@ export function LibraryView() {
                     return (
                       <ShortcutTile
                         key="liked"
-                        title="Liked Songs"
-                        subtitle={plural(liked.length, "song", "songs")}
+                        title={T("Liked Songs")}
+                        subtitle={plural(liked.length, T("song"), T("songs"))}
                         pinned={pinned}
                         onTogglePin={() => togglePinSingle("liked")}
                         onOpen={() => setTab("liked")}
@@ -489,8 +473,8 @@ export function LibraryView() {
                     return (
                       <ShortcutTile
                         key="downloads"
-                        title="Downloads"
-                        subtitle={plural(downloadedTracks.length, "song", "songs")}
+                        title={T("Downloads")}
+                        subtitle={plural(downloadedTracks.length, T("song"), T("songs"))}
                         pinned={pinned}
                         onTogglePin={() => togglePinSingle("downloads")}
                         onOpen={() => navigate({ name: "downloads" })}
@@ -506,8 +490,8 @@ export function LibraryView() {
                   return (
                     <ShortcutTile
                       key="local"
-                      title="Local Music"
-                      subtitle="On this device"
+                      title={T("Local Music")}
+                      subtitle={T("On this device")}
                       pinned={pinned}
                       onTogglePin={() => togglePinSingle("local")}
                       onOpen={() => navigate({ name: "local" })}
@@ -522,8 +506,8 @@ export function LibraryView() {
           {folders.length === 0 && unfiled.length === 0 ? (
             <EmptyState
               icon={ListMusic}
-              title="No playlists yet"
-              body='Use the + button above to create a playlist or a folder — or right-click any track and choose "New playlist…" to start one from a song you like.'
+              title={T("No playlists yet")}
+              body={T("Use the + button above to create a playlist or a folder — or right-click any track and choose \"New playlist…\" to start one from a song you like.")}
             />
           ) : (
             <>
@@ -546,7 +530,7 @@ export function LibraryView() {
               {unfiled.length > 0 && (
                 <section>
                   {folders.length > 0 && (
-                    <h2 className="text-[15px] font-semibold text-ink-hi mb-3">Playlists</h2>
+                    <h2 className="text-[15px] font-semibold text-ink-hi mb-3">{T("Playlists")}</h2>
                   )}
                   <div className="flex flex-wrap gap-5">
                     {pinnedFirst.map((p) => (
@@ -565,36 +549,24 @@ export function LibraryView() {
           {liked.length ? (
             <>
               <div className="flex items-center gap-2">
-                <Btn variant="white" size="md" icon={Play} onClick={() => usePlayer.getState().playAll(liked)}>
-                  Play all
-                </Btn>
-                <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(liked)}>
-                  Shuffle
-                </Btn>
-                <Btn variant="glass" size="md" icon={FileUp} onClick={() => navigate({ name: "spotify" })} className="ml-auto">
-                  Import from Spotify
-                </Btn>
-                <Btn variant="glass" size="md" icon={FileDown} onClick={() => void exportM3uPlaylist("Liked Songs", liked)}>
-                  Export M3U
-                </Btn>
+                <Btn variant="white" size="md" icon={Play} onClick={() => usePlayer.getState().playAll(liked)}>{T("Play all")}</Btn>
+                <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(liked)}>{T("Shuffle")}</Btn>
+                <Btn variant="glass" size="md" icon={FileUp} onClick={() => navigate({ name: "spotify" })} className="ml-auto">{T("Import from Spotify")}</Btn>
+                <Btn variant="glass" size="md" icon={FileDown} onClick={() => void exportM3uPlaylist(T("Liked Songs"), liked)}>{T("Export M3U")}</Btn>
               </div>
               <div className="mt-5">
-                <TrackList tracks={liked} showAlbum sourceName="Liked Songs" emptyTitle="No liked songs yet" />
+                <TrackList tracks={liked} showAlbum sourceName={T("Liked Songs")} emptyTitle={T("No liked songs yet")} />
               </div>
             </>
           ) : (
             <EmptyState
               icon={Heart}
-              title="Songs you like will show up here"
-              body="Click the heart on any song — in the player, a playlist, or search — and it lands in this list. Or bring your Liked Songs over from Spotify."
+              title={T("Songs you like will show up here")}
+              body={T("Click the heart on any song — in the player, a playlist, or search — and it lands in this list. Or bring your Liked Songs over from Spotify.")}
               action={
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Btn variant="white" icon={FileUp} onClick={() => navigate({ name: "spotify" })}>
-                    Import from Spotify
-                  </Btn>
-                  <Btn variant="glass" onClick={() => navigate({ name: "search" })}>
-                    Find something to like
-                  </Btn>
+                  <Btn variant="white" icon={FileUp} onClick={() => navigate({ name: "spotify" })}>{T("Import from Spotify")}</Btn>
+                  <Btn variant="glass" onClick={() => navigate({ name: "search" })}>{T("Find something to like")}</Btn>
                 </div>
               }
             />
@@ -607,26 +579,20 @@ export function LibraryView() {
           {downloadedTracks.length ? (
             <>
               <div className="flex items-center gap-2">
-                <Btn variant="white" size="md" icon={Play} onClick={() => usePlayer.getState().playAll(downloadedTracks)}>
-                  Play all
-                </Btn>
-                <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(downloadedTracks)}>
-                  Shuffle
-                </Btn>
+                <Btn variant="white" size="md" icon={Play} onClick={() => usePlayer.getState().playAll(downloadedTracks)}>{T("Play all")}</Btn>
+                <Btn variant="glass" size="md" icon={Shuffle} onClick={() => shufflePlay(downloadedTracks)}>{T("Shuffle")}</Btn>
               </div>
               <div className="mt-5">
-                <TrackList tracks={downloadedTracks} showAlbum emptyTitle="Nothing downloaded yet" />
+                <TrackList tracks={downloadedTracks} showAlbum emptyTitle={T("Nothing downloaded yet")} />
               </div>
             </>
           ) : (
             <EmptyState
               icon={Download}
-              title="No downloads yet"
-              body="Right-click any track and choose Download — it lands here for offline playback."
+              title={T("No downloads yet")}
+              body={T("Right-click any track and choose Download — it lands here for offline playback.")}
               action={
-                <Btn variant="white" onClick={() => navigate({ name: "search" })}>
-                  Find something to download
-                </Btn>
+                <Btn variant="white" onClick={() => navigate({ name: "search" })}>{T("Find something to download")}</Btn>
               }
             />
           )}

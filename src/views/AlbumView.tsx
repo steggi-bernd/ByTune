@@ -15,9 +15,11 @@ import { useArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { queueAlbum } from "../lib/album";
 import { useIsMuted } from "../stores/muted";
+import { BranchMark } from "../components/primitives";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Album, Track } from "../types";
+import { T } from "../lib/i18n";
 
 interface AlbumData {
   album: Album;
@@ -60,8 +62,8 @@ export function AlbumView({ albumId }: { albumId: string }) {
   if (error) {
     return (
       <ErrorState
-        title="Couldn't load this album"
-        body="Check your connection and try again — the album page will be right here."
+        title={T("Couldn't load this album")}
+        body={T("Check your connection and try again — the album page will be right here.")}
         onRetry={() => setNonce((n) => n + 1)}
         className="pt-10"
       />
@@ -79,9 +81,9 @@ export function AlbumView({ albumId }: { albumId: string }) {
 
   const { album, tracks } = data;
   const meta = [
-    album.releaseType ?? "Album",
+    album.releaseType ?? T("Album"),
     album.year,
-    tracks.length ? `${tracks.length} ${tracks.length === 1 ? "song" : "songs"}` : "",
+    tracks.length ? `${tracks.length} ${tracks.length === 1 ? T("song") : T("songs")}` : "",
   ]
     .filter(Boolean)
     .join(" • ")
@@ -145,8 +147,8 @@ export function AlbumView({ albumId }: { albumId: string }) {
             <button
               onClick={() => play(true)}
               disabled={!tracks.length}
-              title="Shuffle"
-              aria-label="Shuffle"
+              title={T("Shuffle")}
+              aria-label={T("Shuffle")}
               className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >
               <Shuffle className="w-[18px] h-[18px]" />
@@ -156,28 +158,26 @@ export function AlbumView({ albumId }: { albumId: string }) {
               disabled={!tracks.length}
               className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-black/45 border border-white/10 text-[14.5px] font-semibold text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >
-              <Play className="w-[18px] h-[18px] fill-current" />
-              Play
-            </button>
+              <Play className="w-[18px] h-[18px] fill-current" />{T("Play")}</button>
             <button
               onClick={(e) =>
                 useUI.getState().openContextMenu(e.clientX, e.clientY, [
                   {
-                    label: "Go to artist",
+                    label: T("Go to artist"),
                     icon: User,
                     disabled: !album.artistId,
                     action: () => navigate({ name: "artist", param: album.artistId! }),
                   },
                   {
-                    label: "Add all to queue",
+                    label: T("Add all to queue"),
                     icon: ListPlus,
                     disabled: !tracks.length,
-                    action: () => void queueAlbum(albumId, false),
+                    action: () => void queueAlbum(albumId),
                   },
                 ])
               }
-              title="More options"
-              aria-label="More options"
+              title={T("More options")}
+              aria-label={T("More options")}
               className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
             >
               <MoreHorizontal className="w-[18px] h-[18px]" />
@@ -189,7 +189,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
       <div className="px-8 pb-12 pt-2 space-y-7">
         {album.description && (
           <section>
-            <h2 className="section-title text-[17px] mb-2">About the album</h2>
+            <h2 className="section-title text-[17px] mb-2">{T("About the album")}</h2>
             <p
               onClick={() => aboutClipped && setAboutExpanded((v) => !v)}
               className={`text-[14.5px] leading-relaxed text-ink-dim ${aboutClipped || aboutExpanded ? "cursor-pointer" : ""}`}
@@ -214,7 +214,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
                 onClick={() => setAboutExpanded((v) => !v)}
                 className="mt-1 text-[13px] font-semibold text-accent hover:brightness-110 transition-all"
               >
-                {aboutExpanded ? "Less" : "More"}
+                {aboutExpanded ? T("Less") : T("More")}
               </button>
             )}
           </section>
@@ -269,8 +269,8 @@ function AlbumTrackRow({ song, index, tracks }: { song: Track; index: number; tr
                 playQueue(tracks, index);
               }}
               className="hidden group-hover:block text-ink-hi hover:text-ink-hi transition-colors"
-              title={`Play ${song.title}`}
-              aria-label={`Play ${song.title}`}
+              title={T("Play {title}", { title: song.title })}
+              aria-label={T("Play {title}", { title: song.title })}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
             </button>
@@ -281,6 +281,7 @@ function AlbumTrackRow({ song, index, tracks }: { song: Track; index: number; tr
         <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${muted ? "text-red-300" : "text-ink-hi"}`}>
           {song.explicit && <ExplicitBadge />}
           <span className="truncate">{song.title}</span>
+          <BranchMark id={song.id} />
         </div>
         <div className="text-[14px] truncate text-ink-dim mt-0.5">{song.artist}</div>
       </div>
@@ -292,8 +293,8 @@ function AlbumTrackRow({ song, index, tracks }: { song: Track; index: number; tr
           e.stopPropagation();
           openMenu(e.clientX, e.clientY);
         }}
-        title="More options"
-        aria-label={`More options for ${song.title}`}
+        title={T("More options")}
+        aria-label={T("More options for {title}", { title: song.title })}
         className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />

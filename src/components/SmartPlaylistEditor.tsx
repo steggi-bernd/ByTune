@@ -13,6 +13,7 @@ import { useCatalog } from "../stores/catalog";
 import { useLibrary } from "../stores/library";
 import { useSmartPlaylists, type RuleField, type SmartPlaylist, type SmartRule, type SmartSort } from "../stores/smartPlaylists";
 import { useUI } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 interface EditorState {
   editing: SmartPlaylist | null;
@@ -66,13 +67,13 @@ function RuleRow({ rule, onChange, onRemove }: { rule: SmartRule; onChange: (r: 
           value={rule.value}
           onChange={(e) => onChange({ ...rule, value: e.target.value })}
           inputMode={def.kind === "text" ? "text" : "decimal"}
-          placeholder={def.kind === "text" ? "e.g. rock" : "0"}
+          placeholder={def.kind === "text" ? T("e.g. rock") : "0"}
           className={`${INPUT} ${def.kind === "text" ? "w-[180px]" : "w-[90px]"}`}
         />
       )}
       {rule.op === "between" && (
         <>
-          <span className="text-[13px] text-ink-dim">and</span>
+          <span className="text-[13px] text-ink-dim">{T("and")}</span>
           <input
             value={rule.value2 ?? ""}
             onChange={(e) => onChange({ ...rule, value2: e.target.value })}
@@ -82,7 +83,7 @@ function RuleRow({ rule, onChange, onRemove }: { rule: SmartRule; onChange: (r: 
         </>
       )}
       {def.unit && <span className="text-[13px] text-ink-dim">{def.unit}</span>}
-      <button onClick={onRemove} title="Remove rule" aria-label="Remove rule" className="ml-auto w-8 h-8 grid place-items-center rounded-full text-ink-dim hover:text-ink-hi hover:bg-ink-hi/[0.08]">
+      <button onClick={onRemove} title={T("Remove rule")} aria-label={T("Remove rule")} className="ml-auto w-8 h-8 grid place-items-center rounded-full text-ink-dim hover:text-ink-hi hover:bg-ink-hi/[0.08]">
         <X className="w-4 h-4" />
       </button>
     </div>
@@ -110,19 +111,19 @@ function Editor({ initial, isNew }: { initial: SmartPlaylist; isNew: boolean }) 
 
   const setRule = (i: number, r: SmartRule): void => setSp((s) => ({ ...s, rules: s.rules.map((x, j) => (j === i ? r : x)) }));
   const save = (): void => {
-    const name = sp.name.trim() || "Smart playlist";
+    const name = sp.name.trim() || T("Smart playlist");
     useSmartPlaylists.getState().save({ ...sp, name });
     close();
     useUI.getState().navigate({ name: "smart", param: sp.id });
   };
 
   return (
-    <div className="fixed inset-0 z-[120] grid place-items-center animate-fade-in" role="dialog" aria-modal="true" aria-label="Smart playlist">
+    <div className="fixed inset-0 z-[120] grid place-items-center animate-fade-in" role="dialog" aria-modal="true" aria-label={T("Smart playlist")}>
       <div className="absolute inset-0 bg-black/55 backdrop-blur-[3px]" onClick={close} aria-hidden />
       <div className="relative w-[min(720px,calc(100vw-48px))] max-h-[calc(100vh-80px)] overflow-y-auto rounded-2xl glass-strong p-6 animate-pop-in">
         <div className="flex items-center gap-2.5">
           <Sparkles className="w-5 h-5 text-accent" />
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink-hi">{isNew ? "New smart playlist" : "Edit smart playlist"}</h2>
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink-hi">{isNew ? T("New smart playlist") : T("Edit smart playlist")}</h2>
         </div>
 
         {isNew && (
@@ -143,18 +144,14 @@ function Editor({ initial, isNew }: { initial: SmartPlaylist; isNew: boolean }) 
           autoFocus
           value={sp.name}
           onChange={(e) => setSp((s) => ({ ...s, name: e.target.value }))}
-          placeholder="Name"
+          placeholder={T("Name")}
           className={`${INPUT} w-full mt-4 h-10 text-[14px]`}
         />
 
-        <div className="flex items-center gap-2 mt-5 text-[13px] text-ink-hi/80">
-          Songs that match
-          <select value={sp.match} onChange={(e) => setSp((s) => ({ ...s, match: e.target.value as "all" | "any" }))} className={INPUT}>
-            <option value="all">all</option>
-            <option value="any">any</option>
-          </select>
-          of these rules:
-        </div>
+        <div className="flex items-center gap-2 mt-5 text-[13px] text-ink-hi/80">{T("Songs that match")}<select value={sp.match} onChange={(e) => setSp((s) => ({ ...s, match: e.target.value as "all" | "any" }))} className={INPUT}>
+            <option value="all">{T("all")}</option>
+            <option value="any">{T("any")}</option>
+          </select>{T("of these rules:")}</div>
 
         <div className="space-y-2.5 mt-3">
           {sp.rules.map((r, i) => (
@@ -164,14 +161,11 @@ function Editor({ initial, isNew }: { initial: SmartPlaylist; isNew: boolean }) 
             onClick={() => setSp((s) => ({ ...s, rules: [...s.rules, { field: "artist", op: "contains", value: "" }] }))}
             className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-dim hover:text-ink-hi transition-colors"
           >
-            <Plus className="w-4 h-4" /> Add rule
-          </button>
+            <Plus className="w-4 h-4" />{" "}{T("Add rule")}</button>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mt-5 text-[13px] text-ink-hi/80">
-          <label className="flex items-center gap-2">
-            Order
-            <select value={sp.sort} onChange={(e) => setSp((s) => ({ ...s, sort: e.target.value as SmartSort }))} className={INPUT}>
+          <label className="flex items-center gap-2">{T("Order")}<select value={sp.sort} onChange={(e) => setSp((s) => ({ ...s, sort: e.target.value as SmartSort }))} className={INPUT}>
               {(Object.keys(SORT_LABEL) as SmartSort[]).map((k) => (
                 <option key={k} value={k}>
                   {SORT_LABEL[k]}
@@ -179,33 +173,27 @@ function Editor({ initial, isNew }: { initial: SmartPlaylist; isNew: boolean }) 
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-2">
-            Limit to
-            <input
+          <label className="flex items-center gap-2">{T("Limit to")}<input
               value={sp.limit ?? ""}
               onChange={(e) => {
                 const n = parseInt(e.target.value, 10);
                 setSp((s) => ({ ...s, limit: Number.isFinite(n) && n > 0 ? n : null }));
               }}
-              placeholder="no limit"
+              placeholder={T("no limit")}
               inputMode="numeric"
               className={`${INPUT} w-[100px]`}
-            />
-            songs
-          </label>
+            />{T("songs")}</label>
         </div>
 
         <div className="flex items-center justify-between gap-3 mt-6">
           <span className="text-[13px] text-ink-dim">
-            {matches} {matches === 1 ? "song matches" : "songs match"}
-            {sp.limit && matches > sp.limit ? ` · first ${sp.limit} are kept` : ""}
+            {matches} {matches === 1 ? T("song matches") : T("songs match")}
+            {sp.limit && matches > sp.limit ? T(" · first {limit} are kept", { limit: sp.limit }) : ""}
           </span>
           <div className="flex items-center gap-2">
-            <button onClick={close} className="h-9 px-4 rounded-xl text-[13px] font-semibold text-ink-hi/80 hover:bg-ink-hi/[0.08] transition-colors">
-              Cancel
-            </button>
+            <button onClick={close} className="h-9 px-4 rounded-xl text-[13px] font-semibold text-ink-hi/80 hover:bg-ink-hi/[0.08] transition-colors">{T("Cancel")}</button>
             <button onClick={save} className="h-9 px-4 rounded-xl text-[13px] font-bold bg-primary text-on-primary hover:brightness-110 transition-all">
-              {isNew ? "Create" : "Save"}
+              {isNew ? T("Create") : T("Save")}
             </button>
           </div>
         </div>

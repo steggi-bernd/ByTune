@@ -15,6 +15,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { storage } from "../lib/persist";
 import { parsePlaylistExport, parseSpotifyExport, type SpotifyEntry, type SpotifyPlaylist } from "../lib/spotifyImport";
+import { T } from "../lib/i18n";
 
 /** Far more than any Liked Songs export — guards the renderer against a wrong pick. */
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -79,20 +80,20 @@ export const useSpotifyImport = create<SpotifyImportState>()(
 
       async load(file) {
         if (file.size > MAX_FILE_BYTES) {
-          set({ error: "That file is far too large for a Liked Songs export." });
+          set({ error: T("That file is far too large for a Liked Songs export.") });
           return;
         }
         try {
           const { entries, dated } = parseSpotifyExport(await file.text(), file.name);
           set({ fileName: file.name, entries, dated, error: null });
         } catch (err) {
-          set({ error: err instanceof Error ? err.message : "Couldn't read that file." });
+          set({ error: err instanceof Error ? err.message : T("Couldn't read that file.") });
         }
       },
 
       async loadPlaylist(file, into) {
         if (file.size > MAX_FILE_BYTES) {
-          set({ playlistError: "That file is far too large for a playlist export." });
+          set({ playlistError: T("That file is far too large for a playlist export.") });
           return;
         }
         try {
@@ -103,7 +104,7 @@ export const useSpotifyImport = create<SpotifyImportState>()(
             set({ playlistChoices: { fileName: file.name, lists, into }, playlistError: null });
           }
         } catch (err) {
-          set({ playlistError: err instanceof Error ? err.message : "Couldn't read that file." });
+          set({ playlistError: err instanceof Error ? err.message : T("Couldn't read that file.") });
         }
       },
 

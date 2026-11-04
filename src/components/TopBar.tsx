@@ -38,6 +38,7 @@ import { usePlayer } from "../stores/player";
 import { useRecents } from "../stores/recents";
 import type { SearchSuggestion } from "../types";
 import brandLogo from "../assets/brand/songsta-logo.svg";
+import { T } from "../lib/i18n";
 
 /** The brand mark alone — no wordmark beside it. The SVG is pure white and
     sits directly on the dark `chrome-glass` bar. Imported as an asset so Vite
@@ -45,7 +46,7 @@ import brandLogo from "../assets/brand/songsta-logo.svg";
     is what makes it resolve under file:// in the packaged app — a string like
     "/brand/x.svg" only works on the dev server. */
 function BrandHeader() {
-  return <img src={brandLogo} alt="Songsta" className="h-7 w-auto block" />;
+  return <img src={brandLogo} alt={T("Songsta")} className="h-7 w-auto block" />;
 }
 
 /** A round 40px button of the right cluster; `dot` marks a source as reachable (true) or away (false). */
@@ -97,7 +98,7 @@ function SourcesAndSettings() {
     <div className="app-no-drag ml-1 mr-2 flex items-center gap-0.5">
       <ClusterButton
         icon={FolderOpen}
-        label={offlineFolders ? `Local Music — ${offlineFolders} ${offlineFolders === 1 ? "folder" : "folders"} can't be reached` : "Local Music"}
+        label={offlineFolders ? T("Local Music — {offlineFolders} {value} can't be reached", { offlineFolders, value: offlineFolders === 1 ? T("folder") : T("folders") }) : T("Local Music")}
         active={view.name === "local"}
         dot={offlineFolders ? false : null}
         onClick={() => navigate({ name: "local" })}
@@ -105,7 +106,7 @@ function SourcesAndSettings() {
       {jellyfinConnected && (
         <ClusterButton
           icon={Server}
-          label={`Jellyfin${reach(jellyfin)}`}
+          label={T("Jellyfin{reach}", { reach: reach(jellyfin) })}
           active={view.name === "jellyfin"}
           dot={jellyfin}
           onClick={() => navigate({ name: "jellyfin" })}
@@ -114,13 +115,13 @@ function SourcesAndSettings() {
       {subsonicConnected && (
         <ClusterButton
           icon={Disc3}
-          label={`Navidrome${reach(subsonic)}`}
+          label={T("Navidrome{reach}", { reach: reach(subsonic) })}
           active={view.name === "subsonic"}
           dot={subsonic}
           onClick={() => navigate({ name: "subsonic" })}
         />
       )}
-      <ClusterButton icon={Settings} label="Settings" active={view.name === "settings"} onClick={() => navigate({ name: "settings" })} />
+      <ClusterButton icon={Settings} label={T("Settings")} active={view.name === "settings"} onClick={() => navigate({ name: "settings" })} />
     </div>
   );
 }
@@ -163,24 +164,24 @@ export function CaptionButtons() {
     <div className="app-no-drag h-full flex items-stretch">
       <button
         onClick={() => window.bytune?.windowMinimize()}
-        title="Minimize"
-        aria-label="Minimize"
+        title={T("Minimize")}
+        aria-label={T("Minimize")}
         className={`${base} hover:bg-ink-hi/[0.08]`}
       >
         <Minus className="w-4 h-4" />
       </button>
       <button
         onClick={() => window.bytune?.windowMaximizeToggle()}
-        title={maximized ? "Restore" : "Maximize"}
-        aria-label={maximized ? "Restore" : "Maximize"}
+        title={maximized ? T("Restore") : T("Maximize")}
+        aria-label={maximized ? T("Restore") : T("Maximize")}
         className={`${base} hover:bg-ink-hi/[0.08]`}
       >
         {maximized ? <Copy className="w-[13px] h-[13px]" /> : <Square className="w-[13px] h-[13px]" />}
       </button>
       <button
         onClick={() => window.bytune?.windowClose()}
-        title="Close"
-        aria-label="Close"
+        title={T("Close")}
+        aria-label={T("Close")}
         className={`${base} hover:bg-[#c42b1c] hover:text-white`}
       >
         <X className="w-4 h-4" />
@@ -341,14 +342,14 @@ export function TopBar() {
         <button
           onClick={goHome}
           className="app-no-drag flex items-center justify-center px-1.5 h-10 rounded-full hover:bg-ink-hi/[0.06] transition-colors"
-          title="Songsta"
+          title={T("Songsta")}
         >
           <BrandHeader />
         </button>
         <button
           onClick={() => goBack()}
-          title="Go back"
-          aria-label="Go back"
+          title={T("Go back")}
+          aria-label={T("Go back")}
           disabled={!canBack}
           className={`app-no-drag w-9 h-9 grid place-items-center rounded-full transition-colors ${
             canBack
@@ -360,8 +361,8 @@ export function TopBar() {
         </button>
         <button
           onClick={() => goForward()}
-          title="Go forward"
-          aria-label="Go forward"
+          title={T("Go forward")}
+          aria-label={T("Go forward")}
           disabled={!canForward}
           className={`app-no-drag w-9 h-9 grid place-items-center rounded-full transition-colors ${
             canForward
@@ -373,8 +374,8 @@ export function TopBar() {
         </button>
         <button
           onClick={refreshCurrentView}
-          title="Refresh"
-          aria-label="Refresh"
+          title={T("Refresh")}
+          aria-label={T("Refresh")}
           className="app-no-drag w-9 h-9 grid place-items-center rounded-full text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${feedRefreshing ? "animate-spin" : ""}`} />
@@ -387,8 +388,8 @@ export function TopBar() {
       <div className="absolute left-1/2 top-0 h-full -translate-x-1/2 flex items-center gap-3">
         <button
           onClick={goHome}
-          title="Home"
-          aria-label="Home"
+          title={T("Home")}
+          aria-label={T("Home")}
           aria-current={view.name === "home" ? "page" : undefined}
           className={`app-no-drag w-12 h-12 shrink-0 grid place-items-center rounded-full transition-colors ${
             view.name === "home"
@@ -406,7 +407,7 @@ export function TopBar() {
             type="text"
             value={query}
             maxLength={200}
-            placeholder="What do you want to play?"
+            placeholder={T("What do you want to play?")}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => {
               setFieldFocused(true);
@@ -437,7 +438,7 @@ export function TopBar() {
             <div
               className="absolute left-0 right-0 top-full mt-2 z-50 glass-strong-solid rounded-2xl p-1.5 shadow-float max-h-[420px] overflow-y-auto animate-pop-in"
               role="listbox"
-              aria-label="Search suggestions"
+              aria-label={T("Search suggestions")}
             >
               <button
                 onMouseDown={(e) => e.preventDefault()}
@@ -447,9 +448,7 @@ export function TopBar() {
                 }`}
               >
                 <Search className="w-4 h-4 text-ink-hi/55 shrink-0" />
-                <span className="text-[14px] font-medium text-ink-hi truncate">
-                  Search “{query.trim()}”
-                </span>
+                <span className="text-[14px] font-medium text-ink-hi truncate">{T("Search “{trim}”", { trim: query.trim() })}</span>
               </button>
               {suggests.map((s, i) => (
                 <button
@@ -474,19 +473,15 @@ export function TopBar() {
             <div
               className="absolute left-0 right-0 top-full mt-2 z-50 glass-strong-solid rounded-2xl p-1.5 shadow-float max-h-[420px] overflow-y-auto animate-pop-in"
               role="listbox"
-              aria-label="Recent searches"
+              aria-label={T("Recent searches")}
             >
               <div className="flex items-center justify-between pl-3 pr-1.5 h-9">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">
-                  Recent searches
-                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-hi/45">{T("Recent searches")}</span>
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={clearSearches}
                   className="px-2 h-6 rounded-full text-[11.5px] text-ink-hi/55 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
-                >
-                  Clear all
-                </button>
+                >{T("Clear all")}</button>
               </div>
               {recents.map((q) => (
                 <div
@@ -515,8 +510,8 @@ export function TopBar() {
                       e.stopPropagation();
                       removeSearch(q);
                     }}
-                    title="Remove"
-                    aria-label={`Remove "${q}" from recent searches`}
+                    title={T("Remove")}
+                    aria-label={T("Remove \"{q}\" from recent searches", { q })}
                     className="p-1.5 rounded-full text-ink-hi/35 hover:text-ink-hi hover:bg-ink-hi/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -543,8 +538,8 @@ export function TopBar() {
                   inputRef.current?.blur();
                   if (view.name === "search") navigate({ name: "home" });
                 }}
-                title="Clear search"
-                aria-label="Clear search"
+                title={T("Clear search")}
+                aria-label={T("Clear search")}
                 className="p-1.5 rounded-full text-ink-hi/55 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
               >
                 <X className="w-[18px] h-[18px]" />
@@ -553,8 +548,8 @@ export function TopBar() {
             <div className="h-6 w-px bg-ink-hi/20" />
             <button
               onClick={() => navigate({ name: "explore" })}
-              title="Explore your library"
-              aria-label="Explore"
+              title={T("Explore your library")}
+              aria-label={T("Explore")}
               className={`p-1.5 rounded-full transition-colors ${
                 view.name === "explore" || view.name === "genre"
                   ? "text-ink-hi bg-ink-hi/[0.10]"

@@ -6,6 +6,7 @@ import { recordDeletionChanges } from "../lib/deletion-sync";
 import type { DeletionChange, DeletionSync } from "../lib/deletion-sync";
 import type { Track } from "../types";
 import { songKey } from "./catalog";
+import { T } from "../lib/i18n";
 
 export interface Playlist {
   id: string;
@@ -214,7 +215,7 @@ export const useLibrary = create<LibraryState>()(
       },
 
       createPlaylist(name) {
-        const playlist: Playlist = { id: uid(), name: name.trim() || "New Playlist", tracks: [], createdAt: Date.now() };
+        const playlist: Playlist = { id: uid(), name: name.trim() || T("New Playlist"), tracks: [], createdAt: Date.now() };
         withChanges(set, get, { playlists: [playlist, ...get().playlists] },
           [{ kind: "add", group: "playlists", id: playlist.id }]);
         return playlist;
@@ -281,7 +282,7 @@ export const useLibrary = create<LibraryState>()(
       },
 
       createFolder(name) {
-        const folder: LibraryFolder = { id: uid(), name: name.trim() || "New Folder", createdAt: Date.now() };
+        const folder: LibraryFolder = { id: uid(), name: name.trim() || T("New Folder"), createdAt: Date.now() };
         withChanges(set, get, { folders: [...get().folders, folder] },
           [{ kind: "add", group: "folders", id: folder.id }]);
         return folder;

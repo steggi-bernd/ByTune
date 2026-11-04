@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { fetchLyrics, type LyricLine } from "./jellyfin";
 import { primaryArtist, queryTitle, type Track } from "./shared";
 import { readJson, writeJson } from "./storage";
+import Player from "../modules/media3-player";
+import { lyricsFileOf } from "./stores/localMusic";
 import { useSession } from "./stores/session";
 
 const known = new Map<string, LyricLine[]>();
@@ -67,9 +69,12 @@ async function load(track: Track): Promise<LyricLine[]> {
     known.set(track.id, seen);
     return seen;
   }
+  // A .lrc beside the file comes first, as on the computer.
+  const beside = lyricsFileOf(track);
+  const text = beside ? await Player.readText(beside).catch(() => null) : null;
+  let got: LyricLine[] = text ? linesOf({ syncedLyrics: text }) : [];
   const session = useSession.getState().session;
-  if (!session) return [];
-  let got = await fetchLyrics(session, track);
+  if (!got.length && session && !track.localPath) got = await fetchLyrics(session, track);
   if (!got.length) {
     try {
       got = await fromLrclib(track);
@@ -98,7 +103,7 @@ export function useLyrics(track: Track | undefined): LyricLine[] {
   const [lines, setLines] = useState<LyricLine[]>(() => (id ? known.get(id) ?? [] : []));
   useEffect(() => {
     let alive = true;
-    if (!id || !track || !session) {
+    if (!id || !track || (!session && !track.localPath)) {
       setLines([]);
       return;
     }

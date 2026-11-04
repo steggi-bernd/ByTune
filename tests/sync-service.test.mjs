@@ -614,6 +614,26 @@ test("a device takes over from another: where that one stands, then playing", as
   assert.equal(phone.heard.adopted[0].queue.tracks[0].title, "Handed over");
 });
 
+test("a long list goes ahead as the queue document, and its command brings the songs along", async (t) => {
+  const token = freshLogin();
+  const pc = deviceEngine("pc", token);
+  const phone = deviceEngine("phone", token);
+  t.after(() => {
+    pc.engine.stop();
+    phone.engine.stop();
+  });
+  pc.engine.start();
+  phone.engine.start();
+  await until(() => pc.heard.devices.some((d) => d.id === "phone"), "the computer to see the phone");
+  const tracks = Array.from({ length: 400 }, (_, i) => ({ id: `jf:${i}`, title: `Song ${i} with quite a long name to fill up the command`, artist: "Band", duration: 100 }));
+  assert.equal(await pc.engine.sendList("phone", tracks, "Mix", { action: "playList", start: 7, context: "Mix" }), true);
+  await until(() => phone.heard.commands.some((c) => c.action === "playList"), "the phone hears of the list");
+  const heard = phone.heard.commands.find((c) => c.action === "playList");
+  assert.equal(heard.start, 7);
+  assert.equal(heard.tracks.length, 400);
+  assert.equal(heard.tracks[399].id, "jf:399");
+});
+
 test("muted songs are one list for all devices: the newer one wins", async (t) => {
   const token = freshLogin();
   const pc = deviceEngine("pc", token);

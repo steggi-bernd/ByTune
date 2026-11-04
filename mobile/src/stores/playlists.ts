@@ -19,6 +19,7 @@ import {
 } from "../shared";
 import { readJson, removeJson, writeJson } from "../storage";
 import { useLibrary } from "./library";
+import { T } from "../shared";
 
 const FILE = "playlists.json";
 
@@ -36,6 +37,8 @@ interface PlaylistsState extends PlaylistDoc {
   restore(): Promise<void>;
   create(name: string): string;
   rename(id: string, name: string): void;
+  /** On top of Your Library, here and on the computer. */
+  togglePin(id: string): void;
   remove(id: string): void;
   addTrack(id: string, track: Track): void;
   removeTrack(id: string, trackId: string): void;
@@ -76,12 +79,16 @@ export const usePlaylists = create<PlaylistsState>((set, get) => {
 
     create(name) {
       const id = uid();
-      change({ playlists: [{ id, name: name.trim() || "New Playlist", tracks: [], createdAt: Date.now() }, ...get().playlists] }, [{ kind: "add", group: "playlists", id }]);
+      change({ playlists: [{ id, name: name.trim() || T("New Playlist"), tracks: [], createdAt: Date.now() }, ...get().playlists] }, [{ kind: "add", group: "playlists", id }]);
       return id;
     },
 
     rename(id, name) {
       change({ playlists: edit(id, (p) => ({ ...p, name: name.trim() || p.name })) }, [{ kind: "edit", group: "playlists", id }]);
+    },
+
+    togglePin(id) {
+      change({ playlists: edit(id, (p) => ({ ...p, pinned: !p.pinned })) }, [{ kind: "edit", group: "playlists", id }]);
     },
 
     remove(id) {

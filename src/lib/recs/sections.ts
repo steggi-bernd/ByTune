@@ -18,6 +18,7 @@ import type { ArtistBundle } from "./candidates";
 import type { ArtistSignal, TasteProfile } from "./profile";
 import type { PlaySource } from "./playback";
 import { hash32, seededShuffle } from "./seeded";
+import { T } from "../i18n";
 
 /* ------------------------------------------------------------------ types */
 
@@ -94,18 +95,18 @@ function bundleFor(ctx: BuildCtx, artist: ArtistSignal): ArtistBundle | null {
 
 function captionWith(names: string[]): string {
   if (names.length === 0) return "";
-  if (names.length === 1) return `With ${names[0]}`;
-  if (names.length === 2) return `With ${names[0]} and ${names[1]}`;
-  return `With ${names[0]}, ${names[1]} and ${names[2]}`;
+  if (names.length === 1) return T("With {a}", { a: names[0] });
+  if (names.length === 2) return T("With {a} and {b}", { a: names[0], b: names[1] });
+  return T("With {a}, {b} and {c}", { a: names[0], b: names[1], c: names[2] });
 }
 
 function hourAwareTodayTitle(now: number): string {
   const h = new Date(now).getHours();
-  if (h < 5) return "Late night picks";
-  if (h < 12) return "Picks for your morning";
-  if (h < 17) return "Recommended for today";
-  if (h < 22) return "Recommended for tonight";
-  return "Late night picks";
+  if (h < 5) return T("Late night picks");
+  if (h < 12) return T("Picks for your morning");
+  if (h < 17) return T("Recommended for today");
+  if (h < 22) return T("Recommended for tonight");
+  return T("Late night picks");
 }
 
 /** Unplayed songs surfaced by an artist's related-artists shelf. */
@@ -143,7 +144,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
       priority: 95 + (hoursSince < 8 ? 5 : 0),
       build: (ctx) => ({
         id: "jump-back-in",
-        title: "Jump back in",
+        title: T("Jump back in"),
         layout: "tiles",
         priority: 0,
         items: ctx.profile.recentlyPlayed.slice(0, 6).map((track) => ({ style: "track", track })),
@@ -162,8 +163,8 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
       minItems: 0, // content rides the `moods` field, not `items`
       build: () => ({
         id: "browse",
-        title: "Browse",
-        subtitle: "Common searches to get you started",
+        title: T("Browse"),
+        subtitle: T("Common searches to get you started"),
         layout: "moods",
         priority: 0,
         items: [],
@@ -188,7 +189,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
         }));
         return {
           id: "favorite-artists",
-          title: "Your favorite artists",
+          title: T("Your favorite artists"),
           layout: "circles",
           priority: 0,
           items,
@@ -213,7 +214,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
           id: `${b.artistId}-radio`,
           name: anchor.name,
           thumb: b.thumb ?? anchor.thumb,
-          caption: relNames.length ? captionWith(relNames) : "Radio",
+          caption: relNames.length ? captionWith(relNames) : T("Radio"),
           source: { type: "artist-radio", artistId: b.artistId as string, name: `${anchor.name} Radio` },
         });
         for (const rel of b.related.slice(0, 3)) {
@@ -228,7 +229,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
         return {
           id: `more-like-${anchor.key}`,
           title: anchor.name,
-          eyebrow: { label: "More like", name: anchor.name, thumb: b.thumb ?? anchor.thumb, artistId: b.artistId as string },
+          eyebrow: { label: T("More like"), name: anchor.name, thumb: b.thumb ?? anchor.thumb, artistId: b.artistId as string },
           anchorKey: anchor.key,
           layout: "row",
           priority: 0,
@@ -270,14 +271,14 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
           items.push({
             style: "mix",
             id: "discovery-mix",
-            name: "Discovery Mix",
+            name: T("Discovery Mix"),
             thumb: cover?.related[0]?.thumb ?? cover?.thumb ?? top[0].thumb,
-            caption: "New songs near your taste",
-            source: { type: "tracks", tracks: discovery, label: "Discovery Mix" },
+            caption: T("New songs near your taste"),
+            source: { type: "tracks", tracks: discovery, label: T("Discovery Mix") },
           });
         }
         return items.length >= 2
-          ? { id: "top-mixes", title: "Your top mixes", layout: "mixes", priority: 0, items }
+          ? { id: "top-mixes", title: T("Your top mixes"), layout: "mixes", priority: 0, items }
           : null;
       },
     });
@@ -298,7 +299,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
         return {
           id: "recommended-today",
           title: hourAwareTodayTitle(now),
-          subtitle: "Inspired by your recent activity",
+          subtitle: T("Inspired by your recent activity"),
           layout: "row",
           priority: 0,
           items: picked.map((track) => ({ style: "track", track })),
@@ -322,14 +323,14 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
             id: `${a.artistId}-station`,
             name: a.name,
             thumb: b?.thumb ?? a.thumb,
-            caption: relNames.length ? captionWith(relNames) : "Radio",
+            caption: relNames.length ? captionWith(relNames) : T("Radio"),
             source: { type: "artist-radio", artistId: a.artistId as string, name: `${a.name} Radio` },
           };
         });
         return {
           id: "stations",
-          title: "Recommended stations",
-          subtitle: "Non-stop music based on your favorite songs and artists.",
+          title: T("Recommended stations"),
+          subtitle: T("Non-stop music based on your favorite songs and artists."),
           layout: "radios",
           priority: 0,
           items,
@@ -358,7 +359,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
           if (items.length >= 8) break;
         }
         return items.length >= 4
-          ? { id: "albums-for-you", title: "Albums featuring songs you like", layout: "row", priority: 0, items }
+          ? { id: "albums-for-you", title: T("Albums featuring songs you like"), layout: "row", priority: 0, items }
           : null;
       },
     });
@@ -379,9 +380,9 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
         if (picked.length < 4) return null;
         return {
           id: `because-${becauseAnchor.key}`,
-          title: `Because you listened to ${becauseAnchor.name}`,
+          title: T("Because you listened to {name}", { name: becauseAnchor.name }),
           eyebrow: {
-            label: "Because you listened to",
+            label: T("Because you listened to"),
             name: becauseAnchor.name,
             thumb: b.thumb ?? becauseAnchor.thumb,
             artistId: b.artistId as string,
@@ -410,8 +411,8 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
         if (picked.length < 4) return null;
         return {
           id: "discover-new",
-          title: "Discover something new",
-          subtitle: "From artists close to the ones you play",
+          title: T("Discover something new"),
+          subtitle: T("From artists close to the ones you play"),
           layout: "row",
           priority: 0,
           items: picked.map((track) => ({ style: "track", track })),
@@ -427,7 +428,7 @@ function describeFeed(profile: TasteProfile, ytShelves: HomeShelf[] | null, now:
       priority: 44,
       build: (ctx) => ({
         id: "recently-played",
-        title: "Recently played",
+        title: T("Recently played"),
         layout: "row",
         priority: 0,
         items: ctx.profile.recentlyPlayed.slice(0, 12).map((track) => ({ style: "track", track })),

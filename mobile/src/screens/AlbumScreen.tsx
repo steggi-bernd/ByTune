@@ -12,6 +12,7 @@ import { describePlayback, formatLine, fmtLength, plural, RELEASE_LABEL } from "
 import { useArtistPhoto, useCoverColor, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors, PAGE_END } from "../theme";
+import { T } from "../shared";
 
 export function AlbumScreen() {
   const nav = useNavigation<any>();
@@ -42,7 +43,7 @@ export function AlbumScreen() {
         <View>
           <LinearGradient colors={[tinted(color, 0.24), "rgba(0,0,0,0)"]} style={styles.wash} />
           <View style={[styles.top, { paddingTop: insets.top + 2 }]}>
-            <Pressable onPress={() => nav.goBack()} accessibilityLabel="Go back" style={styles.back}>
+            <Pressable onPress={() => nav.goBack()} accessibilityLabel={T("Go back")} style={styles.back}>
               <ChevronLeft size={28} color={colors.ink} />
             </Pressable>
           </View>
@@ -62,14 +63,14 @@ export function AlbumScreen() {
             <View style={styles.line}>
               <Text style={styles.lineText}>
                 {RELEASE_LABEL[album.kind]}
-                {album.year ? ` · ${album.year}` : ""} · {plural(album.tracks.length, "song", "songs")}, {fmtLength(album.duration)}
+                {album.year ? ` · ${album.year}` : ""} · {plural(album.tracks.length, T("song"), T("songs"))}, {fmtLength(album.duration)}
               </Text>
             </View>
             {!!format && (
               <View style={styles.line}>
                 {format.hiRes && (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>HI-RES</Text>
+                    <Text style={styles.badgeText}>{T("HI-RES")}</Text>
                   </View>
                 )}
                 <Text style={styles.lineText}>{formatLine(format)}</Text>
@@ -77,16 +78,16 @@ export function AlbumScreen() {
             )}
           </View>
           <View style={styles.actions}>
-            <DownloadButton tracks={album.tracks} style={styles.download} />
+            {album.tracks.some((t) => !t.localPath) ? <DownloadButton tracks={album.tracks} style={styles.download} /> : <View style={styles.download} />}
             <Pressable
-              accessibilityLabel="Shuffle"
+              accessibilityLabel={T("Shuffle")}
               onPress={() => usePlayer.getState().playAll(album.tracks, album.title, true)}
               style={styles.shuffle}
             >
               <Shuffle size={24} color={colors.ink} />
             </Pressable>
             <Pressable
-              accessibilityLabel={pause ? "Pause" : "Play"}
+              accessibilityLabel={pause ? T("Pause") : T("Play")}
               onPress={() => (playingHere ? toggle() : usePlayer.getState().playAll(album.tracks, album.title))}
               style={styles.play}
             >

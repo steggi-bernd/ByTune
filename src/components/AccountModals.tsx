@@ -7,6 +7,7 @@
  */
 import { useEffect, useRef } from "react";
 import { ShieldAlert } from "lucide-react";
+import { T } from "../lib/i18n";
 
 const btnBase =
   "w-full rounded-xl py-2.5 text-[13.5px] font-semibold transition-all duration-150 active:scale-[0.99] disabled:opacity-40 disabled:active:scale-100 select-none flex items-center justify-center gap-2";
@@ -59,35 +60,22 @@ export function GuestDeleteModal({
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h2 id="guest-delete-title" className="text-[16px] font-semibold leading-snug">
-              You're using Songsta as a guest
-            </h2>
-            <p className="text-[13px] text-ink-dim mt-1 leading-relaxed">
-              Your data lives only on this PC. Deleting it now can't be undone. There's no cloud
-              backup without an account.
-            </p>
+            <h2 id="guest-delete-title" className="text-[16px] font-semibold leading-snug">{T("You're using Songsta as a guest")}</h2>
+            <p className="text-[13px] text-ink-dim mt-1 leading-relaxed">{T("Your data lives only on this PC. Deleting it now can't be undone. There's no cloud backup without an account.")}</p>
           </div>
         </div>
 
         <div className="space-y-2">
-          <button onClick={onCreateAccount} className={`${btnBase} bg-primary text-on-primary hover:brightness-110`}>
-            Create account &amp; back up
-          </button>
-          <button onClick={onSignIn} className={`${btnBase} bg-panel border border-ink-hi/[0.09] hover:bg-ink-hi/[0.05] text-ink-hi`}>
-            Sign in
-          </button>
-          <button onClick={onClose} className={`${btnBase} bg-ink-hi/[0.06] hover:bg-ink-hi/[0.1] text-ink-hi`}>
-            Keep my data
-          </button>
+          <button onClick={onCreateAccount} className={`${btnBase} bg-primary text-on-primary hover:brightness-110`}>{T("Create account & back up")}</button>
+          <button onClick={onSignIn} className={`${btnBase} bg-panel border border-ink-hi/[0.09] hover:bg-ink-hi/[0.05] text-ink-hi`}>{T("Sign in")}</button>
+          <button onClick={onClose} className={`${btnBase} bg-ink-hi/[0.06] hover:bg-ink-hi/[0.1] text-ink-hi`}>{T("Keep my data")}</button>
         </div>
 
         <div className="border-t border-ink-hi/[0.08] mt-4 pt-4">
           <button
             onClick={onDeleteAnyway}
             className="w-full rounded-xl py-2.5 text-[13.5px] font-semibold text-red-400 hover:bg-red-400/10 transition-colors select-none"
-          >
-            Delete anyway
-          </button>
+          >{T("Delete anyway")}</button>
         </div>
       </div>
     </div>

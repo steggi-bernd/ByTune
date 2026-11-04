@@ -20,12 +20,13 @@ import { useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 function greeting(): string {
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return "Good morning";
-  if (h >= 12 && h < 18) return "Good afternoon";
-  return "Good evening";
+  if (h >= 5 && h < 12) return T("Good morning");
+  if (h >= 12 && h < 18) return T("Good afternoon");
+  return T("Good evening");
 }
 
 function Shelf({ title, children }: { title: string; children: React.ReactNode }) {
@@ -110,29 +111,23 @@ export function LibraryHomeView() {
     return (
       <div className="max-w-[640px] pt-10 space-y-6 animate-slide-up">
         <h1 className="font-display text-[40px] font-extrabold tracking-[-0.03em] text-ink-hi">{greeting()}</h1>
-        <p className="text-[15px] text-ink-dim">
-          Your library is empty. Add a music folder or connect your media server — covers, artist photos, bios and
-          lyrics are filled in from open databases.
-        </p>
+        <p className="text-[15px] text-ink-dim">{T("Your library is empty. Add a music folder or connect your media server — covers, artist photos, bios and lyrics are filled in from open databases.")}</p>
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => navigate({ name: "local" })}
             className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-primary text-on-primary text-[14px] font-bold hover:scale-[1.02] transition-transform"
           >
-            <FolderPlus className="w-4 h-4" /> Add music folders
-          </button>
+            <FolderPlus className="w-4 h-4" />{" "}{T("Add music folders")}</button>
           <button
             onClick={() => navigate({ name: "jellyfin" })}
             className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-ink-hi/[0.08] text-ink-hi text-[14px] font-bold hover:bg-ink-hi/[0.14] transition-colors"
           >
-            <Server className="w-4 h-4" /> Connect Jellyfin
-          </button>
+            <Server className="w-4 h-4" />{" "}{T("Connect Jellyfin")}</button>
           <button
             onClick={() => navigate({ name: "subsonic" })}
             className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-ink-hi/[0.08] text-ink-hi text-[14px] font-bold hover:bg-ink-hi/[0.14] transition-colors"
           >
-            <Server className="w-4 h-4" /> Connect Navidrome
-          </button>
+            <Server className="w-4 h-4" />{" "}{T("Connect Navidrome")}</button>
         </div>
       </div>
     );
@@ -170,7 +165,7 @@ export function LibraryHomeView() {
       </section>
 
       {mixes.length > 0 && (
-        <Shelf title="Made for you">
+        <Shelf title={T("Made for you")}>
           {mixes.map((m) => (
             <MixTile key={m.id} title={m.title} subtitle={m.subtitle} tracks={m.tracks} route={m.id} />
           ))}
@@ -178,7 +173,7 @@ export function LibraryHomeView() {
       )}
 
       {recentlyAdded.length > 0 && (
-        <Shelf title="Recently added">
+        <Shelf title={T("Recently added")}>
           {recentlyAdded.map((a) => (
             <AlbumTile key={a.key} album={a} />
           ))}
@@ -186,15 +181,15 @@ export function LibraryHomeView() {
       )}
 
       {topArtists.length > 0 && (
-        <Shelf title="Your top artists">
+        <Shelf title={T("Your top artists")}>
           {topArtists.map((a) => (
-            <ArtistTile key={a.name} name={a.name} route={a.route} fallbackThumb={a.thumb} subtitle="Artist" />
+            <ArtistTile key={a.name} name={a.name} route={a.route} fallbackThumb={a.thumb} subtitle={T("Artist")} />
           ))}
         </Shelf>
       )}
 
       {recentTracks.length > 0 && (
-        <Shelf title="Recently played">
+        <Shelf title={T("Recently played")}>
           {recentTracks.map((t) => (
             <TrackCard key={t.id} track={t} />
           ))}

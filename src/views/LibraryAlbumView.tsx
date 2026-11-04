@@ -20,8 +20,9 @@ import { RELEASE_LABEL } from "../lib/releases";
 import { resolveAlbumKey } from "../lib/albumEdits";
 import { useAlbumEdits } from "../stores/albumEdits";
 import { useCatalog, versionsOf } from "../stores/catalog";
+import { T } from "../lib/i18n";
 
-const SOURCE_LABEL = { local: "On this device", jellyfin: "Jellyfin", subsonic: "Navidrome" } as const;
+const SOURCE_LABEL = { local: T("On this device"), jellyfin: "Jellyfin", subsonic: "Navidrome" } as const;
 
 export function LibraryAlbumView({ param }: { param: string }) {
   const { albums, loaded } = useLibraryIndex();
@@ -62,7 +63,7 @@ export function LibraryAlbumView({ param }: { param: string }) {
 
   if (!loaded) return null;
   if (!album) {
-    return <EmptyState icon={Disc3} title="Album not found" body="It may have been removed from your library." />;
+    return <EmptyState icon={Disc3} title={T("Album not found")} body={T("It may have been removed from your library.")} />;
   }
 
   return (
@@ -83,7 +84,7 @@ export function LibraryAlbumView({ param }: { param: string }) {
             </span>
             {album.year && <span>· {album.year}</span>}
             <span>
-              · {album.tracks.length} {album.tracks.length === 1 ? "song" : "songs"}, {fmtLength(album.duration)}
+              · {album.tracks.length} {album.tracks.length === 1 ? T("song") : T("songs")}, {fmtLength(album.duration)}
             </span>
             {sources.length > 0 && <span className="text-ink-dim">· {sources.map((s) => SOURCE_LABEL[s]).join(" + ")}</span>}
           </div>
@@ -91,19 +92,19 @@ export function LibraryAlbumView({ param }: { param: string }) {
       </header>
 
       <div className="flex items-center gap-5">
-        <BigPlayButton onClick={() => playCollection(album.tracks)} label={`Play ${album.title}`} tracks={album.tracks} />
+        <BigPlayButton onClick={() => playCollection(album.tracks)} label={T("Play {title}", { title: album.title })} tracks={album.tracks} />
         <button
           onClick={() => playCollection(album.tracks, true)}
-          title="Shuffle play"
-          aria-label="Shuffle play"
+          title={T("Shuffle play")}
+          aria-label={T("Shuffle play")}
           className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
         >
           <Shuffle className="w-6 h-6" />
         </button>
         <button
           onClick={() => setEditing(true)}
-          title="Edit album — artists, merge split albums"
-          aria-label="Edit album"
+          title={T("Edit album — artists, merge split albums")}
+          aria-label={T("Edit album")}
           className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
         >
           <Pencil className="w-5 h-5" />
@@ -111,8 +112,8 @@ export function LibraryAlbumView({ param }: { param: string }) {
         {serverOnly.length > 0 && (
           <button
             onClick={() => downloadForOffline(serverOnly)}
-            title={`Download for offline — ${serverOnly.length} ${serverOnly.length === 1 ? "song" : "songs"} only on the server`}
-            aria-label="Download for offline"
+            title={T("Download for offline — {count} {value} only on the server", { count: serverOnly.length, value: serverOnly.length === 1 ? T("song") : T("songs") })}
+            aria-label={T("Download for offline")}
             className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
           >
             <Download className="w-5 h-5" />
@@ -121,11 +122,11 @@ export function LibraryAlbumView({ param }: { param: string }) {
       </div>
       {editing && <AlbumEditor album={album} onClose={() => setEditing(false)} />}
 
-      <TrackList tracks={album.tracks} sourceName={album.title} emptyLabel="No songs." />
+      <TrackList tracks={album.tracks} sourceName={album.title} emptyLabel={T("No songs.")} />
 
       {more.length > 0 && (
         <section className="pt-2">
-          <h2 className="section-title text-[21px] mb-4">More by {album.artist}</h2>
+          <h2 className="section-title text-[21px] mb-4">{T("More by {artist}", { artist: album.artist })}</h2>
           <ShelfScroller>
             {more.map((a) => (
               <AlbumTile key={a.key} album={a} subtitle={`${a.year ? `${a.year} · ` : ""}${RELEASE_LABEL[a.kind]}`} />

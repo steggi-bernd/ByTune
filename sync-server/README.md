@@ -43,7 +43,7 @@ Everything takes the client's Jellyfin login.
 | `GET /v1/changes?since=&wait=&device=` | waits until something changed; answers the revisions and whether commands wait for this device |
 | `GET /v1/devices` | the user's devices: what each one plays, and how long ago it said so |
 | `PUT /v1/devices/:id` | what this device plays right now |
-| `POST /v1/devices/:id/commands` | asks another device for something: play, pause, next, seek, take over |
+| `POST /v1/devices/:id/commands` | asks another device for something: play, pause, next, seek, take over, a new list, the volume. The service only passes these on: a new app can ask for new things without a new service |
 | `GET /v1/devices/:id/commands` | this device's waiting commands, which leave the list by being read |
 
 Commands stay for 60 seconds and live only in memory: a device that's off isn't surprised by old ones.

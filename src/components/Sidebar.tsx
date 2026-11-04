@@ -10,30 +10,7 @@
  * settings gear).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowUpDown,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Disc3,
-  Download,
-  Folder,
-  Heart,
-  Library,
-  ListEnd,
-  ListMusic,
-  ListPlus,
-  Music2,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pencil,
-  Pin,
-  PinOff,
-  Play,
-  Shuffle,
-  Sparkles,
-  User,
-} from "lucide-react";
+import { ArrowUpDown, Check, ChevronDown, ChevronRight, Disc3, Download, Folder, Heart, Library, ListEnd, ListMusic, ListPlus, Music2, PanelLeftClose, PanelLeftOpen, Pencil, Pin, PinOff, Play, Shuffle, Sparkles, User, Trash2 } from "lucide-react";
 import { newestFirst, useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
 import { useAlbumEditorRequest } from "./AlbumEditor";
 import { artistRoute, splitCredits } from "../lib/libraryTracks";
@@ -57,16 +34,17 @@ import { dragHasAlbum, dragHasArtist, dragHasPlaylist, dragHasTrack, readAlbum, 
 import { requireBridge } from "../lib/bridge";
 import { startDownload } from "../lib/downloads";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 /* ============================================================ nav */
 
 type LibFilter = "playlists" | "albums" | "artists";
-const FILTER_LABEL: Record<LibFilter, string> = { playlists: "Playlists", albums: "Albums", artists: "Artists" };
+const FILTER_LABEL: Record<LibFilter, string> = { playlists: T("Playlists"), albums: T("Albums"), artists: T("Artists") };
 const ORDER_LABEL: Record<LibraryOrder, string> = {
-  played: "Recently played",
-  added: "Recently added",
-  alpha: "Alphabetical",
-  artist: "Artist",
+  played: T("Recently played"),
+  added: T("Recently added"),
+  alpha: T("Alphabetical"),
+  artist: T("Artist"),
 };
 
 /** A pinned row being dragged into another place among the pinned ones. */
@@ -141,7 +119,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       rect?.right ?? 0,
       rect?.bottom ?? 0,
       [
-        { header: true, label: "Sort by" },
+        { header: true, label: T("Sort by") },
         ...(Object.keys(ORDER_LABEL) as LibraryOrder[]).map((k) => ({
           label: ORDER_LABEL[k],
           icon: libraryOrder === k ? Check : undefined,
@@ -207,8 +185,8 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
 
   const likedRow: LibRow = {
     id: "__liked__",
-    title: "Liked Songs",
-    subtitle: `Playlist · ${liked.length} ${liked.length === 1 ? "song" : "songs"}`,
+    title: T("Liked Songs"),
+    subtitle: T("Playlist · {count} {value}", { count: liked.length, value: liked.length === 1 ? T("song") : T("songs") }),
     thumb: liked[0]?.thumb,
     kind: "playlist",
     pinned: singlePinned("liked"),
@@ -217,7 +195,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
   const playlistRow = (p: (typeof playlists)[number], folderId?: string): LibRow => ({
     id: p.id,
     title: p.name,
-    subtitle: `Playlist · ${p.tracks.length} ${p.tracks.length === 1 ? "song" : "songs"}`,
+    subtitle: T("Playlist · {count} {value}", { count: p.tracks.length, value: p.tracks.length === 1 ? T("song") : T("songs") }),
     thumb: p.artistThumb ?? p.tracks[0]?.thumb,
     kind: "playlist",
     folderId,
@@ -242,13 +220,13 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
   // by its latest playlist).
   const top: LibRow[] = [];
   if (likedRow.pinned) top.push(likedRow);
-  for (const a of followedArtists) top.push({ id: a.id, title: a.name, subtitle: "Artist", thumb: a.thumb, kind: "artist" });
-  for (const sp of smartPlaylists) top.push({ id: sp.id, title: sp.name, subtitle: "Smart playlist", kind: "smart" });
+  for (const a of followedArtists) top.push({ id: a.id, title: a.name, subtitle: T("Artist"), thumb: a.thumb, kind: "artist" });
+  for (const sp of smartPlaylists) top.push({ id: sp.id, title: sp.name, subtitle: T("Smart playlist"), kind: "smart" });
   if (looseCount) {
-    top.push({ id: "__loose__", title: "Songs without an album", subtitle: `${looseCount} ${looseCount === 1 ? "song" : "songs"}`, kind: "loose" });
+    top.push({ id: "__loose__", title: T("Songs without an album"), subtitle: `${looseCount} ${looseCount === 1 ? T("song") : T("songs")}`, kind: "loose" });
   }
   for (const p of playlists) if (!p.folderId) top.push(playlistRow(p));
-  for (const f of folders) top.push({ id: f.id, title: f.name, subtitle: "Folder", kind: "folder", folderId: f.id });
+  for (const f of folders) top.push({ id: f.id, title: f.name, subtitle: T("Folder"), kind: "folder", folderId: f.id });
   for (const a of sortedAlbums) {
     top.push({
       id: a.route,
@@ -335,10 +313,10 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
   /** Import a YouTube playlist as a real library playlist (same name). */
   const importPlaylist = async (pl: PlaylistPayload, folderId?: string): Promise<void> => {
     const ui = useUI.getState();
-    ui.toast(`Importing “${pl.title}”…`);
+    ui.toast(T("Importing “{title}”…", { title: pl.title }));
     try {
       const page = await requireBridge().getPlaylist(pl.id);
-      const name = (page.title || pl.title).trim() || "Imported playlist";
+      const name = (page.title || pl.title).trim() || T("Imported playlist");
       const seen = new Set<string>();
       const tracks = (page.tracks ?? []).filter((t: Track) =>
         seen.has(t.id) ? false : (seen.add(t.id), true)
@@ -347,13 +325,11 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       const n = tracks.length;
       const { updated } = upsertImported(name, tracks, undefined, folderId);
       ui.toast(
-        updated
-          ? `“${name}” · ${n} ${n === 1 ? "song" : "songs"} updated in your library`
-          : `“${name}” · ${n} ${n === 1 ? "song" : "songs"} added to your library`,
+        updated ? T("“{name}” · {n} {value} updated in your library", { name, n, value: n === 1 ? T("song") : T("songs") }) : T("“{name}” · {n} {value} added to your library", { name, n, value: n === 1 ? T("song") : T("songs") }),
         "success"
       );
     } catch {
-      ui.toast(`Couldn't import “${pl.title}”`, "error");
+      ui.toast(T("Couldn't import “{title}”", { title: pl.title }), "error");
     }
   };
 
@@ -362,17 +338,17 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
   const followDroppedArtist = (ar: ArtistPayload): void => {
     const added = useLibrary.getState().followArtist({ id: ar.id, name: ar.name, thumb: ar.thumb });
     const toast = useUI.getState().toast;
-    if (added) toast(`Added “${ar.name}” to your library`, "success");
-    else toast(`“${ar.name}” is already in your library`);
+    if (added) toast(T("Added “{name}” to your library", { name: ar.name }), "success");
+    else toast(T("“{name}” is already in your library", { name: ar.name }));
   };
 
   /** Import a YouTube album as a real library playlist (same name). */
   const importAlbum = async (al: AlbumPayload, folderId?: string): Promise<void> => {
     const ui = useUI.getState();
-    ui.toast(`Importing “${al.title}”…`);
+    ui.toast(T("Importing “{title}”…", { title: al.title }));
     try {
       const page = await requireBridge().getAlbum(al.id);
-      const name = (page.album?.title || al.title).trim() || "Imported album";
+      const name = (page.album?.title || al.title).trim() || T("Imported album");
       const seen = new Set<string>();
       const tracks = (page.tracks ?? []).filter((t: Track) =>
         seen.has(t.id) ? false : (seen.add(t.id), true)
@@ -381,13 +357,11 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       const n = tracks.length;
       const { updated } = upsertImported(name, tracks, undefined, folderId);
       ui.toast(
-        updated
-          ? `“${name}” · ${n} ${n === 1 ? "song" : "songs"} updated in your library`
-          : `“${name}” · ${n} ${n === 1 ? "song" : "songs"} added to your library`,
+        updated ? T("“{name}” · {n} {value} updated in your library", { name, n, value: n === 1 ? T("song") : T("songs") }) : T("“{name}” · {n} {value} added to your library", { name, n, value: n === 1 ? T("song") : T("songs") }),
         "success"
       );
     } catch {
-      ui.toast(`Couldn't import “${al.title}”`, "error");
+      ui.toast(T("Couldn't import “{title}”", { title: al.title }), "error");
     }
   };
 
@@ -403,7 +377,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     if (!name) return;
     lib.setPlaylistFolder(id, folderId);
     setExpanded((prev) => new Set(prev).add(folderId));
-    toast(`Moved “${name}” into the folder`, "success");
+    toast(T("Moved “{name}” into the folder", { name }), "success");
     setPulse(folderId);
     window.setTimeout(() => setPulse((cur) => (cur === folderId ? null : cur)), 650);
   };
@@ -414,19 +388,17 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     const toast = useUI.getState().toast;
     if (r.id === "__liked__") {
       if (lib.isLiked(track.id)) {
-        toast(`“${track.title}” is already in your Liked Songs`);
+        toast(T("“{title}” is already in your Liked Songs", { title: track.title }));
       } else {
         lib.toggleLike(track);
-        toast(`Added “${track.title}” to Liked Songs`, "success");
+        toast(T("Added “{title}” to Liked Songs", { title: track.title }), "success");
       }
     } else {
       const p = lib.playlists.find((pl) => pl.id === r.id);
       if (!p) return;
       const added = lib.addToPlaylist(r.id, track);
       toast(
-        added
-          ? `Added “${track.title}” to “${p.name}”`
-          : `“${track.title}” is already in “${p.name}”`
+        added ? T("Added “{title}” to “{name}”", { title: track.title, name: p.name }) : T("“{title}” is already in “{name}”", { title: track.title, name: p.name })
       );
     }
     setPulse(r.id);
@@ -458,9 +430,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           }
         }
         toast(
-          added > 0
-            ? `Added ${added} ${added === 1 ? "song" : "songs"} from “${al.title}” to Liked Songs`
-            : `“${al.title}” is already in your Liked Songs`,
+          added > 0 ? T("Added {added} {value} from “{title}” to Liked Songs", { added, value: added === 1 ? T("song") : T("songs"), title: al.title }) : T("“{title}” is already in your Liked Songs", { title: al.title }),
           added > 0 ? "success" : undefined
         );
       } else {
@@ -471,14 +441,12 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           if (lib.addToPlaylist(r.id, t)) added += 1;
         }
         toast(
-          added > 0
-            ? `Added ${added} ${added === 1 ? "song" : "songs"} from “${al.title}” to “${p.name}”`
-            : `“${al.title}” is already in “${p.name}”`,
+          added > 0 ? T("Added {added} {value} from “{title}” to “{name}”", { added, value: added === 1 ? T("song") : T("songs"), title: al.title, name: p.name }) : T("“{title}” is already in “{name}”", { title: al.title, name: p.name }),
           added > 0 ? "success" : undefined
         );
       }
     } catch {
-      toast(`Couldn't add “${al.title}” here`, "error");
+      toast(T("Couldn't add “{title}” here", { title: al.title }), "error");
     }
     setPulse(r.id);
     window.setTimeout(() => setPulse((cur) => (cur === r.id ? null : cur)), 650);
@@ -578,7 +546,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
         const al = readAlbum(e);
         if (!al) return;
         if (r.kind === "downloads") {
-          useUI.getState().toast("Albums can't be downloaded whole — drop a song instead", "info");
+          useUI.getState().toast(T("Albums can't be downloaded whole — drop a song instead"), "info");
           return;
         }
         void dropAlbumOn(r, al);
@@ -615,7 +583,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       setExpanded((prev) => new Set(prev).add(r.id));
       setPulse(r.id);
       window.setTimeout(() => setPulse((cur) => (cur === r.id ? null : cur)), 650);
-      useUI.getState().toast(`“${r.title}” holds playlists — drop onto one of them`, "info");
+      useUI.getState().toast(T("“{title}” holds playlists — drop onto one of them", { title: r.title }), "info");
     }
   };
 
@@ -657,29 +625,29 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       const playable = album.tracks.filter((t) => available(t));
       const none = playable.length === 0;
       openContextMenu(e.clientX, e.clientY, [
-        { label: "Play", icon: Play, disabled: none, action: () => usePlayer.getState().playAll(playable) },
+        { label: T("Play"), icon: Play, disabled: none, action: () => usePlayer.getState().playAll(playable) },
         {
-          label: "Shuffle",
+          label: T("Shuffle"),
           icon: Shuffle,
           disabled: none,
           action: () => usePlayer.getState().playAll([...playable].sort(() => Math.random() - 0.5)),
         },
         {
-          label: "Add to queue",
+          label: T("Add to queue"),
           icon: ListEnd,
           disabled: none,
           action: () => {
             usePlayer.getState().addToQueue(playable);
-            useUI.getState().toast(`Added “${album.title}” to the queue`);
+            useUI.getState().toast(T("Added “{title}” to the queue", { title: album.title }));
           },
         },
         {
-          label: isPinned(r) ? "Unpin album" : "Pin album",
+          label: isPinned(r) ? T("Unpin album") : T("Pin album"),
           icon: isPinned(r) ? PinOff : Pin,
           action: () => useLibraryOrder.getState().togglePin(r.id),
         },
         {
-          label: "Edit album…",
+          label: T("Edit album…"),
           icon: Pencil,
           action: () => {
             useAlbumEditorRequest.setState({ key: album.key });
@@ -688,7 +656,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
         },
         // One entry per credited artist — "A, B" are two artists, two pages.
         ...splitCredits(album.artist).map((name, i, all) => ({
-          label: all.length === 1 ? "Go to artist" : `Go to ${name}`,
+          label: all.length === 1 ? T("Go to artist") : T("Go to {name}", { name }),
           icon: User,
           separatorBefore: i === 0,
           action: () => navigate({ name: "artist", param: artistRoute(name) }),
@@ -702,7 +670,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       const pinned = singlePinned(r.singleKey);
       openContextMenu(e.clientX, e.clientY, [
         {
-          label: pinned ? "Unpin" : "Pin to top",
+          label: pinned ? T("Unpin") : T("Pin to top"),
           icon: pinned ? PinOff : Pin,
           action: () => {
             if (pinned) unplace(r.id);
@@ -719,13 +687,13 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       e.stopPropagation();
       openContextMenu(e.clientX, e.clientY, [
         {
-          label: isPinned(r) ? "Unpin" : "Pin to top",
+          label: isPinned(r) ? T("Unpin") : T("Pin to top"),
           icon: isPinned(r) ? PinOff : Pin,
           action: () => useLibraryOrder.getState().togglePin(r.id),
         },
-        { label: "Edit rules", icon: Sparkles, action: () => useSmartEditor.getState().open(sp, false) },
+        { label: T("Edit rules"), icon: Sparkles, action: () => useSmartEditor.getState().open(sp, false) },
         {
-          label: "Delete smart playlist",
+          label: T("Delete smart playlist"),
           danger: true,
           action: () => useSmartPlaylists.getState().remove(sp.id),
         },
@@ -737,11 +705,12 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       e.stopPropagation();
       openContextMenu(e.clientX, e.clientY, [
         {
-          label: "Remove from your library",
+          label: T("Remove from your library"),
+          icon: Trash2,
           danger: true,
           action: () => {
             useLibrary.getState().unfollowArtist(r.id);
-            useUI.getState().toast(`Removed “${r.title}” from your library`);
+            useUI.getState().toast(T("Removed “{title}” from your library", { title: r.title }));
           },
         },
       ]);
@@ -754,7 +723,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       e.stopPropagation();
       openContextMenu(e.clientX, e.clientY, [
         {
-          label: playlist.pinned ? "Unpin playlist" : "Pin playlist",
+          label: playlist.pinned ? T("Unpin playlist") : T("Pin playlist"),
           // slashed pin = "currently pinned, click to undo" (Spotify's model)
           icon: playlist.pinned ? PinOff : Pin,
           action: () => {
@@ -772,18 +741,20 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
       e.stopPropagation();
       openContextMenu(e.clientX, e.clientY, [
         {
-          label: "Rename folder",
+          label: T("Rename folder"),
+          icon: Pencil,
           action: () =>
             openDialog({
-              title: "Rename folder",
+              title: T("Rename folder"),
               initialValue: r.title,
-              placeholder: "Folder name",
-              confirmLabel: "Save",
+              placeholder: T("Folder name"),
+              confirmLabel: T("Save"),
               onConfirm: (value) => useLibrary.getState().renameFolder(r.id, value),
             }),
         },
         {
-          label: "Delete folder",
+          label: T("Delete folder"),
+          icon: Trash2,
           danger: true,
           action: () => useLibrary.getState().deleteFolder(r.id),
         },
@@ -799,16 +770,16 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     e.preventDefault();
     openContextMenu(e.clientX, e.clientY, [
       {
-        label: "Create playlist",
+        label: T("Create playlist"),
         icon: ListPlus,
         action: () => {
-          const suggested = `My Playlist #${useLibrary.getState().playlists.length + 1}`;
+          const suggested = T("My Playlist #{count}", { count: useLibrary.getState().playlists.length + 1 });
           openDialog({
-            title: "New playlist",
-            body: "Give your playlist a name.",
+            title: T("New playlist"),
+            body: T("Give your playlist a name."),
             initialValue: suggested,
-            placeholder: "Playlist name",
-            confirmLabel: "Create",
+            placeholder: T("Playlist name"),
+            confirmLabel: T("Create"),
             onConfirm: (value) => {
               const p = useLibrary.getState().createPlaylist(value.trim() || suggested);
               navigate({ name: "playlist", param: p.id });
@@ -817,16 +788,16 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
         },
       },
       {
-        label: "Create folder",
+        label: T("Create folder"),
         icon: Folder,
         action: () => {
-          const suggested = `New Folder ${useLibrary.getState().folders.length + 1}`;
+          const suggested = T("New Folder {count}", { count: useLibrary.getState().folders.length + 1 });
           openDialog({
-            title: "New folder",
-            body: "Give your folder a name.",
+            title: T("New folder"),
+            body: T("Give your folder a name."),
             initialValue: suggested,
-            placeholder: "Folder name",
-            confirmLabel: "Create",
+            placeholder: T("Folder name"),
+            confirmLabel: T("Create"),
             onConfirm: (value) => {
               const f = useLibrary.getState().createFolder(value.trim() || suggested);
               setExpanded((prev) => new Set(prev).add(f.id));
@@ -864,7 +835,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           // home — filing happens on folders, not here.
           const name = localPlaylistName(pl.id);
           if (name) {
-            useUI.getState().toast(`“${name}” is already in your library`);
+            useUI.getState().toast(T("“{name}” is already in your library", { name }));
             return;
           }
           void importPlaylist(pl);
@@ -889,8 +860,8 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
         <div className="flex justify-center pt-4 pb-2">
           <button
             onClick={() => setCollapsed(false)}
-            title="Expand Your Library"
-            aria-label="Expand Your Library"
+            title={T("Expand Your Library")}
+            aria-label={T("Expand Your Library")}
             className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
           >
             <PanelLeftOpen className="w-5 h-5" />
@@ -904,16 +875,14 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
             onClick={() => navigate({ name: "library" })}
             className="flex items-center gap-2 text-[14px] font-semibold text-ink-hi/75 hover:text-ink-hi transition-colors"
           >
-            <Library className="w-4 h-4" />
-            Your Library
-          </button>
+            <Library className="w-4 h-4" />{T("Your Library")}</button>
           <div className="ml-auto flex items-center gap-1">
             {/* + opens Spotify's create dropdown — Playlist / Folder, no modal. */}
             <CreateMenu onFolderCreated={(f) => setExpanded((prev) => new Set(prev).add(f.id))} />
             <button
               onClick={() => setCollapsed(true)}
-              title="Collapse Your Library"
-              aria-label="Collapse Your Library"
+              title={T("Collapse Your Library")}
+              aria-label={T("Collapse Your Library")}
               className="w-8 h-8 grid place-items-center rounded-full text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
             >
               <PanelLeftClose className="w-4 h-4" />
@@ -948,8 +917,8 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                 e.stopPropagation();
                 openSortMenu();
               }}
-              title={`Sort: ${ORDER_LABEL[libraryOrder]}`}
-              aria-label={`Sort: ${ORDER_LABEL[libraryOrder]}`}
+              title={T("Sort: {value}", { value: ORDER_LABEL[libraryOrder] })}
+              aria-label={T("Sort: {value}", { value: ORDER_LABEL[libraryOrder] })}
               className="ml-auto w-8 h-8 grid place-items-center rounded-full text-ink-hi/60 hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
             >
               <ArrowUpDown className="w-4 h-4" />
@@ -967,9 +936,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           logo above starts, as it does over the folded rail's centre. */}
       <div className={`flex-1 min-h-0 overflow-y-auto scroll-center pb-2 pt-1 space-y-0.5 ${collapsed ? "" : "px-[9px]"}`}>
         {rows.length === 0 && !collapsed ? (
-          <div className="px-3 py-8 text-center text-[13px] text-ink-hi/55">
-            Nothing here yet — play a track to fill your library.
-          </div>
+          <div className="px-3 py-8 text-center text-[13px] text-ink-hi/55">{T("Nothing here yet — play a track to fill your library.")}</div>
         ) : (
           rows.map((r) => {
             const isCurrent = r.kind === "album" ? current?.albumId === r.id : current?.id === r.id;
@@ -1002,9 +969,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                 onDragLeave={(e) => onRowDragLeave(e, r)}
                 onDrop={(e) => onRowDrop(e, r)}
                 title={
-                  r.available === false
-                    ? `${r.title} · not available right now`
-                    : collapsed
+                  r.available === false ? T("{title} · not available right now", { title: r.title }) : collapsed
                       ? `${r.title} · ${r.subtitle}`
                       : undefined
                 }
@@ -1095,7 +1060,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
                       <div className="text-[12.5px] text-ink-hi/55 truncate mt-0.5">{r.subtitle}</div>
                     </div>
                     {isCurrent && playing && <EqBars />}
-                    {pinnedRow && <Pin className="w-3.5 h-3.5 text-accent shrink-0 fill-accent/20" aria-label="Pinned — drag to reorder" />}
+                    {pinnedRow && <Pin className="w-3.5 h-3.5 text-accent shrink-0 fill-accent/20" aria-label={T("Pinned — drag to reorder")} />}
                     {r.kind === "folder" &&
                       (expanded.has(r.id) ? (
                         <ChevronDown className="w-4 h-4 text-ink-hi/45 shrink-0" />

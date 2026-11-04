@@ -24,13 +24,14 @@ import {
 } from "lucide-react";
 import { TrackList } from "../components/TrackList";
 import { albumKeyOf, albumRoute, artistRoute, leadArtist, localToTrack, splitCredits } from "../lib/libraryTracks";
-import { Artwork, EmptyState, Pills } from "../components/primitives";
+import { Artwork, EmptyState, Pills, SearchClear } from "../components/primitives";
 import { isUnderPath } from "../../electron/local-paths";
 import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
 import { importPurchase } from "../lib/archiveImport";
 import type { FolderStatus, LocalFolderEntry, LocalTrack } from "../../electron/local-library";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 type Tab = "songs" | "albums" | "artists";
 type Sort = "title" | "artist" | "recent";
@@ -110,9 +111,9 @@ export function LocalMusicView() {
       const res = await window.bytune.scanLibrary(settings.filterNonMusicAudio);
       setLib(res as LibState);
       void refresh();
-      toast("Local library scanned", "success");
+      toast(T("Local library scanned"), "success");
     } catch {
-      toast("Scan failed", "error");
+      toast(T("Scan failed"), "error");
     } finally {
       setScanning(false);
     }
@@ -128,16 +129,16 @@ export function LocalMusicView() {
       const n = res.added.length;
       if (n === 0) {
         setLib(res.lib as LibState);
-        toast("That folder is already in your library", "info");
+        toast(T("That folder is already in your library"), "info");
         return;
       }
       settings.setLocalMusicFolder(dir);
       const scanned = await window.bytune.scanLibrary(settings.filterNonMusicAudio);
       setLib(scanned as LibState);
       void refresh();
-      toast(n === 1 ? `Imported "${res.added[0].name}"` : `Imported ${n} folders`, "success");
+      toast(n === 1 ? T("Imported \"{name}\"", { name: res.added[0].name }) : T("Imported {n} folders", { n }), "success");
     } catch {
-      toast("Couldn't import that folder", "error");
+      toast(T("Couldn't import that folder"), "error");
     } finally {
       setScanning(false);
     }
@@ -145,18 +146,18 @@ export function LocalMusicView() {
 
   const renameFolder = (entry: LocalFolderEntry): void => {
     openDialog({
-      title: `Rename "${entry.displayName ?? entry.name}"`,
-      body: "This name is only used inside Songsta — the folder on disk keeps its own name.",
+      title: T("Rename \"{value}\"", { value: entry.displayName ?? entry.name }),
+      body: T("This name is only used inside Songsta — the folder on disk keeps its own name."),
       initialValue: entry.displayName ?? entry.name,
-      confirmLabel: "Rename",
+      confirmLabel: T("Rename"),
       onConfirm: (value) => {
         void (async () => {
           try {
             const res = await window.bytune?.renameLibraryFolder(entry.path, value);
             if (res) setLib(res as LibState);
-            toast("Renamed", "success");
+            toast(T("Renamed"), "success");
           } catch {
-            toast("Couldn't rename", "error");
+            toast(T("Couldn't rename"), "error");
           }
         })();
       },
@@ -165,9 +166,9 @@ export function LocalMusicView() {
 
   const removeFolder = (entry: LocalFolderEntry): void => {
     openDialog({
-      title: `Remove "${entry.displayName ?? entry.name}"?`,
-      body: "Removes the folder from Songsta only — your files stay exactly where they are on disk.",
-      confirmLabel: "Remove",
+      title: T("Remove \"{value}\"?", { value: entry.displayName ?? entry.name }),
+      body: T("Removes the folder from Songsta only — your files stay exactly where they are on disk."),
+      confirmLabel: T("Remove"),
       danger: true,
       onConfirm: () => {
         void (async () => {
@@ -175,9 +176,9 @@ export function LocalMusicView() {
             const res = await window.bytune?.removeLibraryFolder(entry.path);
             if (res) setLib(res as LibState);
             if (routeParam === entry.path) navigate({ name: "local" });
-            toast("Removed from Songsta — files untouched", "success");
+            toast(T("Removed from Songsta — files untouched"), "success");
           } catch {
-            toast("Couldn't remove the folder", "error");
+            toast(T("Couldn't remove the folder"), "error");
           }
         })();
       },
@@ -254,8 +255,8 @@ export function LocalMusicView() {
       <div className="pt-6">
         <EmptyState
           icon={FolderOpen}
-          title="Play your own files"
-          body="Import one folder or a whole organised parent — Songsta keeps each folder as its own collection, with tags and cover art, on your machine only."
+          title={T("Play your own files")}
+          body={T("Import one folder or a whole organised parent — Songsta keeps each folder as its own collection, with tags and cover art, on your machine only.")}
           action={
             <button
               onClick={() => void addFolders()}
@@ -263,7 +264,7 @@ export function LocalMusicView() {
               className="mt-4 inline-flex items-center gap-2 h-10 px-5 rounded-full bg-accent text-[14px] font-semibold text-on-primary hover:brightness-110 transition-all disabled:opacity-50"
             >
               <FolderOpen className="w-4 h-4" />
-              {scanning ? "Scanning…" : "Choose a folder"}
+              {scanning ? T("Scanning…") : T("Choose a folder")}
             </button>
           }
         />
@@ -277,45 +278,38 @@ export function LocalMusicView() {
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-4 flex-wrap animate-slide-up">
           <div className="min-w-0">
-            <h1 className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink-hi">Local Music</h1>
+            <h1 className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink-hi">{T("Local Music")}</h1>
             <p className="text-[13px] text-ink-faint mt-1">
-              {lib.folders.length} folder{lib.folders.length === 1 ? "" : "s"} on this device
-              {scannedLabel ? ` — ${scannedLabel}` : ""}
+              {T("{count} folder{value} on this device{value2}", { count: lib.folders.length, value: lib.folders.length === 1 ? "" : "s", value2: scannedLabel ? ` — ${scannedLabel}` : "" })}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => void rescan()}
               disabled={scanning}
-              title="Rescan every folder"
+              title={T("Rescan every folder")}
               className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-ink-dim hover:text-ink-hi transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} />
             </button>
             <button
               onClick={() => void importPurchase()}
-              title="Unpack a store's ZIP (Bandcamp, Qobuz …) into a library folder — or drop it anywhere on Songsta"
+              title={T("Unpack a store's ZIP (Bandcamp, Qobuz …) into a library folder — or drop it anywhere on Songsta")}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-[13px] font-semibold text-ink-hi transition-colors"
             >
-              <PackageOpen className="w-4 h-4" />
-              Import ZIP
-            </button>
+              <PackageOpen className="w-4 h-4" />{T("Import ZIP")}</button>
             <button
               onClick={() => void addFolders()}
               disabled={scanning}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-accent text-[13px] font-semibold text-on-primary hover:brightness-110 transition-all disabled:opacity-50"
             >
-              <FolderPlus className="w-4 h-4" />
-              Add folders
-            </button>
+              <FolderPlus className="w-4 h-4" />{T("Add folders")}</button>
           </div>
         </div>
 
         {scanning && (
           <div className="flex items-center gap-3 text-[13px] text-ink-dim">
-            <span className="w-4 h-4 rounded-full border-2 border-ink-hi/15 border-t-accent animate-spin" />
-            Reading tags and artwork…
-          </div>
+            <span className="w-4 h-4 rounded-full border-2 border-ink-hi/15 border-t-accent animate-spin" />{T("Reading tags and artwork…")}</div>
         )}
 
         <div className="space-y-1.5">
@@ -327,9 +321,8 @@ export function LocalMusicView() {
               <ListMusic className="w-5 h-5 text-accent" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[14.5px] font-semibold text-ink-hi truncate">All songs</span>
-              <span className="block text-[12.5px] text-ink-dim truncate">
-                Everything imported · {lib.tracks.length} song{lib.tracks.length === 1 ? "" : "s"}
+              <span className="block text-[14.5px] font-semibold text-ink-hi truncate">{T("All songs")}</span>
+              <span className="block text-[12.5px] text-ink-dim truncate">{T("Everything imported · {count} song{value}", { count: lib.tracks.length, value: lib.tracks.length === 1 ? "" : "s" })}
               </span>
             </span>
           </button>
@@ -360,9 +353,7 @@ export function LocalMusicView() {
                     className={`block text-[12.5px] truncate mt-0.5 ${gone ? "text-amber-400/90" : "text-ink-dim"}`}
                     title={f.path}
                   >
-                    {gone
-                      ? "Folder missing — check the drive, or remove it from Songsta"
-                      : `${count} song${count === 1 ? "" : "s"} · ${f.path}`}
+                    {gone ? T("Folder missing — check the drive, or remove it from Songsta") : T("{count} song{value} · {path}", { count, value: count === 1 ? "" : "s", path: f.path })}
                   </span>
                 </span>
                 <span className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -371,7 +362,7 @@ export function LocalMusicView() {
                       e.stopPropagation();
                       renameFolder(f);
                     }}
-                    title="Rename in Songsta"
+                    title={T("Rename in Songsta")}
                     className="w-8 h-8 grid place-items-center rounded-lg text-ink-dim hover:text-ink-hi hover:bg-ink-hi/[0.08] transition-colors"
                   >
                     <Pencil className="w-4 h-4" />
@@ -381,7 +372,7 @@ export function LocalMusicView() {
                       e.stopPropagation();
                       removeFolder(f);
                     }}
-                    title="Remove from Songsta (files stay on disk)"
+                    title={T("Remove from Songsta (files stay on disk)")}
                     className="w-8 h-8 grid place-items-center rounded-lg text-ink-dim hover:text-red-400 hover:bg-red-400/10 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -396,16 +387,14 @@ export function LocalMusicView() {
             disabled={scanning}
             className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-ink-hi/15 text-[13.5px] text-ink-dim hover:text-ink-hi hover:border-ink-hi/30 transition-colors disabled:opacity-50"
           >
-            <FolderPlus className="w-4 h-4" />
-            Import another folder
-          </button>
+            <FolderPlus className="w-4 h-4" />{T("Import another folder")}</button>
         </div>
       </div>
     );
   }
 
   /* ---------------- Inside a collection ---------------- */
-  const collectionTitle = openPath === ALL ? "All songs" : folderTitle(openFolder as LocalFolderEntry);
+  const collectionTitle = openPath === ALL ? T("All songs") : folderTitle(openFolder as LocalFolderEntry);
   const collectionPath = openPath === ALL ? null : (openFolder as LocalFolderEntry).path;
 
   return (
@@ -414,7 +403,7 @@ export function LocalMusicView() {
         <div className="min-w-0 flex items-center gap-3">
           <button
             onClick={() => navigate({ name: "local" })}
-            title="Back to folders"
+            title={T("Back to folders")}
             className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-ink-dim hover:text-ink-hi transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -437,22 +426,23 @@ export function LocalMusicView() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search your files"
-              className="w-52 h-9 pl-8 pr-3 rounded-lg bg-ink-hi/[0.05] border border-ink-hi/10 text-[13px] text-ink-hi placeholder:text-ink-faint outline-none focus:border-ink-hi/25"
+              placeholder={T("Search your files")}
+              className="w-52 h-9 pl-8 pr-9 rounded-lg bg-ink-hi/[0.05] border border-ink-hi/10 text-[13px] text-ink-hi placeholder:text-ink-faint outline-none focus:border-ink-hi/25"
             />
+            <SearchClear value={q} onClear={() => setQ("")} />
           </div>
           {openFolder && (
             <>
               <button
                 onClick={() => renameFolder(openFolder)}
-                title="Rename in Songsta"
+                title={T("Rename in Songsta")}
                 className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-ink-dim hover:text-ink-hi transition-colors"
               >
                 <Pencil className="w-4 h-4" />
               </button>
               <button
                 onClick={() => removeFolder(openFolder)}
-                title="Remove from Songsta (files stay on disk)"
+                title={T("Remove from Songsta (files stay on disk)")}
                 className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-red-400/10 hover:text-red-400 text-ink-dim transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
@@ -462,7 +452,7 @@ export function LocalMusicView() {
           <button
             onClick={() => void rescan()}
             disabled={scanning}
-            title="Rescan"
+            title={T("Rescan")}
             className="w-9 h-9 grid place-items-center rounded-lg bg-ink-hi/[0.06] hover:bg-ink-hi/[0.12] text-ink-dim hover:text-ink-hi transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} />
@@ -472,10 +462,7 @@ export function LocalMusicView() {
 
       {missing.has(collectionPath ?? "") && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 text-[13px] text-amber-300">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          This folder can't be reached right now. The list below is Songsta's last scan — rescan after reconnecting the
-          drive, or remove the folder from Songsta.
-        </div>
+          <AlertTriangle className="w-4 h-4 shrink-0" />{T("This folder can't be reached right now. The list below is Songsta's last scan — rescan after reconnecting the drive, or remove the folder from Songsta.")}</div>
       )}
 
       {(albumFilter || artistFilter) && (
@@ -485,17 +472,16 @@ export function LocalMusicView() {
             setArtistFilter(null);
           }}
           className="text-[13px] text-ink-dim hover:text-ink-hi transition-colors"
-        >
-          ← Clear filter: {albumFilter ?? artistFilter}
+        >{T("← Clear filter: {value}", { value: albumFilter ?? artistFilter })}
         </button>
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
         <Pills
           options={[
-            { key: "songs", label: `Songs${scoped.length ? ` · ${scoped.length}` : ""}` },
-            { key: "albums", label: `Albums · ${albums.length}` },
-            { key: "artists", label: `Artists · ${artists.length}` },
+            { key: "songs", label: T("Songs{value}", { value: scoped.length ? ` · ${scoped.length}` : "" }) },
+            { key: "albums", label: T("Albums · {count}", { count: albums.length }) },
+            { key: "artists", label: T("Artists · {count}", { count: artists.length }) },
           ]}
           value={tab}
           onChange={(k) => setTab(k as Tab)}
@@ -503,8 +489,8 @@ export function LocalMusicView() {
         {tab === "songs" && (
           <Pills
             options={[
-              { key: "title", label: "Title" },
-              { key: "artist", label: "Artist" },
+              { key: "title", label: T("Title") },
+              { key: "artist", label: T("Artist") },
             ]}
             value={sort === "recent" ? "title" : sort}
             onChange={(k) => setSort(k as Sort)}
@@ -514,20 +500,18 @@ export function LocalMusicView() {
 
       {scanning && (
         <div className="flex items-center gap-3 text-[13px] text-ink-dim">
-          <span className="w-4 h-4 rounded-full border-2 border-ink-hi/15 border-t-accent animate-spin" />
-          Reading tags and artwork…
-        </div>
+          <span className="w-4 h-4 rounded-full border-2 border-ink-hi/15 border-t-accent animate-spin" />{T("Reading tags and artwork…")}</div>
       )}
 
       {!scanning && tab === "songs" && (scoped.length === 0 || tracks.length === 0) && (
         <EmptyState
           icon={Music2}
-          title={scoped.length === 0 ? "No music found in this folder" : "Nothing matches that search"}
-          body={scoped.length === 0 ? "Drop some audio files in and rescan." : undefined}
+          title={scoped.length === 0 ? T("No music found in this folder") : T("Nothing matches that search")}
+          body={scoped.length === 0 ? T("Drop some audio files in and rescan.") : undefined}
         />
       )}
 
-      {tab === "songs" && tracks.length > 0 && <TrackList tracks={tracks} showAlbum emptyLabel="No songs." />}
+      {tab === "songs" && tracks.length > 0 && <TrackList tracks={tracks} showAlbum emptyLabel={T("No songs.")} />}
 
       {tab === "albums" && (
         <div className="flex flex-wrap gap-5">
@@ -549,7 +533,7 @@ export function LocalMusicView() {
               <div className="mt-2.5">
                 <div className="text-[15px] font-semibold text-ink-hi truncate leading-snug">{a.name}</div>
                 <div className="text-[13px] text-ink-dim truncate mt-0.5">
-                  {a.artist} · {a.count} song{a.count === 1 ? "" : "s"}
+                  {T("{artist} · {count} song{value}", { artist: a.artist, count: a.count, value: a.count === 1 ? "" : "s" })}
                 </div>
               </div>
             </button>
@@ -575,7 +559,7 @@ export function LocalMusicView() {
               <span className="min-w-0 flex-1">
                 <span className="block text-[14px] font-semibold text-ink-hi truncate">{a.name}</span>
                 <span className="block text-[12.5px] text-ink-dim">
-                  {a.count} song{a.count === 1 ? "" : "s"}
+                  {T("{count} song{value}", { count: a.count, value: a.count === 1 ? "" : "s" })}
                 </span>
               </span>
             </button>

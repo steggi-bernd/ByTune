@@ -1,7 +1,8 @@
 /**
  * This phone's side of the sync service: how it reaches the service and what
  * the conversation (lib/syncEngine.ts) reads and changes here. It listens while
- * the app is in front; what the phone plays in the background still goes out.
+ * the app is in front, and in the background while it plays and for a while
+ * after, so another device can steer it; what it plays still goes out either way.
  */
 import { AppState, type NativeEventSubscription } from "react-native";
 import { create } from "zustand";
@@ -10,12 +11,15 @@ import { createSyncEngine, defaultSyncAddress, toPlaylistDoc, type SyncEngine, t
 import { readJson, writeJson } from "./storage";
 import { useConnection } from "./stores/connection";
 import { onLikesSent, useLibrary } from "./stores/library";
-import { adoptPlayback, hearDevices, linkDevices, onPlaybackActivity, phonePresence, playbackNote, runCommand, wantsPlayback } from "./stores/player";
+import { adoptPlayback, hearDevices, linkDevices, onPlaybackActivity, phonePresence, playbackNote, runCommand, usePlayer, wantsPlayback } from "./stores/player";
 import { usePlaylists } from "./stores/playlists";
 import { useDevices } from "./stores/devices";
 import { useSession } from "./stores/session";
+import Player from "../modules/media3-player";
 
 const FILE = "sync-settings.json";
+/** Paused in the background: still within reach for this long. */
+const LISTENS_AFTER_PLAYING_MS = 5 * 60_000;
 
 interface SyncState {
   status: SyncStatus;
@@ -48,7 +52,24 @@ let appState: NativeEventSubscription | null = null;
 let offPlaylists: (() => void) | null = null;
 let offReach: (() => void) | null = null;
 let offMuted: (() => void) | null = null;
+let offPlaying: (() => void) | null = null;
 let applying = false;
+let lastPlayingAt = 0;
+let keysLevel = -1;
+
+const playingHere = (): boolean => {
+  const { playWhenReady, remote } = usePlayer.getState();
+  return playWhenReady && !remote;
+};
+
+/** Following another device with the app in front: the volume keys are for that device. */
+function tellVolumeKeys(): void {
+  const { remote, remoteVolume } = usePlayer.getState();
+  const level = AppState.currentState === "active" && remote && remoteVolume !== null ? Math.round(remoteVolume * 100) : -1;
+  if (level === keysLevel) return;
+  keysLevel = level;
+  void Player.followVolumeKeys(level).catch(() => undefined);
+}
 
 export async function startSync(): Promise<void> {
   if (engine) return;
@@ -105,17 +126,39 @@ export async function startSync(): Promise<void> {
       applying = false;
     },
     onStatus: (status) => useSync.setState({ status }),
+    onListening() {
+      // Nothing played here for a while, and nobody looks: it can rest.
+      if (AppState.currentState !== "active" && !playingHere() && Date.now() - lastPlayingAt > LISTENS_AFTER_PLAYING_MS) created.rest();
+    },
   });
   engine = created;
 
   offPlaylists = usePlaylists.subscribe((s, prev) => {
     if (!applying && (s.playlists !== prev.playlists || s.folders !== prev.folders)) created.playlistsChanged();
   });
-  onPlaybackActivity((routine) => created.playbackChanged(routine));
+  onPlaybackActivity((routine) => {
+    // In the background timers don't run: what the others should know goes out at once.
+    if (!routine && AppState.currentState !== "active") void created.flushPlayback();
+    else created.playbackChanged(routine);
+  });
   linkDevices({
+    self: session.deviceId,
     send: (id, command) => created.sendCommand(id, command),
+    sendList: (id, tracks, context, command) => created.sendList(id, tracks, context, command),
     handOver: (id) => created.handOver(id),
     look: () => void created.checkPlayback(),
+    presence: () => {
+      if (AppState.currentState === "active") created.presenceChanged();
+      else void created.presenceNow();
+    },
+  });
+  offPlaying = usePlayer.subscribe((s, prev) => {
+    if (s.remote !== prev.remote || s.remoteVolume !== prev.remoteVolume) tellVolumeKeys();
+    if (s.playWhenReady !== prev.playWhenReady || s.remote !== prev.remote) {
+      if (playingHere() || prev.playWhenReady) lastPlayingAt = Date.now();
+      // Started in the background, by a headset say: within reach from now on.
+      if (playingHere() && AppState.currentState !== "active") created.start();
+    }
   });
   offMuted = useLibrary.subscribe((s, prev) => {
     if (!applying && s.mutedAt !== prev.mutedAt) created.mutedChanged();
@@ -131,10 +174,11 @@ export async function startSync(): Promise<void> {
     if (s.reach !== prev.reach) created.retryNow();
   });
   appState = AppState.addEventListener("change", (state) => {
+    tellVolumeKeys();
     if (state === "active") created.start();
     else if (state === "background") {
       void created.flushPlayback();
-      created.rest();
+      if (!playingHere() && Date.now() - lastPlayingAt > LISTENS_AFTER_PLAYING_MS) created.rest();
     }
   });
   created.start();
@@ -151,6 +195,10 @@ export function stopSync(): void {
   offPlaylists = null;
   offMuted?.();
   offMuted = null;
+  offPlaying?.();
+  offPlaying = null;
+  keysLevel = -1;
+  void Player.followVolumeKeys(-1).catch(() => undefined);
   onPlaybackActivity(null);
   linkDevices(null);
   onLikesSent(null);

@@ -10,6 +10,7 @@ import { Animated, Easing, PanResponder, StyleSheet, View } from "react-native";
 import type { RepeatMode } from "../../modules/media3-player";
 import type { Track } from "../shared";
 import { usePlayer } from "../stores/player";
+import { feel } from "../stores/settings";
 
 export const trackPosition = new Animated.Value(0, { useNativeDriver: true });
 
@@ -46,6 +47,7 @@ function release(dx: number, vx: number, width: number): void {
     Animated.spring(trackPosition, { ...SPRING, toValue: index, velocity }).start();
     return;
   }
+  feel("tick");
   const to = index + delta;
   if (to >= 0 && to < queue.length) {
     heading = to;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Info, X } from "lucide-react";
 import { useUI, type Toast } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 const KIND_STYLES = {
   info: {
@@ -149,8 +150,8 @@ function ToastCard({ toast, onDone }: { toast: Toast; onDone: () => void }) {
           <button
             onClick={close}
             className="relative shrink-0 ml-auto w-6 h-6 rounded-full grid place-items-center text-ink-faint hover:text-ink-hi hover:bg-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-200"
-            title="Dismiss"
-            aria-label="Dismiss notification"
+            title={T("Dismiss")}
+            aria-label={T("Dismiss notification")}
           >
             <X className="w-3.5 h-3.5" />
           </button>

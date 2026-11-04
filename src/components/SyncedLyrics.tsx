@@ -18,6 +18,7 @@ import { hasCyrillic, toLatin } from "../lib/transliterate";
 import { usePlayer } from "../stores/player";
 import { useSettings } from "../stores/settings";
 import type { LyricsResult, SyncedLyricWord } from "../types";
+import { T } from "../lib/i18n";
 
 interface LyricsViewProps {
   lyrics: LyricsResult | null;
@@ -244,13 +245,11 @@ export function LyricsView({
       onClick={() => setLatin(!latinOn)}
       role="switch"
       aria-checked={latinOn}
-      title="Show Cyrillic lyrics in Latin letters too"
+      title={T("Show Cyrillic lyrics in Latin letters too")}
       className={`absolute top-1 right-10 z-10 h-7 px-2.5 rounded-full text-[12px] font-semibold transition-colors ${
         latinOn ? "bg-ink-hi/[0.16] text-ink-hi" : "bg-ink-hi/[0.06] text-ink-dim hover:text-ink-hi"
       }`}
-    >
-      Latin
-    </button>
+    >{T("Latin")}</button>
   ) : null;
 
   // Lyric times live on the matched recording's timeline; the playing upload
@@ -312,9 +311,7 @@ export function LyricsView({
         className={`text-center text-ink-faint ${
           hero ? "py-16 text-lg" : large ? "py-16 text-base" : "py-10 text-sm"
         }`}
-      >
-        No lyrics available for this track.
-      </p>
+      >{T("No lyrics available for this track.")}</p>
     );
   }
 
@@ -378,7 +375,7 @@ export function LyricsView({
                 <div
                   key={`${line.time}-${i}`}
                   className="flex items-center gap-2 py-2 px-1"
-                  title="Instrumental"
+                  title={T("Instrumental")}
                   style={{ opacity: Math.max(0.15, depth.style.opacity as number) }}
                 >
                   {[0, 1, 2].map((d) => (
@@ -416,7 +413,7 @@ export function LyricsView({
                 key={`${line.time}-${i}`}
                 ref={i === activeIndex ? activeRef : undefined}
                 onClick={() => seek(Math.max(0, line.time + offset - 0.15))}
-                title="Jump here"
+                title={T("Jump here")}
                 className={`block w-full text-left origin-left ${depth.className}`}
                 style={depth.style}
               >

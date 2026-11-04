@@ -13,15 +13,17 @@ import { tinted } from "../color";
 import { Card, CARD_SIZE, Chip, Cover, CoverGrid, Shelf } from "../components/ui";
 import { splitCredits, type LibAlbum, type Track } from "../shared";
 import { useConnection } from "../stores/connection";
+import { useSession } from "../stores/session";
 import { useArtistPhoto, useCoverColor, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { colors, PAGE_END } from "../theme";
+import { T } from "../shared";
 
 function greeting(): string {
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return "Good morning";
-  if (h >= 12 && h < 18) return "Good afternoon";
-  return "Good evening";
+  if (h >= 5 && h < 12) return T("Good morning");
+  if (h >= 12 && h < 18) return T("Good afternoon");
+  return T("Good evening");
 }
 
 type Filter = "all" | "mixes" | "albums";
@@ -44,7 +46,7 @@ function ArtistCard({ name, thumb, plays }: { name: string; thumb: string; plays
     <Card
       art={<Cover uri={photo} fallback={thumb} size={CARD_SIZE} radius={CARD_SIZE / 2} />}
       title={name}
-      subtitle={`${plays} ${plays === 1 ? "play" : "plays"}`}
+      subtitle={`${plays} ${plays === 1 ? T("play") : T("plays")}`}
       onPress={() => nav.navigate("Artist", { name })}
     />
   );
@@ -58,7 +60,7 @@ export function HomeScreen() {
   const refreshing = useLibrary((s) => s.refreshing);
   const refresh = useLibrary((s) => s.refresh);
   const error = useLibrary((s) => s.error);
-  const offline = useConnection((s) => s.reach === "offline");
+  const offline = useConnection((s) => s.reach === "offline") && !!useSession((s) => s.session);
   const data = useLibrary((s) => s.data);
   const albums = useLibrary((s) => s.albums);
   const artists = useLibrary((s) => s.artists);
@@ -119,7 +121,7 @@ export function HomeScreen() {
     return (
       <View style={[styles.center, { backgroundColor: colors.base }]}>
         <ActivityIndicator color={colors.ink} />
-        <Text style={styles.loading}>Reading your library…</Text>
+        <Text style={styles.loading}>{T("Reading your library…")}</Text>
       </View>
     );
   }
@@ -130,7 +132,7 @@ export function HomeScreen() {
       art={<Cover uri={t.thumb} size={CARD_SIZE} radius={8} />}
       title={t.title}
       subtitle={t.artist}
-      onPress={() => playTracks(recentSongs, i, "Recently played")}
+      onPress={() => playTracks(recentSongs, i, T("Recently played"))}
     />
   );
 
@@ -143,27 +145,27 @@ export function HomeScreen() {
       <LinearGradient colors={[tinted(color, 0.16), "rgba(0,0,0,0)"]} style={styles.wash} />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.greeting}>{greeting()}</Text>
-        <Pressable onPress={() => nav.navigate("Devices")} accessibilityLabel="Devices" style={styles.headerButton}>
+        <Pressable onPress={() => nav.navigate("Devices")} accessibilityLabel={T("Devices")} style={styles.headerButton}>
           <Speaker size={23} color={colors.ink} />
         </Pressable>
-        <Pressable onPress={() => nav.navigate("Settings")} accessibilityLabel="Settings" style={styles.headerButton}>
+        <Pressable onPress={() => nav.navigate("Settings")} accessibilityLabel={T("Settings")} style={styles.headerButton}>
           <Settings size={23} color={colors.ink} />
         </Pressable>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        <Chip label="All" active={filter === "all"} onPress={() => setFilter("all")} />
-        <Chip label="Mixes" active={filter === "mixes"} onPress={() => setFilter("mixes")} />
-        <Chip label="Albums" active={filter === "albums"} onPress={() => setFilter("albums")} />
+        <Chip label={T("All")} active={filter === "all"} onPress={() => setFilter("all")} />
+        <Chip label={T("Mixes")} active={filter === "mixes"} onPress={() => setFilter("mixes")} />
+        <Chip label={T("Albums")} active={filter === "albums"} onPress={() => setFilter("albums")} />
       </ScrollView>
 
       {offline && (
         <Pressable onPress={() => nav.navigate("Collection", { kind: "downloads" })} style={styles.offline}>
           <CloudOff size={16} color={colors.dim} />
-          <Text style={styles.offlineText}>Your server is out of reach. Downloaded music plays.</Text>
+          <Text style={styles.offlineText}>{T("Your server is out of reach. Downloaded music plays.")}</Text>
         </Pressable>
       )}
       {!!error && !data.tracks.length && <Text style={styles.error}>{error}</Text>}
-      {!error && !data.tracks.length && <Text style={styles.empty}>No music on the server yet.</Text>}
+      {!error && !data.tracks.length && <Text style={styles.empty}>{T("No music on the server yet.")}</Text>}
 
       {filter === "all" && (
         <View style={styles.tiles}>
@@ -174,7 +176,7 @@ export function HomeScreen() {
       )}
 
       {filter !== "albums" && mixes.length > 0 && (
-        <Shelf title="Made for you">
+        <Shelf title={T("Made for you")}>
           {mixes.map((m) => (
             <Card
               key={m.id}
@@ -188,7 +190,7 @@ export function HomeScreen() {
       )}
 
       {filter !== "mixes" && recentlyAdded.length > 0 && (
-        <Shelf title="Recently added">
+        <Shelf title={T("Recently added")}>
           {recentlyAdded.map((a) => (
             <Card
               key={a.key}
@@ -202,14 +204,14 @@ export function HomeScreen() {
       )}
 
       {filter === "all" && topArtists.length > 0 && (
-        <Shelf title="Your top artists">
+        <Shelf title={T("Your top artists")}>
           {topArtists.map((a) => (
             <ArtistCard key={a.name} name={a.name} thumb={a.thumb} plays={a.plays} />
           ))}
         </Shelf>
       )}
 
-      {filter === "all" && recentSongs.length > 0 && <Shelf title="Recently played">{recentSongs.map(songCard)}</Shelf>}
+      {filter === "all" && recentSongs.length > 0 && <Shelf title={T("Recently played")}>{recentSongs.map(songCard)}</Shelf>}
     </ScrollView>
   );
 }

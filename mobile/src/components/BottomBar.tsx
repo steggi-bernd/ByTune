@@ -12,11 +12,12 @@ import { deviceName, pickMusicFor, useZones } from "../stores/zones";
 import { colors, MINI_PLAYER_HEIGHT, TAB_BAR_HEIGHT } from "../theme";
 import { PlayerSheet } from "./PlayerSheet";
 import { useSongMenu } from "./SongMenu";
+import { T } from "../shared";
 
 const TABS = [
-  { label: "Home", Icon: House },
-  { label: "Search", Icon: Search },
-  { label: "Your Library", Icon: Library },
+  { label: T("Home"), Icon: House },
+  { label: T("Search"), Icon: Search },
+  { label: T("Your Library"), Icon: Library },
 ];
 
 export function BottomBar({ state, navigation }: BottomTabBarProps) {
@@ -51,7 +52,7 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
                     else navigation.navigate(route.name);
                   }}
                 >
-                  <Icon size={24} color={color} strokeWidth={active ? 2.6 : 1.9} fill={active && label === "Home" ? color : "transparent"} />
+                  <Icon size={24} color={color} strokeWidth={active ? 2.6 : 1.9} fill={active && i === 0 ? color : "transparent"} />
                   <Text style={[styles.tabLabel, { color }]}>{label}</Text>
                 </Pressable>
               );
@@ -61,11 +62,10 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
       </View>
       {pickingFor && (
         <View style={[styles.picking, { bottom: insets.bottom + TAB_BAR_HEIGHT + MINI_PLAYER_HEIGHT + 8 }]}>
-          <Text numberOfLines={1} style={styles.pickingText}>
-            Choose music for {deviceName(pickingFor)}
+          <Text numberOfLines={1} style={styles.pickingText}>{T("Choose music for {deviceName}", { deviceName: deviceName(pickingFor) })}
           </Text>
-          <Pressable onPress={() => pickMusicFor(null)} hitSlop={8} accessibilityLabel="Stop choosing">
-            <Text style={styles.pickingCancel}>Cancel</Text>
+          <Pressable onPress={() => pickMusicFor(null)} hitSlop={8} accessibilityLabel={T("Stop choosing")}>
+            <Text style={styles.pickingCancel}>{T("Cancel")}</Text>
           </Pressable>
         </View>
       )}

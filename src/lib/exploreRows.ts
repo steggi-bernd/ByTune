@@ -7,6 +7,7 @@ import type { Track } from "../types";
 import type { LibAlbum, LibArtist, LibGenre, PlayCounts } from "./catalogBuild";
 import { splitCredits } from "./libraryCore";
 import { compareReleases, type ReleaseKind } from "./releases";
+import { T } from "./i18n";
 
 export type ExploreTab = "albums" | "artists" | "genres";
 /** an order's key on that tab's list, and whether it runs from the most / Z */
@@ -71,35 +72,35 @@ export const genreRowsOf = (genres: LibGenre[], counts: PlayCounts): GenreRow[] 
   genres.map((genre) => ({ genre, plays: playsOf(genre.tracks, counts) }));
 
 export const albumOrders: ExploreOrder<AlbumRow>[] = [
-  { key: "title", label: "Title", compare: (a, b) => text(a.album.title, b.album.title) },
-  { key: "artist", label: "Artist", compare: (a, b) => text(a.album.artist, b.album.artist) },
+  { key: "title", label: T("Title"), compare: (a, b) => text(a.album.title, b.album.title) },
+  { key: "artist", label: T("Artist"), compare: (a, b) => text(a.album.artist, b.album.artist) },
   {
     key: "released",
-    label: "Released",
+    label: T("Released"),
     numeric: true,
     // Ascending is oldest first; the same order as the discography, turned round.
     compare: (a, b) => compareReleases(b.album, a.album),
     missing: (r) => !r.album.year,
   },
-  { key: "type", label: "Type", compare: (a, b) => KIND_ORDER.indexOf(a.album.kind) - KIND_ORDER.indexOf(b.album.kind) },
-  { key: "songs", label: "Songs", numeric: true, compare: (a, b) => a.album.tracks.length - b.album.tracks.length },
-  { key: "length", label: "Length", numeric: true, compare: (a, b) => a.album.duration - b.album.duration },
-  { key: "added", label: "Added", numeric: true, compare: (a, b) => a.album.addedAt - b.album.addedAt, missing: (r) => !r.album.addedAt },
-  { key: "plays", label: "Plays", numeric: true, compare: (a, b) => a.plays - b.plays },
+  { key: "type", label: T("Type"), compare: (a, b) => KIND_ORDER.indexOf(a.album.kind) - KIND_ORDER.indexOf(b.album.kind) },
+  { key: "songs", label: T("Songs"), numeric: true, compare: (a, b) => a.album.tracks.length - b.album.tracks.length },
+  { key: "length", label: T("Length"), numeric: true, compare: (a, b) => a.album.duration - b.album.duration },
+  { key: "added", label: T("Added"), numeric: true, compare: (a, b) => a.album.addedAt - b.album.addedAt, missing: (r) => !r.album.addedAt },
+  { key: "plays", label: T("Plays"), numeric: true, compare: (a, b) => a.plays - b.plays },
 ];
 export const artistOrders: ExploreOrder<ArtistRow>[] = [
-  { key: "name", label: "Name", compare: (a, b) => text(a.artist.name, b.artist.name) },
-  { key: "albums", label: "Albums", numeric: true, compare: (a, b) => a.artist.albumCount - b.artist.albumCount },
-  { key: "songs", label: "Songs", numeric: true, compare: (a, b) => a.artist.trackCount - b.artist.trackCount },
-  { key: "plays", label: "Plays", numeric: true, compare: (a, b) => a.plays - b.plays },
-  { key: "added", label: "Added", numeric: true, compare: (a, b) => a.addedAt - b.addedAt, missing: (r) => !r.addedAt },
+  { key: "name", label: T("Name"), compare: (a, b) => text(a.artist.name, b.artist.name) },
+  { key: "albums", label: T("Albums"), numeric: true, compare: (a, b) => a.artist.albumCount - b.artist.albumCount },
+  { key: "songs", label: T("Songs"), numeric: true, compare: (a, b) => a.artist.trackCount - b.artist.trackCount },
+  { key: "plays", label: T("Plays"), numeric: true, compare: (a, b) => a.plays - b.plays },
+  { key: "added", label: T("Added"), numeric: true, compare: (a, b) => a.addedAt - b.addedAt, missing: (r) => !r.addedAt },
 ];
 export const genreOrders: ExploreOrder<GenreRow>[] = [
-  { key: "name", label: "Name", compare: (a, b) => text(a.genre.name, b.genre.name) },
-  { key: "artists", label: "Artists", numeric: true, compare: (a, b) => a.genre.artistCount - b.genre.artistCount },
-  { key: "albums", label: "Albums", numeric: true, compare: (a, b) => a.genre.albumCount - b.genre.albumCount },
-  { key: "songs", label: "Songs", numeric: true, compare: (a, b) => a.genre.tracks.length - b.genre.tracks.length },
-  { key: "plays", label: "Plays", numeric: true, compare: (a, b) => a.plays - b.plays },
+  { key: "name", label: T("Name"), compare: (a, b) => text(a.genre.name, b.genre.name) },
+  { key: "artists", label: T("Artists"), numeric: true, compare: (a, b) => a.genre.artistCount - b.genre.artistCount },
+  { key: "albums", label: T("Albums"), numeric: true, compare: (a, b) => a.genre.albumCount - b.genre.albumCount },
+  { key: "songs", label: T("Songs"), numeric: true, compare: (a, b) => a.genre.tracks.length - b.genre.tracks.length },
+  { key: "plays", label: T("Plays"), numeric: true, compare: (a, b) => a.plays - b.plays },
 ];
 
 export function sortRows<T>(rows: T[], orders: ExploreOrder<T>[], sort: ExploreSort): T[] {

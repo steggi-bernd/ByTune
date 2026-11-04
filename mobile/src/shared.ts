@@ -5,7 +5,8 @@ export { sameSong, songIdentity } from "../../src/lib/duplicates";
 export { artistFromOpenData, OPEN_DATA_AGENT, type ArtistMeta } from "../../electron/artist-facts";
 export { GENIUS_HEADERS, geniusFindWith, songFromGenius, songIsBy, type SongInfo } from "../../electron/genius";
 export { primaryArtist, queryTitle } from "../../electron/song-names";
-export { leadArtist, matchesQuery, splitCredits } from "../../src/lib/libraryCore";
+export { albumKeyOf as libraryAlbumKey, albumRoute, leadArtist, matchesQuery, splitCredits } from "../../src/lib/libraryCore";
+export { hasCyrillic, toLatin } from "../../src/lib/transliterate";
 export { describePlayback, formatLine } from "../../src/lib/playbackFormat";
 export { jellyfinItemToTrack, jellyfinToTrack } from "../../src/lib/jellyfinItem";
 export {
@@ -52,3 +53,5 @@ export { Zone, type ZoneDriver, type ZoneMember, type ZonePlayState, type ZoneSo
 export { playCreditSeconds } from "../../src/lib/favoriteSync";
 export { fmtLength, fmtTime, plural } from "../../src/lib/format";
 export { RELEASE_LABEL } from "../../src/lib/releases";
+export { handRows, lineInList, placeOf, putBack, tendedBranches, withoutSongs, type HandRow, type QueueBranch } from "../../src/lib/queueSections";
+export { currentLanguage, languageOf, LANGUAGES, setLanguage, T, type Language, type LanguageChoice } from "../../src/lib/i18n";

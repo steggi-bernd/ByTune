@@ -18,9 +18,11 @@ import { useArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { useLibrary, type Playlist } from "../stores/library";
 import { useIsMuted } from "../stores/muted";
+import { BranchMark } from "../components/primitives";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 export function PlaylistView({ playlistId }: { playlistId: string }) {
   const playlist = useLibrary((s) => s.playlists.find((p) => p.id === playlistId) ?? null);
@@ -39,8 +41,8 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
     return (
       <EmptyState
         icon={ListMusic}
-        title="This playlist no longer exists"
-        body="It may have been deleted. Head back to your playlists to find the rest."
+        title={T("This playlist no longer exists")}
+        body={T("It may have been deleted. Head back to your playlists to find the rest.")}
         className="pt-10"
       />
     );
@@ -51,8 +53,8 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   // Spotify's model: a fresh playlist reads "PLAYLIST" — the "0 tracks"
   // count only appears once there's something to count.
   const meta = [
-    "Playlist",
-    tracks.length ? plural(tracks.length, "song", "songs") : "",
+    T("Playlist"),
+    tracks.length ? plural(tracks.length, T("song"), T("songs")) : "",
     totalSec > 0 ? `about ${fmtTime(totalSec)}` : "",
   ]
     .filter(Boolean)
@@ -73,25 +75,25 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
     const [renameItem, deleteItem] = playlistHeaderItems(playlist);
     openContextMenu(x, y, [
       {
-        label: "Add all to queue",
+        label: T("Add all to queue"),
         icon: ListPlus,
         action: () => {
           usePlayer.getState().addToQueue(tracks);
-          toast("Playlist added to queue");
+          toast(T("Playlist added to queue"));
         },
       },
       ...(tracks.length
         ? [
-            { label: "Export as M3U…", icon: FileDown, action: () => void exportM3uPlaylist(playlist.name, tracks) },
+            { label: T("Export as M3U…"), icon: FileDown, action: () => void exportM3uPlaylist(playlist.name, tracks) },
             {
-              label: "Download for offline",
+              label: T("Download for offline"),
               icon: Download,
               action: () => {
                 const servers = tracks
                   .filter((t) => !versionsOf(t).some((v) => v.localPath))
                   .map((t) => versionsOf(t).find((v) => SERVER_SONG.test(v.id)))
                   .filter((t): t is NonNullable<typeof t> => !!t);
-                if (!downloadForOffline(servers)) toast("Every song here is already on this device");
+                if (!downloadForOffline(servers)) toast(T("Every song here is already on this device"));
               },
             },
           ]
@@ -153,8 +155,8 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
         ) : (
           <EmptyState
             icon={ListMusic}
-            title="Let's find something for your playlist"
-            body="Search for songs you love, or browse Explore to discover something new — then right-click any track to add it here."
+            title={T("Let's find something for your playlist")}
+            body={T("Search for songs you love, or browse Explore to discover something new — then right-click any track to add it here.")}
             action={
               <div className="flex items-center gap-2.5">
                 <button
@@ -165,21 +167,15 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
                     window.setTimeout(() => document.getElementById("global-search")?.focus(), 80);
                   }}
                   className="h-10 px-5 rounded-full bg-primary text-on-primary text-[13.5px] font-semibold hover:brightness-110 hover:shadow-[0_10px_36px_-10px_rgb(var(--primary)/0.55)] transition-all active:scale-[0.98]"
-                >
-                  Search for songs
-                </button>
+                >{T("Search for songs")}</button>
                 <button
                   onClick={() => useUI.getState().navigate({ name: "explore" })}
                   className="h-10 px-5 rounded-full bg-panel border border-ink-hi/[0.09] text-[13.5px] font-semibold text-ink-hi hover:bg-ink-hi/[0.05] hover:border-ink-hi/[0.2] transition-all active:scale-[0.98]"
-                >
-                  Browse Explore
-                </button>
+                >{T("Browse Explore")}</button>
                 <button
                   onClick={() => useUI.getState().navigate({ name: "spotify", param: `playlist:${playlist.id}` })}
                   className="h-10 px-5 rounded-full bg-panel border border-ink-hi/[0.09] text-[13.5px] font-semibold text-ink-hi hover:bg-ink-hi/[0.05] hover:border-ink-hi/[0.2] transition-all active:scale-[0.98]"
-                >
-                  Recover a Spotify playlist
-                </button>
+                >{T("Recover a Spotify playlist")}</button>
               </div>
             }
           />
@@ -242,8 +238,8 @@ function PlaylistTrackRow({
                 else playQueue(queue, index);
               }}
               className="hidden group-hover:block text-ink-hi hover:text-ink-hi transition-colors"
-              title="Play"
-              aria-label={`Play ${track.title}`}
+              title={T("Play")}
+              aria-label={T("Play {title}", { title: track.title })}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
             </button>
@@ -255,6 +251,7 @@ function PlaylistTrackRow({
         <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${isCurrent ? "text-accent" : muted ? "text-red-300" : "text-ink-hi"}`}>
           {track.explicit && <ExplicitBadge />}
           <span className="truncate">{track.title}</span>
+          <BranchMark id={track.id} />
         </div>
         <div className="text-[14px] truncate text-ink-dim mt-0.5">{track.artist}</div>
       </div>
@@ -265,8 +262,8 @@ function PlaylistTrackRow({
             e.stopPropagation();
             toggleLike(track);
           }}
-          title={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
-          aria-label={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+          title={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
+          aria-label={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
           className={`p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] ${liked ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
         >
           <Heart key={liked ? "liked" : "unliked"} className={`w-4 h-4 animate-icon-pop ${liked ? "fill-accent text-accent" : ""}`} />
@@ -277,8 +274,8 @@ function PlaylistTrackRow({
             e.stopPropagation();
             openMenu(e.clientX, e.clientY);
           }}
-          title="More options"
-          aria-label={`More options for ${track.title}`}
+          title={T("More options")}
+          aria-label={T("More options for {title}", { title: track.title })}
           className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-[color,background-color,opacity] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal className="w-4 h-4" />

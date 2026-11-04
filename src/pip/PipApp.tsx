@@ -58,6 +58,7 @@ import { fmtTime } from "../lib/format";
 import { upgradeArtwork } from "../lib/artwork";
 import { isWindows } from "../lib/platform";
 import type { PipCommand, PipSnapshot } from "./types";
+import { T } from "../lib/i18n";
 
 const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const noDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
@@ -439,7 +440,7 @@ export function PipApp() {
               >
                 {/* No active marking: the glyph itself swaps to the muted
                     speaker, the way Spotify communicates mute. */}
-                <IconBtn onClick={() => send({ type: "mute" })} title={snap?.muted ? "Unmute" : "Mute"}>
+                <IconBtn onClick={() => send({ type: "mute" })} title={snap?.muted ? T("Unmute") : T("Mute")}>
                   <span key={snap?.muted ? "off" : "on"} className="icon-swap">
                     {snap?.muted ? <SpVolumeOff /> : <SpVolumeHigh />}
                   </span>
@@ -457,7 +458,7 @@ export function PipApp() {
                   <div className="w-[96px] rounded-xl bg-[#282828] px-2.5 py-2 shadow-elev">
                     <Slider
                       size="mini"
-                      label="Volume"
+                      label={T("Volume")}
                       value={snap?.muted ? 0 : snap?.volume ?? 0.8}
                       onChange={(v) => send({ type: "volume", v })}
                       step={0.05}
@@ -466,10 +467,10 @@ export function PipApp() {
                   </div>
                 </div>
               </div>
-              <IconBtn onClick={() => send({ type: "shuffle" })} active={snap?.shuffle} title="Shuffle" disabled={!track}>
+              <IconBtn onClick={() => send({ type: "shuffle" })} active={snap?.shuffle} title={T("Shuffle")} disabled={!track}>
                 <SpShuffle />
               </IconBtn>
-              <IconBtn onClick={() => send({ type: "prev" })} title="Previous" disabled={!track}>
+              <IconBtn onClick={() => send({ type: "prev" })} title={T("Previous")} disabled={!track}>
                 <SpPrev />
               </IconBtn>
               <button
@@ -477,8 +478,8 @@ export function PipApp() {
                 style={noDragRegion}
                 onClick={() => send({ type: "toggle" })}
                 disabled={!track}
-                title={playing ? "Pause" : "Play"}
-                aria-label={playing ? "Pause" : "Play"}
+                title={playing ? T("Pause") : T("Play")}
+                aria-label={playing ? T("Pause") : T("Play")}
                 className="mx-1.5 grid h-12 w-12 cursor-pointer shrink-0 place-items-center rounded-full bg-white text-black shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-transform duration-150 hover:scale-[1.06] active:scale-95 focus-visible:scale-[1.06] disabled:pointer-events-none disabled:opacity-40"
               >
                 {buffering ? (
@@ -489,18 +490,18 @@ export function PipApp() {
                   </span>
                 )}
               </button>
-              <IconBtn onClick={() => send({ type: "next" })} title="Next" disabled={!track}>
+              <IconBtn onClick={() => send({ type: "next" })} title={T("Next")} disabled={!track}>
                 <SpNext />
               </IconBtn>
               <IconBtn
                 onClick={() => send({ type: "repeat" })}
                 active={snap?.repeat !== "off"}
-                title={snap?.repeat === "one" ? "Repeat one" : "Repeat"}
+                title={snap?.repeat === "one" ? T("Repeat one") : T("Repeat")}
                 disabled={!track}
               >
                 {snap?.repeat === "one" ? <SpRepeatOne /> : <SpRepeat />}
               </IconBtn>
-              <IconBtn onClick={() => void copyShareLink()} disabled={!canShare} title="Copy link to Song">
+              <IconBtn onClick={() => void copyShareLink()} disabled={!canShare} title={T("Copy link to Song")}>
                 <SpCopyLink className="h-4 w-4" />
               </IconBtn>
             </div>
@@ -523,7 +524,7 @@ export function PipApp() {
             </span>
             <Slider
               size="mini"
-              label="Seek"
+              label={T("Seek")}
               className="min-w-0 flex-1"
               value={shownSeek / max}
               disabled={!track}
@@ -554,8 +555,8 @@ export function PipApp() {
               type="button"
               style={noDragRegion}
               onClick={() => window.bytune?.pipMinimize()}
-              title="Minimize miniplayer"
-              aria-label="Minimize miniplayer"
+              title={T("Minimize miniplayer")}
+              aria-label={T("Minimize miniplayer")}
               className="absolute right-[29px] top-[7px] grid h-3 w-3 cursor-pointer place-items-center rounded-full text-white transition-colors duration-150 hover:bg-white/10 active:scale-95"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -568,8 +569,8 @@ export function PipApp() {
               type="button"
               style={noDragRegion}
               onClick={() => window.bytune?.pipClose()}
-              title="Close miniplayer"
-              aria-label="Close miniplayer"
+              title={T("Close miniplayer")}
+              aria-label={T("Close miniplayer")}
               className="absolute right-[9px] top-[7px] grid h-3 w-3 cursor-pointer place-items-center rounded-full text-white transition-colors duration-150 hover:bg-white/10 active:scale-95"
             >
               <SpClose className="h-3.5 w-3.5" />
@@ -584,11 +585,11 @@ export function PipApp() {
         <button
           type="button"
           onClick={() => window.bytune?.pipShowMain()}
-          title="Open Songsta"
+          title={T("Open Songsta")}
           className="min-w-0 flex-1 cursor-pointer text-left"
         >
           <div key={trackId ?? "t"} className="animate-meta-in truncate text-[15px] font-semibold leading-[1.35] text-white">
-            {track ? track.title : "Nothing playing"}
+            {track ? track.title : T("Nothing playing")}
           </div>
           <div key={trackId ? `${trackId}-a` : "a"} className="animate-meta-in truncate text-[12px] leading-[1.4] text-white/60">
             {track ? track.artist : ""}
@@ -609,8 +610,8 @@ export function PipApp() {
               }
               send({ type: "like" });
             }}
-            title={snap?.liked ? "Edit Liked Songs" : "Save to your library"}
-            aria-label={snap?.liked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+            title={snap?.liked ? T("Edit Liked Songs") : T("Save to your library")}
+            aria-label={snap?.liked ? T("Remove from Liked Songs") : T("Save to Liked Songs")}
             aria-pressed={snap?.liked}
             className="relative grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full transition-transform duration-150 hover:scale-105 active:scale-90"
           >

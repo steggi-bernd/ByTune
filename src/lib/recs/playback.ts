@@ -17,6 +17,7 @@ import { useUI } from "../../stores/ui";
 import type { Track } from "../../types";
 import { getArtistBundle } from "./candidates";
 import { hash32, seededShuffle } from "./seeded";
+import { T } from "../i18n";
 
 export type PlaySource =
   | { type: "tracks"; tracks: Track[]; label: string }
@@ -36,7 +37,7 @@ function dedupeById(tracks: Track[]): Track[] {
 
 async function playResolved(tracks: Track[], label: string): Promise<void> {
   if (!tracks.length) {
-    useUI.getState().toast(`Couldn't build "${label}" right now`, "error");
+    useUI.getState().toast(T("Couldn't build \"{label}\" right now", { label }), "error");
     return;
   }
   usePlayer.getState().playAll(tracks);
@@ -60,10 +61,10 @@ export async function playSource(source: PlaySource): Promise<void> {
       return;
     }
 
-    ui.toast(`Loading ${source.name}…`);
+    ui.toast(T("Loading {name}…", { name: source.name }));
     const bundle = await getArtistBundle(source.artistId);
     if (!bundle || bundle.topSongs.length === 0) {
-      ui.toast(`Couldn't build "${source.name}" right now`, "error");
+      ui.toast(T("Couldn't build \"{name}\" right now", { name: source.name }), "error");
       return;
     }
 
@@ -102,8 +103,8 @@ export async function playSource(source: PlaySource): Promise<void> {
     }
     await playResolved(mixed.slice(0, 40), source.name);
   } catch (err) {
-    if (!requireBridgeSafe()) ui.toast("Not running inside the Songsta shell", "error");
-    else ui.toast(`Couldn't play that right now`, "error");
+    if (!requireBridgeSafe()) ui.toast(T("Not running inside the Songsta shell"), "error");
+    else ui.toast(T("Couldn't play that right now"), "error");
     void err;
   }
 }

@@ -13,6 +13,7 @@ import { useCatalog, useFreshPlayCounts } from "../stores/catalog";
 import { useLibrary } from "../stores/library";
 import { useSmartPlaylists } from "../stores/smartPlaylists";
 import { useUI } from "../stores/ui";
+import { T } from "../lib/i18n";
 
 export function SmartPlaylistView({ id }: { id: string }) {
   const sp = useSmartPlaylists((s) => s.playlists.find((p) => p.id === id) ?? null);
@@ -24,14 +25,14 @@ export function SmartPlaylistView({ id }: { id: string }) {
   const likedIds = useMemo(() => new Set(liked.map((t) => t.id)), [liked]);
   const songs = useMemo(() => (sp ? evaluateSmartPlaylist(sp, tracks, counts, likedIds) : []), [sp, tracks, counts, likedIds]);
 
-  if (!sp) return <EmptyState icon={Sparkles} title="Smart playlist not found" body="It may have been deleted." />;
+  if (!sp) return <EmptyState icon={Sparkles} title={T("Smart playlist not found")} body={T("It may have been deleted.")} />;
   if (!loaded) return null;
 
   const remove = (): void =>
     useUI.getState().openDialog({
-      title: `Delete “${sp.name}”?`,
-      body: "Only the rules are deleted — your songs stay where they are.",
-      confirmLabel: "Delete",
+      title: T("Delete “{name}”?", { name: sp.name }),
+      body: T("Only the rules are deleted — your songs stay where they are."),
+      confirmLabel: T("Delete"),
       danger: true,
       onConfirm: () => {
         useSmartPlaylists.getState().remove(sp.id);
@@ -42,7 +43,7 @@ export function SmartPlaylistView({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <CollectionHeader
-        label="Smart playlist"
+        label={T("Smart playlist")}
         title={sp.name}
         subtitle={describeRules(sp)}
         tracks={songs}
@@ -50,16 +51,16 @@ export function SmartPlaylistView({ id }: { id: string }) {
           <>
             <button
               onClick={() => useSmartEditor.getState().open(sp, false)}
-              title="Edit rules"
-              aria-label="Edit rules"
+              title={T("Edit rules")}
+              aria-label={T("Edit rules")}
               className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
             >
               <Pencil className="w-5 h-5" />
             </button>
             <button
               onClick={remove}
-              title="Delete smart playlist"
-              aria-label="Delete smart playlist"
+              title={T("Delete smart playlist")}
+              aria-label={T("Delete smart playlist")}
               className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-red-400 hover:scale-105 transition-all"
             >
               <Trash2 className="w-5 h-5" />
@@ -68,9 +69,9 @@ export function SmartPlaylistView({ id }: { id: string }) {
         }
       />
       {songs.length ? (
-        <TrackList tracks={songs} showAlbum sourceName={sp.name} emptyLabel="No songs." />
+        <TrackList tracks={songs} showAlbum sourceName={sp.name} emptyLabel={T("No songs.")} />
       ) : (
-        <EmptyState icon={Sparkles} title="No songs match yet" body="Change the rules, or add music that fits them." />
+        <EmptyState icon={Sparkles} title={T("No songs match yet")} body={T("Change the rules, or add music that fits them.")} />
       )}
     </div>
   );

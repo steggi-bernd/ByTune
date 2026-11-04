@@ -1,3 +1,4 @@
+import { T } from "./shared";
 /**
  * The page behind "Playing from …". A queue only knows the name it was started
  * under, here or on the computer, so the name is looked up: first what the song
@@ -43,11 +44,11 @@ export function playingFrom(
 ): PlayingFrom {
   const own = albumKeyOf(track);
   const ownPage = own ? albumPage(own) : null;
-  const fromList = (kind: string, params: object): PlayingFrom => ({ label: `Playing from ${kind}`, name: context, page: listPage(params) });
+  const fromList = (kind: string, params: object): PlayingFrom => ({ label: T("Playing from {kind}", { kind }), name: context, page: listPage(params) });
 
-  if (!context || context === track.album) return { label: "Playing from album", name: track.album || context, page: ownPage };
-  if (context === "Liked Songs") return fromList("playlist", { kind: "liked" });
-  if (context === "Downloads") return fromList("your downloads", { kind: "downloads" });
+  if (!context || context === track.album) return { label: T("Playing from album"), name: track.album || context, page: ownPage };
+  if (context === T("Liked Songs")) return fromList("playlist", { kind: "liked" });
+  if (context === T("Downloads")) return fromList("your downloads", { kind: "downloads" });
   const playlist = known.playlists.find((p) => p.name === context);
   if (playlist) return fromList("playlist", { kind: "playlist", id: playlist.id });
   const mix = known.mixes.find((m) => m.title === context);
@@ -57,8 +58,8 @@ export function playingFrom(
   const liked = /^Liked songs by (.+)$/.exec(context);
   if (liked) return fromList("liked songs", { kind: "artistLiked", name: liked[1] });
   const album = known.albums.find((a) => a.title === context);
-  if (album) return { label: "Playing from album", name: context, page: albumPage(album.key) };
+  if (album) return { label: T("Playing from album"), name: context, page: albumPage(album.key) };
   const artist = known.artists.find((a) => a.name === context);
-  if (artist) return { label: "Playing from artist", name: context, page: { screen: "Artist", params: { name: artist.name } } };
-  return { label: "Playing from", name: context, page: ownPage };
+  if (artist) return { label: T("Playing from artist"), name: context, page: { screen: "Artist", params: { name: artist.name } } };
+  return { label: T("Playing from"), name: context, page: ownPage };
 }

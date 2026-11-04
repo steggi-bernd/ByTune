@@ -15,9 +15,11 @@ import { useArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { useLibrary } from "../stores/library";
 import { useIsMuted } from "../stores/muted";
+import { BranchMark } from "../components/primitives";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import type { ArtistPageData, HomeItem, Track } from "../types";
+import { T } from "../lib/i18n";
 
 /** Mobile's MAX_ARTIST_SONGS — the "Top songs" shelf stops at twenty. */
 const MAX_ARTIST_SONGS = 20;
@@ -30,7 +32,7 @@ function SectionCard({ item }: { item: HomeItem }) {
   const subtitle =
     item.artist?.subtitle ??
     item.album?.artist ??
-    (item.playlist?.subtitle || (item.playlist ? "Playlist" : "")) ??
+    (item.playlist?.subtitle || (item.playlist ? T("Playlist") : "")) ??
     "";
   const round = item.kind === "artist";
   void round;
@@ -79,6 +81,7 @@ function SongRow({ song, songs, index }: { song: Track; songs: Track[]; index: n
         <div className={`flex items-center gap-1.5 text-[16px] font-semibold tracking-[-0.2px] ${muted ? "text-red-300" : "text-ink-hi"}`}>
           {song.explicit && <ExplicitBadge />}
           <span className="truncate">{song.title}</span>
+          <BranchMark id={song.id} />
         </div>
         <div className="text-[14px] truncate text-ink-dim mt-0.5">{song.artist}</div>
       </div>
@@ -90,8 +93,8 @@ function SongRow({ song, songs, index }: { song: Track; songs: Track[]; index: n
           e.stopPropagation();
           openMenu(e.clientX, e.clientY);
         }}
-        title="More options"
-        aria-label={`More options for ${song.title}`}
+        title={T("More options")}
+        aria-label={T("More options for {title}", { title: song.title })}
         className="p-1.5 rounded-md text-ink-faint hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
       >
         <MoreVertical className="w-4 h-4" />
@@ -142,7 +145,7 @@ function AboutSection({ title, text }: { title: string; text: string }) {
           onClick={() => setExpanded((v) => !v)}
           className="mt-1 text-[13px] font-semibold text-accent hover:brightness-110 transition-all"
         >
-          {expanded ? "Less" : "More"}
+          {expanded ? T("Less") : T("More")}
         </button>
       )}
     </section>
@@ -177,8 +180,8 @@ export function ArtistView({ artistId }: { artistId: string }) {
   if (error) {
     return (
       <ErrorState
-        title="Couldn't load this artist"
-        body="This is usually a connection hiccup. Give it another try."
+        title={T("Couldn't load this artist")}
+        body={T("This is usually a connection hiccup. Give it another try.")}
         onRetry={() => setNonce((n) => n + 1)}
       />
     );
@@ -205,27 +208,27 @@ export function ArtistView({ artistId }: { artistId: string }) {
     const followed = useLibrary.getState().followedArtists.some((a) => a.id === artist.id);
     useUI.getState().openContextMenu(x, y, [
       {
-        label: "Add all top songs to queue",
+        label: T("Add all top songs to queue"),
         icon: ListPlus,
         disabled: !top.length,
         action: () => {
           usePlayer.getState().addToQueue(top);
           useUI
             .getState()
-            .toast(`Added ${top.length === 1 ? "1 song" : `${top.length} songs`} to queue`);
+            .toast(T("Added {value} to queue", { value: top.length === 1 ? T("1 song") : `${top.length} songs` }));
         },
       },
       {
-        label: followed ? "Unfollow artist" : "Follow artist",
+        label: followed ? T("Unfollow artist") : T("Follow artist"),
         icon: Heart,
         separatorBefore: true,
         action: () => {
           if (followed) {
             useLibrary.getState().unfollowArtist(artist.id);
-            useUI.getState().toast("Removed from your library", "info");
+            useUI.getState().toast(T("Removed from your library"), "info");
           } else {
             useLibrary.getState().followArtist({ id: artist.id, name: artist.name, thumb: artist.thumb });
-            useUI.getState().toast("Added to your library", "info");
+            useUI.getState().toast(T("Added to your library"), "info");
           }
         },
       },
@@ -265,8 +268,7 @@ export function ArtistView({ artistId }: { artistId: string }) {
               {subscriberCount && (
                 <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-black/45 border border-white/10 text-[12px] font-medium text-white/85 backdrop-blur-sm">
                   <User className="w-3.5 h-3.5" />
-                  {subscriberCount.split(" ")[0]} subscribers
-                </span>
+                  {T("{value} subscribers", { value: subscriberCount.split(" ")[0] })}</span>
               )}
               {monthlyListeners && (
                 <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-black/45 border border-white/10 text-[12px] font-medium text-white/85 backdrop-blur-sm">
@@ -275,8 +277,7 @@ export function ArtistView({ artistId }: { artistId: string }) {
                   </svg>
                   {/* YouTube says "monthly audience"; the chip says listeners,
                       the number kept and the label re-said, as on mobile. */}
-                  {monthlyListeners.split(" ")[0]} monthly listeners
-                </span>
+                  {T("{value} monthly listeners", { value: monthlyListeners.split(" ")[0] })}</span>
               )}
             </div>
           )}
@@ -285,8 +286,8 @@ export function ArtistView({ artistId }: { artistId: string }) {
             <button
               onClick={shuffle}
               disabled={!top.length}
-              title="Shuffle"
-              aria-label="Shuffle"
+              title={T("Shuffle")}
+              aria-label={T("Shuffle")}
               className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >
               <Shuffle className="w-[18px] h-[18px]" />
@@ -296,13 +297,11 @@ export function ArtistView({ artistId }: { artistId: string }) {
               disabled={!top.length}
               className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-black/45 border border-white/10 text-[14.5px] font-semibold text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98] disabled:opacity-40"
             >
-              <Play className="w-[18px] h-[18px] fill-current" />
-              Play
-            </button>
+              <Play className="w-[18px] h-[18px] fill-current" />{T("Play")}</button>
             <button
               onClick={(e) => openMore(e.clientX, e.clientY)}
-              title="More options"
-              aria-label="More options"
+              title={T("More options")}
+              aria-label={T("More options")}
               className="w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
             >
               <MoreHorizontal className="w-[18px] h-[18px]" />
@@ -312,11 +311,11 @@ export function ArtistView({ artistId }: { artistId: string }) {
       </div>
 
       <div className="px-8 pb-12 space-y-7">
-        {description && <AboutSection title="About the artist" text={description} />}
+        {description && <AboutSection title={T("About the artist")} text={description} />}
 
         {top.length > 0 && (
           <section className="animate-fade-in">
-            <h2 className="section-title text-[21px] mb-3">Top songs</h2>
+            <h2 className="section-title text-[21px] mb-3">{T("Top songs")}</h2>
             <div>
               {top.map((song, i) => (
                 <div key={`${song.id}-${i}`}>

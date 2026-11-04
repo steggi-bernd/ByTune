@@ -16,6 +16,7 @@ import { useUI } from "../stores/ui";
 import { resolveArtistAbout } from "../lib/artistAbout";
 import { useLibrary } from "../stores/library";
 import type { Track } from "../types";
+import { T } from "../lib/i18n";
 
 interface Summary {
   totalMs: number;
@@ -30,10 +31,10 @@ interface Summary {
 }
 
 const PERIODS = [
-  { key: "month", label: "This month" },
-  { key: "lastMonth", label: "Last month" },
-  { key: "year", label: "This year" },
-  { key: "all", label: "All time" },
+  { key: "month", label: T("This month") },
+  { key: "lastMonth", label: T("Last month") },
+  { key: "year", label: T("This year") },
+  { key: "all", label: T("All time") },
 ] as const;
 
 function fmtHours(ms: number): string {
@@ -158,7 +159,7 @@ export function ReplayView() {
   };
 
   if (error) {
-    return <ErrorState title="Replay didn't load" body="Give it another try." onRetry={() => setNonce((n) => n + 1)} />;
+    return <ErrorState title={T("Replay didn't load")} body={T("Give it another try.")} onRetry={() => setNonce((n) => n + 1)} />;
   }
 
   const hasData = !!data && data.totalMs > 0;
@@ -177,8 +178,8 @@ export function ReplayView() {
     <div className="space-y-8">
       <div className="flex items-center justify-between gap-4 flex-wrap animate-slide-up">
         <div>
-          <h1 className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink-hi">Replay</h1>
-          <p className="text-[13.5px] text-ink-dim mt-1">Your listening, counted by Songsta — nothing estimated, kept on this computer.</p>
+          <h1 className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink-hi">{T("Replay")}</h1>
+          <p className="text-[13.5px] text-ink-dim mt-1">{T("Your listening, counted by Songsta — nothing estimated, kept on this computer.")}</p>
         </div>
         <Pills options={PERIODS.map((p) => ({ key: p.key, label: p.label }))} value={period} onChange={(k) => setPeriod(k as typeof period)} />
       </div>
@@ -194,8 +195,8 @@ export function ReplayView() {
       {!loading && !hasData && (
         <EmptyState
           icon={Clock3}
-          title="Nothing here yet"
-          body="Play something first — Replay fills in as Songsta counts what you actually listen to."
+          title={T("Nothing here yet")}
+          body={T("Play something first — Replay fills in as Songsta counts what you actually listen to.")}
         />
       )}
 
@@ -204,22 +205,22 @@ export function ReplayView() {
           {/* Hero stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
             <div className="glass-pill rounded-2xl p-5">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">Listening time</div>
+              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">{T("Listening time")}</div>
               <div className="font-display text-[30px] font-bold text-ink-hi mt-2">{fmtHours(data.totalMs)}</div>
             </div>
             <div className="glass-pill rounded-2xl p-5">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">Plays</div>
+              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">{T("Plays")}</div>
               <div className="font-display text-[30px] font-bold text-ink-hi mt-2">{data.plays}</div>
             </div>
             <div className="glass-pill rounded-2xl p-5">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">Top artist</div>
+              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">{T("Top artist")}</div>
               <div className="font-display text-[19px] font-bold text-ink-hi mt-2 truncate">
                 {data.artists[0]?.name ?? "—"}
               </div>
               {data.artists[0] && <div className="text-[12.5px] text-ink-dim mt-1">{fmtHours(data.artists[0].ms)}</div>}
             </div>
             <div className="glass-pill rounded-2xl p-5">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">Top song</div>
+              <div className="text-[12px] uppercase tracking-[0.12em] text-ink-faint font-semibold">{T("Top song")}</div>
               <div className="font-display text-[19px] font-bold text-ink-hi mt-2 truncate">
                 {data.tracks[0]?.title ?? "—"}
               </div>
@@ -230,7 +231,7 @@ export function ReplayView() {
           {/* Listening activity */}
           {recentDays.length > 1 && (
             <section>
-              <h2 className="section-title text-[21px] mb-4">Listening activity</h2>
+              <h2 className="section-title text-[21px] mb-4">{T("Listening activity")}</h2>
               <div className="glass-pill rounded-2xl p-5">
                 <div className="flex items-end gap-1.5 h-28">
                   {recentDays.map((d) => (
@@ -252,7 +253,7 @@ export function ReplayView() {
 
           {/* Listening clock */}
           <section>
-            <h2 className="section-title text-[21px] mb-4">When you listen</h2>
+            <h2 className="section-title text-[21px] mb-4">{T("When you listen")}</h2>
             <div className="glass-pill rounded-2xl p-5">
               <div className="flex items-end gap-1 h-20">
                 {data.hours.map((ms, h) => (
@@ -265,11 +266,11 @@ export function ReplayView() {
                 ))}
               </div>
               <div className="flex justify-between text-[11px] text-ink-faint mt-2">
-                <span>12am</span>
-                <span>6am</span>
-                <span>12pm</span>
-                <span>6pm</span>
-                <span>11pm</span>
+                <span>{T("12am")}</span>
+                <span>{T("6am")}</span>
+                <span>{T("12pm")}</span>
+                <span>{T("6pm")}</span>
+                <span>{T("11pm")}</span>
               </div>
             </div>
           </section>
@@ -277,14 +278,14 @@ export function ReplayView() {
           {/* Top tracks + artists */}
           <div className="grid lg:grid-cols-2 gap-8">
             <section>
-              <h2 className="section-title text-[21px] mb-4">Top songs</h2>
+              <h2 className="section-title text-[21px] mb-4">{T("Top songs")}</h2>
               <div className="glass-pill rounded-2xl p-2">
                 {topTracks.slice(0, 10).map((t, i) => (
                   <button
                     key={t.id}
                     onClick={() => {
                       playQueue(topTracks, i);
-                      toast(`Playing ${t.title}`, "info");
+                      toast(T("Playing {title}", { title: t.title }), "info");
                     }}
                     className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-ink-hi/[0.05] transition-colors text-left"
                   >
@@ -303,7 +304,7 @@ export function ReplayView() {
             </section>
 
             <section>
-              <h2 className="section-title text-[21px] mb-4">Top artists</h2>
+              <h2 className="section-title text-[21px] mb-4">{T("Top artists")}</h2>
               <div className="glass-pill rounded-2xl p-4 space-y-3">
                 {data.artists.slice(0, 10).map((a, i) => (
                   <div key={a.name} className="flex items-center gap-3">
@@ -321,7 +322,7 @@ export function ReplayView() {
               </div>
               {data.albums.length > 0 && (
                 <>
-                  <h2 className="section-title text-[21px] mt-8 mb-4">Top albums</h2>
+                  <h2 className="section-title text-[21px] mt-8 mb-4">{T("Top albums")}</h2>
                   <div className="glass-pill rounded-2xl p-4 space-y-3">
                     {data.albums.slice(0, 5).map((al, i) => (
                       <div key={`${al.name}-${i}`} className="flex items-center gap-3">
@@ -357,8 +358,8 @@ function dayTitle(ms: number): string {
   const d = new Date(ms);
   const today = new Date();
   const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86_400_000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
+  if (days === 0) return T("Today");
+  if (days === 1) return T("Yesterday");
   return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
 }
 
@@ -390,9 +391,9 @@ function ListeningHistory() {
   const exportCsv = async (): Promise<void> => {
     try {
       const res = await window.bytune?.listensExport();
-      if (res) toast(`Saved ${plural(res.count, "listen", "listens")} to ${res.path.split(/[\\/]/).pop()}`, "success");
+      if (res) toast(T("Saved {count} to {pop}", { count: plural(res.count, T("listen"), T("listens")), pop: res.path.split(/[\\/]/).pop() }), "success");
     } catch (err) {
-      toast(ipcErrorText(err, "Couldn't save the listening history"), "error");
+      toast(ipcErrorText(err, T("Couldn't save the listening history")), "error");
     }
   };
 
@@ -409,12 +410,10 @@ function ListeningHistory() {
     <section>
       <div className="flex items-end justify-between gap-4 mb-4">
         <div>
-          <h2 className="section-title text-[21px]">Listening history</h2>
-          <p className="text-[13px] text-ink-dim mt-1">{plural(total, "listen", "listens")} · kept on this computer only</p>
+          <h2 className="section-title text-[21px]">{T("Listening history")}</h2>
+          <p className="text-[13px] text-ink-dim mt-1">{T("{count} · kept on this computer only", { count: plural(total, T("listen"), T("listens")) })}</p>
         </div>
-        <Btn variant="glass" size="sm" icon={FileDown} onClick={() => void exportCsv()}>
-          Export…
-        </Btn>
+        <Btn variant="glass" size="sm" icon={FileDown} onClick={() => void exportCsv()}>{T("Export…")}</Btn>
       </div>
       <div className="glass-pill rounded-2xl p-2">
         {days.map((d) => (
@@ -426,7 +425,7 @@ function ListeningHistory() {
                 <div
                   key={`${l.at}-${i}`}
                   onClick={track ? () => usePlayer.getState().playTrack(track) : undefined}
-                  title={track ? `Play ${l.title}` : undefined}
+                  title={track ? T("Play {title}", { title: l.title }) : undefined}
                   className={`flex items-center gap-3 px-3 h-11 rounded-lg transition-colors hover:bg-ink-hi/[0.05] ${track ? "cursor-pointer" : ""}`}
                 >
                   <span className="w-12 shrink-0 text-[12.5px] tabular-nums text-ink-faint">
@@ -446,9 +445,7 @@ function ListeningHistory() {
           <button
             onClick={() => load(listens[listens.length - 1].at)}
             className="w-full h-10 mt-1 rounded-lg text-[13px] font-semibold text-ink-hi/70 hover:text-ink-hi hover:bg-ink-hi/[0.05] transition-colors"
-          >
-            Show more
-          </button>
+          >{T("Show more")}</button>
         )}
       </div>
     </section>

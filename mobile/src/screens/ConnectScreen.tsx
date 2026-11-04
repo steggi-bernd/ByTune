@@ -2,8 +2,10 @@
 import { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalMusic } from "../stores/localMusic";
 import { useSession } from "../stores/session";
 import { colors } from "../theme";
+import { T } from "../shared";
 
 function Field({
   label,
@@ -40,6 +42,7 @@ function Field({
 }
 
 export function ConnectScreen() {
+  const adding = useLocalMusic((s) => s.addingServer);
   const insets = useSafeAreaInsets();
   const signIn = useSession((s) => s.signIn);
   const [server, setServer] = useState("");
@@ -54,7 +57,7 @@ export function ConnectScreen() {
     try {
       await signIn(server, user, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "That did not work");
+      setError(err instanceof Error ? err.message : T("That did not work"));
       setBusy(false);
     }
   };
@@ -65,16 +68,32 @@ export function ConnectScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.page, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}
       >
-        <Text style={styles.title}>Connect your music</Text>
-        <Text style={styles.subtitle}>Your Jellyfin server. The music stays where it is.</Text>
-        <Field label="Server address" value={server} onChange={setServer} placeholder="http://your-server:8096" keyboard="url" />
-        <Field label="User name" value={user} onChange={setUser} placeholder="Your server login" />
-        <Field label="Password" value={password} onChange={setPassword} placeholder="Only used to sign in" secure />
+        <Text style={styles.title}>{T("Connect your music")}</Text>
+        <Text style={styles.subtitle}>{T("Your Jellyfin server. The music stays where it is.")}</Text>
+        <Field label={T("Server address")} value={server} onChange={setServer} placeholder="http://your-server:8096" keyboard="url" />
+        <Field label={T("User name")} value={user} onChange={setUser} placeholder={T("Your server login")} />
+        <Field label={T("Password")} value={password} onChange={setPassword} placeholder={T("Only used to sign in")} secure />
         {!!error && <Text style={styles.error}>{error}</Text>}
         <View style={styles.spacer} />
         <Pressable onPress={() => void connect()} disabled={busy} style={[styles.button, busy && { opacity: 0.6 }]}>
-          {busy ? <ActivityIndicator color={colors.base} /> : <Text style={styles.buttonText}>Continue</Text>}
+          {busy ? <ActivityIndicator color={colors.base} /> : <Text style={styles.buttonText}>{T("Continue")}</Text>}
         </Pressable>
+        {adding ? (
+          <Pressable onPress={() => useLocalMusic.getState().setAddingServer(false)} style={styles.other}>
+            <Text style={styles.otherText}>{T("Back")}</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => {
+              void useLocalMusic.getState().addFolder().then((picked) => {
+                if (picked) useLocalMusic.getState().setWithoutServer(true);
+              });
+            }}
+            style={styles.other}
+          >
+            <Text style={styles.otherText}>{T("No server: just the music on this phone")}</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -101,4 +120,6 @@ const styles = StyleSheet.create({
   spacer: { flex: 1, minHeight: 24 },
   button: { height: 50, borderRadius: 25, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
   buttonText: { color: colors.base, fontSize: 15.5, fontWeight: "700" },
+  other: { height: 46, alignItems: "center", justifyContent: "center", marginTop: 8 },
+  otherText: { color: colors.soft, fontSize: 14.5 },
 });

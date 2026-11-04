@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { T } from "../lib/i18n";
 
 interface Props {
   children: ReactNode;
@@ -39,14 +40,10 @@ export class ErrorBoundary extends Component<Props, State> {
                 />
               </svg>
             </div>
-            <h1 className="font-display text-lg font-bold tracking-tight text-ink-hi mb-2">Something went wrong</h1>
-            <p className="text-sm text-ink-dim mb-1.5">
-              Songsta hit an unexpected error. Your library is safe — reloading usually fixes it.
-            </p>
+            <h1 className="font-display text-lg font-bold tracking-tight text-ink-hi mb-2">{T("Something went wrong")}</h1>
+            <p className="text-sm text-ink-dim mb-1.5">{T("Songsta hit an unexpected error. Your library is safe — reloading usually fixes it.")}</p>
             <details className="text-left mt-4">
-              <summary className="text-xs text-ink-faint cursor-pointer hover:text-ink-dim transition-colors select-none">
-                Technical details
-              </summary>
+              <summary className="text-xs text-ink-faint cursor-pointer hover:text-ink-dim transition-colors select-none">{T("Technical details")}</summary>
               <p className="text-xs text-ink-ghost mt-2 break-words bg-ink-hi/[0.06] rounded-lg p-3 border border-ink-hi/[0.05]">
                 {this.state.error.message}
               </p>
@@ -54,9 +51,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={() => window.location.reload()}
               className="mt-6 px-5 py-2.5 rounded-full bg-primary text-on-primary text-sm font-medium hover:brightness-110 transition-colors"
-            >
-              Reload Songsta
-            </button>
+            >{T("Reload Songsta")}</button>
           </div>
         </div>
       );

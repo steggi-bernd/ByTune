@@ -1,3 +1,4 @@
+import { T } from "./i18n";
 /**
  * A zone: music on one network device or a group of them, with a queue of its
  * own, apart from what the app itself is playing. The same engine runs on the
@@ -100,7 +101,7 @@ export class Zone {
     return Promise.allSettled(this.members.map(action)).then((results) => {
       const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
       if (failed && results.every((r) => r.status === "rejected")) {
-        this.set({ error: failed.reason instanceof Error ? failed.reason.message : "The device didn't take that" });
+        this.set({ error: failed.reason instanceof Error ? failed.reason.message : T("The device didn't take that") });
       }
     });
   }
@@ -218,7 +219,7 @@ export class Zone {
     if (song && this.state.state !== "stopped" && this.state.state !== "idle") {
       await member.driver.load(song, this.state.position, this.state.state === "playing").catch((err: unknown) => {
         this.members = this.members.filter((m) => m !== member);
-        this.set({ error: err instanceof Error ? err.message : `${member.name} can't join` });
+        this.set({ error: err instanceof Error ? err.message : T("{name} can't join", { name: member.name }) });
       });
     }
     this.onChange(this);
@@ -281,7 +282,7 @@ export class Zone {
           // The next one takes over; with none left the zone says so and stands still.
           this.members = this.members.slice(1);
           leader.driver.close();
-          this.set({ error: `${leader.name} stopped answering`, state: this.members.length ? this.state.state : "stopped" });
+          this.set({ error: T("{name} stopped answering", { name: leader.name }), state: this.members.length ? this.state.state : "stopped" });
         }
         return;
       }

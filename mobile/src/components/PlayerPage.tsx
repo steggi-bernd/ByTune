@@ -6,7 +6,7 @@
  * the computer shows in its side panel.
  */
 import { useNavigation } from "@react-navigation/native";
-import { Bluetooth, Check, ChevronDown, EllipsisVertical, Headphones, Laptop, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Share2, Shuffle, SkipBack, SkipForward, Smartphone, Tv, Speaker } from "lucide-react-native";
+import { Bluetooth, Check, ChevronDown, EllipsisVertical, Headphones, Laptop, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Share2, Shuffle, SkipBack, SkipForward, Smartphone, Tv, Speaker , Volume2 } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, PixelRatio, Pressable, Share, StyleSheet, Text, View, type GestureResponderHandlers } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,11 +19,14 @@ import { describePlayback, fmtTime, type Track } from "../shared";
 import { useCoverColor, useLibrary } from "../stores/library";
 import { usePlayer } from "../stores/player";
 import { usePlaylists } from "../stores/playlists";
+import { feel } from "../stores/settings";
 import { colors, qualityColors } from "../theme";
 import { AboutArtistCard, AboutSongCard, NextUpCard } from "./PlayerCards";
 import { SongDownloadButton } from "./SongMenu";
 import { TrackStrip } from "./TrackStrip";
+import { VolumeBar } from "./VolumeBar";
 import type { LyricLine } from "../jellyfin";
+import { T } from "../shared";
 
 const OUTPUT_ICON = { phone: Smartphone, wired: Headphones, bluetooth: Bluetooth, tv: Tv };
 
@@ -62,10 +65,12 @@ function Scrubber() {
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         start.current = e.nativeEvent.locationX;
+        feel("tick");
         setDrag(at(start.current) * usePlayer.getState().durationMs);
       },
       onPanResponderMove: (_, g) => setDrag(at(start.current + g.dx) * usePlayer.getState().durationMs),
       onPanResponderRelease: (_, g) => {
+        feel("tick");
         seek(at(start.current + g.dx) * usePlayer.getState().durationMs);
         setDrag(null);
       },
@@ -78,7 +83,7 @@ function Scrubber() {
       <View
         {...pan.panHandlers}
         accessibilityRole="adjustable"
-        accessibilityLabel="Position in the song"
+        accessibilityLabel={T("Position in the song")}
         onLayout={(e) => (width.current = e.nativeEvent.layout.width || 1)}
         style={styles.scrubHit}
       >
@@ -101,7 +106,7 @@ function LyricsCard({ lines, track }: { lines: LyricLine[]; track: Track }) {
   const at = usePlayer((s) => Math.max(0, currentLine(lines, s.positionMs)));
   return (
     <Pressable onPress={() => nav.navigate("Lyrics")} style={[styles.lyricsCard, { backgroundColor: tinted(color, 0.3) }]}>
-      <Text style={styles.cardTitle}>Lyrics</Text>
+      <Text style={styles.cardTitle}>{T("Lyrics")}</Text>
       {lines.slice(at, at + 3).map((l, i) => (
         <Text key={i} numberOfLines={2} style={[styles.lyricLine, i > 0 && styles.lyricLineNext]}>
           {l.text || "♪"}
@@ -153,6 +158,7 @@ export function PlayerPage({
   const format = useMemo(() => (track ? describePlayback(track) : null), [track]);
   const stream = usePlayer((s) => s.stream);
   const remote = usePlayer((s) => s.remote);
+  const remoteVolume = usePlayer((s) => s.remoteVolume);
   const device = usePlayer((s) => s.device);
   const output = useSoundOutput(expanded);
   const albums = useLibrary((s) => s.albums);
@@ -177,7 +183,7 @@ export function PlayerPage({
     <>
       <View style={{ height }}>
         <View style={[styles.top, { marginTop: insets.top + 2 }]}>
-          <Pressable onPress={onClose} accessibilityLabel="Close the player" style={styles.iconButton}>
+          <Pressable onPress={onClose} accessibilityLabel={T("Close the player")} style={styles.iconButton}>
             <ChevronDown size={28} color={colors.ink} />
           </Pressable>
           <Pressable disabled={!from.page} onPress={() => from.page && onContext(from.page)} accessibilityLabel={`${from.label}: ${from.name}`} style={styles.context}>
@@ -188,7 +194,7 @@ export function PlayerPage({
               {from.name}
             </Text>
           </Pressable>
-          <Pressable onPress={onMenu} accessibilityLabel="More options" style={styles.iconButton}>
+          <Pressable onPress={onMenu} accessibilityLabel={T("More options")} style={styles.iconButton}>
             <EllipsisVertical size={22} color={colors.ink} />
           </Pressable>
         </View>
@@ -206,14 +212,14 @@ export function PlayerPage({
                         const albumKey = albumKeyOf(t);
                         if (albumKey) onAlbum(albumKey);
                       }}
-                      accessibilityLabel={`${t.title}: open the album`}
+                      accessibilityLabel={T("{title}: open the album", { title: t.title })}
                       style={styles.titleTap}
                     >
                       <Text numberOfLines={1} style={styles.title}>
                         {t.title}
                       </Text>
                     </Pressable>
-                    <Pressable onPress={() => onArtist(t)} accessibilityLabel={`${t.artist}: open the artist`} style={styles.titleTap}>
+                    <Pressable onPress={() => onArtist(t)} accessibilityLabel={T("{artist}: open the artist", { artist: t.artist })} style={styles.titleTap}>
                       <Text numberOfLines={1} style={styles.artist}>
                         {t.artist}
                       </Text>
@@ -223,8 +229,11 @@ export function PlayerPage({
               </TrackStrip>
             </View>
             <Pressable
-              onPress={() => toggleFavorite(track)}
-              accessibilityLabel={liked ? "Remove from Liked Songs" : "Add to Liked Songs"}
+              onPress={() => {
+                feel("press");
+                toggleFavorite(track);
+              }}
+              accessibilityLabel={liked ? T("Remove from Liked Songs") : T("Add to Liked Songs")}
               style={styles.iconButton}
             >
               {liked ? (
@@ -248,27 +257,34 @@ export function PlayerPage({
           <Scrubber />
 
           <View style={styles.transport}>
-            <Pressable onPress={toggleShuffle} accessibilityLabel="Shuffle" accessibilityState={{ selected: shuffle }} style={styles.sideButton}>
+            <Pressable onPress={withFeel(toggleShuffle)} accessibilityLabel={T("Shuffle")} accessibilityState={{ selected: shuffle }} style={styles.sideButton}>
               <Shuffle size={24} color={shuffle ? colors.accent : colors.ink} />
               {shuffle && <View style={styles.onDot} />}
             </Pressable>
-            <Pressable onPress={previous} accessibilityLabel="Previous" style={styles.skipButton}>
+            <Pressable onPress={withFeel(previous)} accessibilityLabel={T("Previous")} style={styles.skipButton}>
               <SkipBack size={30} color={colors.ink} fill={colors.ink} />
             </Pressable>
-            <Pressable onPress={toggle} accessibilityLabel={playWhenReady ? "Pause" : "Play"} style={styles.playButton}>
+            <Pressable onPress={withFeel(toggle)} accessibilityLabel={playWhenReady ? T("Pause") : T("Play")} style={styles.playButton}>
               {playWhenReady ? <Pause size={28} color="#121212" fill="#121212" /> : <Play size={28} color="#121212" fill="#121212" style={styles.playGlyph} />}
             </Pressable>
-            <Pressable onPress={next} accessibilityLabel="Next" style={styles.skipButton}>
+            <Pressable onPress={withFeel(next)} accessibilityLabel={T("Next")} style={styles.skipButton}>
               <SkipForward size={30} color={colors.ink} fill={colors.ink} />
             </Pressable>
-            <Pressable onPress={cycleRepeat} accessibilityLabel={`Repeat: ${repeat}`} style={styles.sideButton}>
+            <Pressable onPress={withFeel(cycleRepeat)} accessibilityLabel={T("Repeat: {repeat}", { repeat })} style={styles.sideButton}>
               {repeat === "one" ? <Repeat1 size={24} color={colors.accent} /> : <Repeat size={24} color={repeat === "all" ? colors.accent : colors.ink} />}
               {repeat !== "off" && <View style={styles.onDot} />}
             </Pressable>
           </View>
 
+          {!!remote && remoteVolume !== null && (
+            <View style={styles.remoteVolume}>
+              <Volume2 size={17} color={colors.ink} />
+              <VolumeBar value={remoteVolume} ink={colors.ink} onChange={(v) => usePlayer.getState().setRemoteVolume(v)} />
+            </View>
+          )}
+
           <View style={styles.bottomRow}>
-            <Pressable onPress={() => nav.navigate("Devices")} accessibilityLabel={`Playing on ${outputName || "this phone"}. Choose where the sound goes`} style={styles.device}>
+            <Pressable onPress={() => nav.navigate("Devices")} accessibilityLabel={T("Playing on {value}. Choose where the sound goes", { value: outputName || T("this phone") })} style={styles.device}>
               <OutputIcon size={20} color={outputColor} />
               {!!outputName && (
                 <Text numberOfLines={1} style={[styles.deviceName, { color: outputColor }]}>
@@ -277,7 +293,7 @@ export function PlayerPage({
               )}
             </Pressable>
             {!!playing && !remote && !device && (
-              <Pressable onPress={onQuality} accessibilityLabel={`Quality: ${playing.text}`} style={styles.quality}>
+              <Pressable onPress={onQuality} accessibilityLabel={T("Quality: {text}", { text: playing.text })} style={styles.quality}>
                 <Text numberOfLines={1} style={[styles.qualityText, { color: qualityColors[playing.tier] }]}>
                   {playing.text}
                 </Text>
@@ -286,12 +302,12 @@ export function PlayerPage({
             <SongDownloadButton track={track} size={22} style={styles.rowButton} />
             <Pressable
               onPress={() => void Share.share({ message: `${track.title} · ${track.artist}` })}
-              accessibilityLabel="Share"
+              accessibilityLabel={T("Share")}
               style={styles.rowButton}
             >
               <Share2 size={22} color={colors.ink} />
             </Pressable>
-            <Pressable onPress={() => nav.navigate("Queue")} accessibilityLabel="Queue" style={styles.iconButton}>
+            <Pressable onPress={() => nav.navigate("Queue")} accessibilityLabel={T("Queue")} style={styles.iconButton}>
               <ListMusic size={24} color={colors.ink} />
             </Pressable>
           </View>
@@ -308,7 +324,14 @@ export function PlayerPage({
   );
 }
 
+/** A button that answers the finger. */
+const withFeel = (run: () => void) => (): void => {
+  feel("tick");
+  run();
+};
+
 const styles = StyleSheet.create({
+  remoteVolume: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 },
   top: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8 },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   context: { flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 4 },

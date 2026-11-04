@@ -6,6 +6,7 @@
  */
 import type { ReactNode } from "react";
 import { MoreHorizontal, Pause, Play, Shuffle } from "lucide-react";
+import { T } from "../lib/i18n";
 
 const ROUND = "w-11 h-11 grid place-items-center rounded-full bg-black/45 border border-white/10 text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]";
 
@@ -56,7 +57,7 @@ export function PlaylistHero({
         <div className="flex items-center justify-center gap-2.5 mt-4">
           {/* No `disabled` dimming when empty — playing no songs does nothing,
               and grayed-out buttons made fresh playlists look broken. */}
-          <button onClick={onShuffle} title="Shuffle" aria-label="Shuffle" className={ROUND}>
+          <button onClick={onShuffle} title={T("Shuffle")} aria-label={T("Shuffle")} className={ROUND}>
             <Shuffle className="w-[18px] h-[18px]" />
           </button>
           <button
@@ -64,9 +65,9 @@ export function PlaylistHero({
             className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-black/45 border border-white/10 text-[14.5px] font-semibold text-white backdrop-blur-sm hover:bg-black/60 transition-all active:scale-[0.98]"
           >
             {playing ? <Pause className="w-[18px] h-[18px] fill-current" /> : <Play className="w-[18px] h-[18px] fill-current" />}
-            {playing ? "Pause" : "Play"}
+            {playing ? T("Pause") : T("Play")}
           </button>
-          <button onClick={(e) => onMore(e.clientX, e.clientY)} title="More options" aria-label="More options" className={ROUND}>
+          <button onClick={(e) => onMore(e.clientX, e.clientY)} title={T("More options")} aria-label={T("More options")} className={ROUND}>
             <MoreHorizontal className="w-[18px] h-[18px]" />
           </button>
         </div>

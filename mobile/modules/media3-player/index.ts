@@ -43,6 +43,31 @@ export interface SoundOutput {
   name: string;
 }
 
+/** A file in a picked folder, as the tags say; `unchanged` when it's the one already known. */
+export interface LocalFileInfo {
+  uri: string;
+  unchanged?: boolean;
+  name: string;
+  /** within the folder */
+  path: string;
+  modified: number;
+  size: number;
+  title?: string | null;
+  artist?: string | null;
+  albumArtist?: string | null;
+  album?: string | null;
+  genre?: string | null;
+  year?: number | null;
+  track?: number | null;
+  disc?: number | null;
+  durationMs: number;
+  bitrate?: number | null;
+  sampleRate?: number | null;
+  bits?: number | null;
+  cover?: string | null;
+  lyrics?: string | null;
+}
+
 export interface DownloadJob {
   job: number;
   status: "waiting" | "wifi" | "running" | "done" | "failed";
@@ -66,6 +91,8 @@ type Events = {
   onZoneTick(news: Record<string, never>): void;
   /** a button in the notification of what they play, or the volume keys: "toggle", "next", "previous", "volume:NN" */
   onZoneControl(news: { action: string }): void;
+  /** how far a look through a folder has come */
+  onLocalScan(news: { folder: string; read: number; total: number }): void;
 };
 
 declare class Media3PlayerModule extends NativeModule<Events> {
@@ -84,8 +111,21 @@ declare class Media3PlayerModule extends NativeModule<Events> {
   socketClose(id: number): Promise<void>;
   /** `volume` is the lead device's, 0–100; below 0 when it can't be set from here. */
   zonesWatch(ticking: boolean, keepAwake: boolean, title: string, text: string, playing: boolean, volume: number): Promise<void>;
+  /** Android's folder picker; null when somebody changed their mind. */
+  pickFolder(): Promise<{ uri: string; name: string } | null>;
+  localScan(folder: string, known: Record<string, number>): Promise<LocalFileInfo[]>;
+  localForget(folder: string): Promise<void>;
+  readText(uri: string): Promise<string | null>;
+  setTuning(skipSilence: boolean, speed: number, fadeSeconds: number, seamless: boolean): Promise<void>;
+  setEqualizer(on: boolean, bands: number[], gains: number[]): Promise<void>;
+  restartApp(): Promise<void>;
   /** What a gesture feels like. */
-  haptic(kind: "arm" | "charge" | "charged" | "commit" | "cancel"): Promise<void>;
+  haptic(kind: "tick" | "press" | "arm" | "charge" | "charged" | "commit" | "cancel"): Promise<void>;
+  /** The volume of music on this phone, 0 to 1. */
+  getMediaVolume(): Promise<number>;
+  setMediaVolume(level: number): Promise<void>;
+  /** While steering another device, in front: the volume keys send "volume:N" to onZoneControl. Below 0: they're this phone's again. */
+  followVolumeKeys(level: number): Promise<void>;
   downloadStart(url: string, headers: Record<string, string>, fileName: string, wifiOnly: boolean): Promise<number>;
   downloadQuery(jobs: number[]): Promise<DownloadJob[]>;
   downloadFinish(job: number): Promise<{ file: string; bytes: number } | null>;

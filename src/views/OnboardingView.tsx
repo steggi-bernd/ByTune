@@ -37,6 +37,7 @@ import {
   type UsernameAvailability,
 } from "../lib/account-validators";
 import brandLogo from "../assets/brand/songsta-logo.svg";
+import { T } from "../lib/i18n";
 
 type Screen = "choose" | "signup" | "signin" | "resume" | "restoring" | "pickusername";
 
@@ -45,24 +46,24 @@ function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const msg = raw.replace(/^\[.*?\]\s*/, "");
   if (/failed to fetch|fetch failed|networkerror|network error|timeout|timed out/i.test(msg)) {
-    return "Couldn't connect right now. Check your connection and try again.";
+    return T("Couldn't connect right now. Check your connection and try again.");
   }
   if (/invalid login credentials|wrong username or password/i.test(msg)) {
-    return "That username or password doesn't match.";
+    return T("That username or password doesn't match.");
   }
   if (/already registered|already exists|duplicate|username is already taken/i.test(msg)) {
-    return "That username is already in use.";
+    return T("That username is already in use.");
   }
   if (/username_format|violates check constraint/i.test(msg)) {
     // The live database still runs the old username CHECK (see
     // supabase/migrations/0001-username-charset.sql).
-    return "That username isn't accepted yet. Try letters and numbers.";
+    return T("That username isn't accepted yet. Try letters and numbers.");
   }
   if (/email confirmation is enabled/i.test(msg)) {
-    return "Sign-up is temporarily unavailable. Please try again later.";
+    return T("Sign-up is temporarily unavailable. Please try again later.");
   }
   if (/at least \d+ characters|letters, numbers/i.test(msg)) return msg;
-  return "Something went wrong. Please try again.";
+  return T("Something went wrong. Please try again.");
 }
 
 /** Staggered entrance delay for .ob-item elements. */
@@ -167,7 +168,7 @@ function PasswordField(props: React.InputHTMLAttributes<HTMLInputElement>) {
       <button
         type="button"
         onClick={() => setShow((v) => !v)}
-        aria-label={show ? "Hide password" : "Show password"}
+        aria-label={show ? T("Hide password") : T("Show password")}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 grid place-items-center rounded-lg text-ink-dim hover:text-ink-hi hover:bg-ink-hi/[0.07] transition-colors"
       >
         {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -225,30 +226,28 @@ function UsernameHint({
   state: UsernameAvailability;
   formatProblem: string | null;
 }) {
-  let content: ReactNode = <>Letters, numbers, _ and @.</>;
+  let content: ReactNode = <>{T("Letters, numbers, _ and @.")}</>;
   if (formatProblem) {
     content =
-      formatProblem === `Username must be at least ${USERNAME_MIN} characters.` ? (
-        <>At least {USERNAME_MIN} characters.</>
+      formatProblem === T("Username must be at least {USERNAME_MIN} characters.", { USERNAME_MIN }) ? (
+        <>{T("At least {USERNAME_MIN} characters.", { USERNAME_MIN })}</>
       ) : (
         <>{formatProblem}</>
       );
   } else if (state === "checking") {
     content = (
       <>
-        <Loader2 className="w-3 h-3 animate-spin" /> Checking availability…
-      </>
+        <Loader2 className="w-3 h-3 animate-spin" />{" "}{T("Checking availability…")}</>
     );
   } else if (state === "free") {
     content = (
       <>
-        <Check className="w-3.5 h-3.5" /> {name} is available
-      </>
+        <Check className="w-3.5 h-3.5" /> {T("{name} is available", { name })}</>
     );
   } else if (state === "taken") {
-    content = <>{name} is already taken</>;
+    content = <>{T("{name} is already taken", { name })}</>;
   } else if (state === "unknown") {
-    content = <>Couldn't check availability. You can still continue.</>;
+    content = <>{T("Couldn't check availability. You can still continue.")}</>;
   }
   return (
     <div
@@ -326,7 +325,7 @@ function UsernamePasswordForm({
         return;
       }
       if (password !== confirm) {
-        setError("Passwords don't match.");
+        setError(T("Passwords don't match."));
         return;
       }
     }
@@ -352,8 +351,8 @@ function UsernamePasswordForm({
   return (
     <form onSubmit={(e) => void submit(e)}>
       <CardHead
-        title={mode === "signup" ? "Create your account" : "Welcome back"}
-        hint={mode === "signup" ? undefined : "Pick up right where you left off."}
+        title={mode === "signup" ? T("Create your account") : T("Welcome back")}
+        hint={mode === "signup" ? undefined : T("Pick up right where you left off.")}
       />
       <div className="space-y-3">
         <div>
@@ -362,13 +361,13 @@ function UsernamePasswordForm({
             autoFocus
             value={username}
             onChange={(e) => setUsername(usernameTypable(e.target.value))}
-            placeholder="Username"
+            placeholder={T("Username")}
             autoComplete="username"
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
             disabled={busy}
-            aria-label="Username"
+            aria-label={T("Username")}
             trailing={
               availability === "checking" ? (
                 <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-dim animate-spin" />
@@ -382,19 +381,19 @@ function UsernamePasswordForm({
         <PasswordField
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
+          placeholder={T("Password")}
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
           disabled={busy}
-          aria-label="Password"
+          aria-label={T("Password")}
         />
         {mode === "signup" && (
           <PasswordField
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Confirm password"
+            placeholder={T("Confirm password")}
             autoComplete="new-password"
             disabled={busy}
-            aria-label="Confirm password"
+            aria-label={T("Confirm password")}
           />
         )}
       </div>
@@ -402,33 +401,30 @@ function UsernamePasswordForm({
       {mode === "signup" && (
         <p className="text-[12px] text-ink-dim mt-3.5 leading-relaxed flex gap-2">
           <ShieldCheck className="w-4 h-4 shrink-0 mt-[1px] text-ink-ghost" />
-          <span>There's no email on this account, so your password can't be recovered. Save it somewhere safe.</span>
+          <span>{T("There's no email on this account, so your password can't be recovered. Save it somewhere safe.")}</span>
         </p>
       )}
       <button type="submit" disabled={!canSubmit} className={`${btnPrimary} mt-5`}>
         {busy ? (
           <>
-            <Spinner /> {mode === "signup" ? "Creating account…" : "Signing in…"}
+            <Spinner /> {mode === "signup" ? T("Creating account…") : T("Signing in…")}
           </>
         ) : mode === "signup" ? (
-          "Create account"
+          T("Create account")
         ) : (
-          "Sign in"
+          T("Sign in")
         )}
       </button>
       <button type="button" onClick={() => void google()} className={`${btnSecondary} mt-2.5`} disabled={busy}>
-        {busy ? <Spinner /> : <GoogleG className="w-[17px] h-[17px]" />} Continue with Google
-      </button>
+        {busy ? <Spinner /> : <GoogleG className="w-[17px] h-[17px]" />}{" "}{T("Continue with Google")}</button>
       <div className="flex items-center justify-between mt-4">
-        <button type="button" onClick={onBack} className={btnGhost}>
-          Back
-        </button>
+        <button type="button" onClick={onBack} className={btnGhost}>{T("Back")}</button>
         <button
           type="button"
           onClick={() => navigate(mode === "signup" ? "signin" : "signup")}
           className={btnGhost}
         >
-          {mode === "signup" ? "Sign in instead" : "Create account"}
+          {mode === "signup" ? T("Sign in instead") : T("Create account")}
         </button>
       </div>
     </form>
@@ -492,28 +488,25 @@ function ChooseContent({
           style={dly(60)}
           disabled={busy !== "none"}
         >
-          <UserRound className="w-4 h-4" /> Create account
-        </button>
+          <UserRound className="w-4 h-4" />{" "}{T("Create account")}</button>
         <button
           onClick={() => onPick("signin")}
           className={`${btnSecondary} ob-item`}
           style={dly(110)}
           disabled={busy !== "none"}
         >
-          <KeyRound className="w-4 h-4" /> Sign in
-        </button>
+          <KeyRound className="w-4 h-4" />{" "}{T("Sign in")}</button>
         <button
           onClick={() => void google()}
           className={`${btnSecondary} ob-item`}
           style={dly(160)}
           disabled={busy !== "none"}
         >
-          {busy === "google" ? <Spinner /> : <GoogleG className="w-[17px] h-[17px]" />} Continue with Google
-        </button>
+          {busy === "google" ? <Spinner /> : <GoogleG className="w-[17px] h-[17px]" />}{" "}{T("Continue with Google")}</button>
       </div>
       <div className="my-5 flex items-center gap-3 ob-item" style={dly(210)} aria-hidden="true">
         <div className="h-px flex-1 bg-ink-hi/[0.09]" />
-        <span className="micro-label text-ink-ghost">or</span>
+        <span className="micro-label text-ink-ghost">{T("or")}</span>
         <div className="h-px flex-1 bg-ink-hi/[0.09]" />
       </div>
       <button
@@ -524,17 +517,13 @@ function ChooseContent({
       >
         {busy === "guest" ? (
           <span className="inline-flex items-center gap-2">
-            <Spinner /> Starting…
-          </span>
+            <Spinner />{" "}{T("Starting…")}</span>
         ) : (
           <>
-            <CircleUserRound className="w-4 h-4" /> Continue as guest
-          </>
+            <CircleUserRound className="w-4 h-4" />{" "}{T("Continue as guest")}</>
         )}
       </button>
-      <p className="text-[12px] text-ink-ghost mt-2 leading-relaxed text-center ob-item" style={dly(290)}>
-        Guest mode keeps your data on this PC. It survives reinstall, but isn't backed up.
-      </p>
+      <p className="text-[12px] text-ink-ghost mt-2 leading-relaxed text-center ob-item" style={dly(290)}>{T("Guest mode keeps your data on this PC. It survives reinstall, but isn't backed up.")}</p>
       <ErrorNote msg={error} />
     </div>
   );
@@ -549,7 +538,7 @@ function ResumeContent({ onSignInInstead }: { onSignInInstead: () => void }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <div>
-      <CardHead title="Welcome back" hint="We found your guest library from a previous install on this PC." />
+      <CardHead title={T("Welcome back")} hint={T("We found your guest library from a previous install on this PC.")} />
       <div className="space-y-2.5">
         <button
           disabled={busy}
@@ -569,19 +558,14 @@ function ResumeContent({ onSignInInstead }: { onSignInInstead: () => void }) {
         >
           {busy ? (
             <span className="inline-flex items-center gap-2">
-              <Spinner /> Starting…
-            </span>
+              <Spinner />{" "}{T("Starting…")}</span>
           ) : (
-            "Continue as guest"
+            T("Continue as guest")
           )}
         </button>
-        <button disabled={busy} onClick={onSignInInstead} className={btnSecondary}>
-          Sign in with an account instead
-        </button>
+        <button disabled={busy} onClick={onSignInInstead} className={btnSecondary}>{T("Sign in with an account instead")}</button>
       </div>
-      <p className="text-[12px] text-ink-ghost leading-relaxed mt-3.5">
-        Signing in later carries your guest data over. Nothing is deleted either way.
-      </p>
+      <p className="text-[12px] text-ink-ghost leading-relaxed mt-3.5">{T("Signing in later carries your guest data over. Nothing is deleted either way.")}</p>
       <ErrorNote msg={error} />
     </div>
   );
@@ -594,12 +578,10 @@ function ResumeContent({ onSignInInstead }: { onSignInInstead: () => void }) {
 function RestoringContent() {
   return (
     <div>
-      <CardHead title="Restoring your library" />
+      <CardHead title={T("Restoring your library")} />
       <div className="flex items-center gap-3 py-2">
         <Loader2 className="w-5 h-5 animate-spin text-primary shrink-0" />
-        <p className="text-[13.5px] text-ink-dim leading-relaxed">
-          Playlists, likes and history are coming back.
-        </p>
+        <p className="text-[13.5px] text-ink-dim leading-relaxed">{T("Playlists, likes and history are coming back.")}</p>
       </div>
     </div>
   );
@@ -653,19 +635,19 @@ function PickUsernameContent() {
 
   return (
     <div>
-      <CardHead title="Choose your username" hint="This is how you'll appear in Songsta. You can change it later in Settings." />
+      <CardHead title={T("Choose your username")} hint={T("This is how you'll appear in Songsta. You can change it later in Settings.")} />
       <Field
         icon={UserRound}
         autoFocus
         value={username}
         onChange={(e) => setUsername(usernameTypable(e.target.value))}
-        placeholder="Username"
+        placeholder={T("Username")}
         autoComplete="username"
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
         disabled={busy}
-        aria-label="Username"
+        aria-label={T("Username")}
         trailing={
           availability === "checking" ? (
             <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-dim animate-spin" />
@@ -681,15 +663,12 @@ function PickUsernameContent() {
       >
         {busy ? (
           <>
-            <Spinner /> Saving…
-          </>
+            <Spinner />{" "}{T("Saving…")}</>
         ) : (
-          "Continue"
+          T("Continue")
         )}
       </button>
-      <button onClick={() => void skip()} disabled={busy} className={`${btnGhost} w-full mt-2`}>
-        Skip for now
-      </button>
+      <button onClick={() => void skip()} disabled={busy} className={`${btnGhost} w-full mt-2`}>{T("Skip for now")}</button>
     </div>
   );
 }
@@ -759,14 +738,10 @@ export function Onboarding({ initial }: { initial: Screen }) {
           <div className="ob-hero">
             <div className="ob-lockup">
               <img src={brandLogo} alt="" aria-hidden className="ob-lockup-logo ob-item" />
-              <span className="ob-lockup-text ob-item font-display text-ink-hi" style={dly(70)}>Songsta</span>
+              <span className="ob-lockup-text ob-item font-display text-ink-hi" style={dly(70)}>{T("Songsta")}</span>
             </div>
-            <h1 className="ob-headline ob-item" style={dly(140)}>
-              Your music lives here.
-            </h1>
-            <p className="ob-tagline ob-item" style={dly(200)}>
-              One player for streaming and your own library.
-            </p>
+            <h1 className="ob-headline ob-item" style={dly(140)}>{T("Your music lives here.")}</h1>
+            <p className="ob-tagline ob-item" style={dly(200)}>{T("One player for streaming and your own library.")}</p>
           </div>
 
           <div className="ob-card ob-item" style={dly(260)}>

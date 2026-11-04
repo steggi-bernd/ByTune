@@ -13,6 +13,7 @@ import { usePlayer } from "../stores/player";
 import { tintHoverHandlers, useUI } from "../stores/ui";
 import type { Track } from "../types";
 import { Artwork, PlayOverlay } from "./primitives";
+import { T } from "../lib/i18n";
 
 const NO_TRACKS: Track[] = [];
 
@@ -40,7 +41,7 @@ export function useCollectionPlayback(tracks: Track[], exact = false): { active:
 export function playCollection(tracks: Track[], shuffle = false): void {
   const list = tracks.filter((t) => trackAvailable(t));
   if (!list.length) {
-    useUI.getState().toast("None of these songs can be reached right now — their drive or server is away", "warning");
+    useUI.getState().toast(T("None of these songs can be reached right now — their drive or server is away"), "warning");
     return;
   }
   usePlayer.getState().playAll(shuffle ? [...list].sort(() => Math.random() - 0.5) : list);
@@ -198,7 +199,7 @@ export function GenreTile({ genre }: { genre: LibGenre }) {
     <Tile
       thumb={genre.tracks.find((t) => t.thumb)?.thumb ?? ""}
       title={genre.name}
-      subtitle={`${genre.tracks.length} ${genre.tracks.length === 1 ? "song" : "songs"} · ${genre.artistCount} ${genre.artistCount === 1 ? "artist" : "artists"}`}
+      subtitle={`${genre.tracks.length} ${genre.tracks.length === 1 ? T("song") : T("songs")} · ${genre.artistCount} ${genre.artistCount === 1 ? T("artist") : T("artists")}`}
       onOpen={() => navigate({ name: "genre", param: genre.route })}
       onPlay={playOrToggle(active, () => playCollection(genre.tracks, true))}
       playing={playing}
@@ -248,7 +249,7 @@ export function MixTile({ title, subtitle, tracks, route }: { title: string; sub
  */
 export function BigPlayButton({
   onClick,
-  label = "Play",
+  label = T("Play"),
   tracks,
 }: {
   onClick: () => void;
@@ -256,7 +257,7 @@ export function BigPlayButton({
   tracks?: Track[];
 }) {
   const { active, playing } = useCollectionPlayback(tracks ?? NO_TRACKS);
-  const title = playing ? "Pause" : label;
+  const title = playing ? T("Pause") : label;
   return (
     <button
       onClick={playOrToggle(active, onClick)}
@@ -292,8 +293,8 @@ export function QuickTile({ title, thumb, art, onOpen, onPlay }: { title: string
       <div className="w-16 h-16 shrink-0 overflow-hidden">{art ?? <Artwork src={thumb} rounded="rounded-none" className="w-16 h-16" iconClassName="w-5 h-5" />}</div>
       <span className="flex-1 min-w-0 text-[14px] font-bold text-ink-hi truncate">{title}</span>
       <button
-        title={`Play ${title}`}
-        aria-label={`Play ${title}`}
+        title={T("Play {title}", { title })}
+        aria-label={T("Play {title}", { title })}
         onClick={(e) => {
           e.stopPropagation();
           onPlay();
@@ -338,17 +339,17 @@ export function CollectionHeader({
           </h1>
           <div className="text-[14px] text-ink-hi/75 mt-2">
             {subtitle ? `${subtitle} · ` : ""}
-            {tracks.length} {tracks.length === 1 ? "song" : "songs"}
-            {length > 0 && `, ${h > 0 ? `${h} hr ${m} min` : `${m} min`}`}
+            {tracks.length} {tracks.length === 1 ? T("song") : T("songs")}
+            {length > 0 && `, ${h > 0 ? T("{h} hr {m} min", { h, m }) : `${m} min`}`}
           </div>
         </div>
       </header>
       <div className="flex items-center gap-5">
-        <BigPlayButton onClick={() => tracks.length && playCollection(tracks)} label={`Play ${title}`} tracks={tracks} />
+        <BigPlayButton onClick={() => tracks.length && playCollection(tracks)} label={T("Play {title}", { title })} tracks={tracks} />
         <button
           onClick={() => tracks.length && playCollection(tracks, true)}
-          title="Shuffle play"
-          aria-label="Shuffle play"
+          title={T("Shuffle play")}
+          aria-label={T("Shuffle play")}
           className="w-10 h-10 grid place-items-center rounded-full text-ink-hi/70 hover:text-ink-hi hover:scale-105 transition-all"
         >
           <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

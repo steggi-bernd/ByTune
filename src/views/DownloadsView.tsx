@@ -8,14 +8,13 @@ import { cancelDownload, startDownload } from "../lib/downloads";
 import { plural } from "../lib/format";
 import { Artwork, Btn, EmptyState, IconBtn } from "../components/primitives";
 import type { DownloadItem } from "../stores/library";
+import { T } from "../lib/i18n";
 
 function StatusCell({ item }: { item: DownloadItem }) {
   if (item.status === "queued") {
     return (
       <div className="flex items-center gap-2 text-[13px] text-ink-dim w-48">
-        <span className="w-2 h-2 rounded-full bg-ink-hi/30 shrink-0" />
-        Queued
-      </div>
+        <span className="w-2 h-2 rounded-full bg-ink-hi/30 shrink-0" />{T("Queued")}</div>
     );
   }
   if (item.status === "downloading") {
@@ -37,18 +36,14 @@ function StatusCell({ item }: { item: DownloadItem }) {
       <div className="flex items-center gap-2 text-[13px] text-emerald-400 w-48">
         <span className="p-1 rounded-full bg-emerald-400/10">
           <Check className="w-3.5 h-3.5" />
-        </span>
-        Downloaded
-      </div>
+        </span>{T("Downloaded")}</div>
     );
   }
   return (
     <div className="flex items-center gap-2 text-[13px] text-red-400 w-48">
       <span className="p-1 rounded-full bg-red-400/10">
         <AlertCircle className="w-3.5 h-3.5" />
-      </span>
-      Failed
-    </div>
+      </span>{T("Failed")}</div>
   );
 }
 
@@ -85,21 +80,21 @@ function DownloadRow({
       <StatusCell item={item} />
       <div className="w-20 shrink-0 flex items-center justify-end gap-0.5">
         {item.status === "failed" && (
-          <IconBtn icon={RotateCcw} title="Retry download" onClick={() => void startDownload(item.track)} size="sm" />
+          <IconBtn icon={RotateCcw} title={T("Retry download")} onClick={() => void startDownload(item.track)} size="sm" />
         )}
         {(item.status === "downloading" || item.status === "queued") && (
-          <IconBtn icon={X} title="Cancel download" danger onClick={() => cancelDownload(item.track.id)} size="sm" />
+          <IconBtn icon={X} title={T("Cancel download")} danger onClick={() => cancelDownload(item.track.id)} size="sm" />
         )}
         {item.status === "done" && item.path && (
           <IconBtn
             icon={FolderOpen}
-            title="Show in folder"
+            title={T("Show in folder")}
             onClick={() => window.bytune?.revealPath(item.path!)}
             size="sm"
           />
         )}
         {item.status !== "downloading" && item.status !== "queued" && (
-          <IconBtn icon={X} title="Remove from list" danger onClick={() => onRemove(item.track.id)} size="sm" />
+          <IconBtn icon={X} title={T("Remove from list")} danger onClick={() => onRemove(item.track.id)} size="sm" />
         )}
       </div>
     </div>
@@ -127,7 +122,7 @@ export function DownloadsView() {
       void b
         .defaultDownloadDir()
         .then((dir) => b.openPath(dir))
-        .catch(() => toast("Couldn't open the downloads folder", "error"));
+        .catch(() => toast(T("Couldn't open the downloads folder"), "error"));
     }
   };
 
@@ -135,34 +130,30 @@ export function DownloadsView() {
     <div className="space-y-7">
       <div className="flex items-end justify-between gap-4 animate-slide-up">
         <div>
-          <h1 className="font-display text-[28px] font-bold tracking-tight text-ink-hi">Downloads</h1>
+          <h1 className="font-display text-[28px] font-bold tracking-tight text-ink-hi">{T("Downloads")}</h1>
           <p className="text-sm text-ink-dim mt-1 flex items-center gap-2">
             <span>
-              {items.length === 0
-                ? "Saved music lives on your disk"
-                : plural(doneCount, "song", "songs") + " saved"}
+              {items.length === 0 ? T("Saved music lives on your disk") : plural(doneCount, "song", "songs") + " saved"}
             </span>
-            {failedCount > 0 && <span className="text-red-400">· {plural(failedCount, "failure", "failures")}</span>}
-            {activeCount > 0 && <span className="text-accent">· {plural(activeCount, "download", "downloads")} in progress</span>}
+            {failedCount > 0 && <span className="text-red-400">· {plural(failedCount, T("failure"), T("failures"))}</span>}
+            {activeCount > 0 && <span className="text-accent">{T("· {count} in progress", { count: plural(activeCount, T("download"), T("downloads")) })}</span>}
           </p>
         </div>
-        <Btn variant="glass" icon={FolderOpen} onClick={openFolder}>
-          Open folder
-        </Btn>
+        <Btn variant="glass" icon={FolderOpen} onClick={openFolder}>{T("Open folder")}</Btn>
       </div>
 
       {items.length === 0 ? (
         <EmptyState
           icon={Download}
-          title="No downloads yet"
-          body='Right-click any track and choose "Download", or use the download arrow on a track row. Files are saved to your downloads folder.'
+          title={T("No downloads yet")}
+          body={T("Right-click any track and choose \"Download\", or use the download arrow on a track row. Files are saved to your downloads folder.")}
         />
       ) : (
         <div className="space-y-1">
           <div className="flex items-center gap-3 px-3 pb-2 border-b border-ink-hi/[0.055] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-ghost">
             <div className="w-10 shrink-0" />
-            <div className="flex-1 min-w-0">Track</div>
-            <div className="w-48 shrink-0">Status</div>
+            <div className="flex-1 min-w-0">{T("Track")}</div>
+            <div className="w-48 shrink-0">{T("Status")}</div>
             <div className="w-20 shrink-0" />
           </div>
           {items.map((item) => (
