@@ -24,7 +24,7 @@ import { syncAddress, useSync } from "../sync";
 import { colors, PAGE_END } from "../theme";
 import { T } from "../shared";
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 
 const SYNC_LINE: Record<SyncStatus, string> = {
   off: T("Off"),
