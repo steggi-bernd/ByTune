@@ -340,6 +340,41 @@ export function mergeImportedPlaylist(current: Track[], incoming: Track[], keyOf
   });
 }
 
+/**
+ * A recovered playlist with the songs found since: each goes after the song
+ * before it in the export that the list holds, so it lands in its place however
+ * the rest was arranged since. `done` are the export's songs already dealt
+ * with: one of those not in the list was taken out by hand and stays out.
+ * Songs still to check wait for the user's word.
+ */
+export function completePlaylist(
+  current: Track[],
+  rows: ImportRow[],
+  done: ReadonlySet<string>,
+  keyOf: (id: string) => string
+): { tracks: Track[]; done: string[]; added: number } {
+  const tracks = [...current];
+  const nowDone: string[] = [];
+  let added = 0;
+  let before: string | null = null;
+  for (const row of rows) {
+    if (row.kind !== "match" || !row.track) continue;
+    const key = entryKey(row.entry);
+    const song = keyOf(row.track.id);
+    const held = tracks.some((t) => keyOf(t.id) === song);
+    if (!done.has(key)) nowDone.push(key);
+    if (held) {
+      before = song;
+    } else if (!done.has(key)) {
+      const after = before === null ? -1 : tracks.findIndex((t) => keyOf(t.id) === before);
+      tracks.splice(after + 1, 0, row.track);
+      before = song;
+      added++;
+    }
+  }
+  return { tracks: added ? tracks : current, done: nowDone, added };
+}
+
 /* ------------------------------------------------------------- matching */
 
 /** "- Remastered 2011", "(2009 Remaster)", "- Digital Remaster" … — Spotify's additions, same recording. */

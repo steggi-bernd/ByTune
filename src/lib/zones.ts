@@ -47,6 +47,8 @@ interface Running {
   timer: number;
   status: CastStatus | null;
   ended: boolean;
+  /** the session's only device never started the song */
+  notStarted: boolean;
 }
 
 const running = new Map<string, Running>();
@@ -55,7 +57,8 @@ let listening = false;
 
 function publish(): void {
   useZones.setState({
-    zones: [...running.values()].map((r) => ({ id: r.id, device: r.device, state: r.zone.state, members: r.status?.members ?? [] })),
+    // One still connecting has no zone yet; the session's first word can come before it does.
+    zones: [...running.values()].filter((r) => r.zone).map((r) => ({ id: r.id, device: r.device, state: r.zone.state, members: r.status?.members ?? [] })),
   });
 }
 
@@ -67,13 +70,18 @@ function listen(): void {
     if (!r) return;
     r.status = st;
     if (st.ended) r.ended = true;
+    if (st.notStarted) {
+      // Others left: it just went from the group.
+      if (st.members.some((m) => m.id !== st.notStarted?.id)) useUI.getState().toast(T("{name} didn't start. Is it switched on?", { name: st.notStarted.name }), "error");
+      else r.notStarted = true;
+    }
     publish();
   });
 }
 
 const toSong = (t: Track): ZoneSong => ({ id: t.id, title: t.title, artist: t.artist, album: t.album ?? "", duration: t.duration, art: t.thumb });
 
-function driverOf(r: Pick<Running, "id" | "tracks" | "status" | "ended">): ZoneDriver {
+function driverOf(r: Pick<Running, "id" | "tracks" | "status" | "ended" | "notStarted">): ZoneDriver {
   const bridge = requireBridge();
   const session = r.id;
   return {
@@ -99,8 +107,10 @@ function driverOf(r: Pick<Running, "id" | "tracks" | "status" | "ended">): ZoneD
       const st = r.status;
       if (!st || st.message) throw new Error(st?.message ?? "No answer yet");
       const ended = r.ended;
+      const notStarted = r.notStarted;
       r.ended = false;
-      return { state: st.state, position: st.position, duration: st.duration, ended };
+      r.notStarted = false;
+      return { state: st.state, position: st.position, duration: st.duration, ended, notStarted };
     },
     setVolume: (level) => bridge.castControl("volume", level, session),
     getVolume: async () => r.status?.volume ?? null,
@@ -120,7 +130,7 @@ export async function startZone(device: CastDevice, tracks: Track[], start = 0):
     let r = [...running.values()].find((z) => z.device.id === device.id);
     if (!r) {
       const id = `zone${nextId++}`;
-      const fresh: Running = { id, device, zone: null as unknown as Zone, tracks: new Map(), timer: 0, status: null, ended: false };
+      const fresh: Running = { id, device, zone: null as unknown as Zone, tracks: new Map(), timer: 0, status: null, ended: false, notStarted: false };
       running.set(id, fresh);
       try {
         fresh.status = await requireBridge().castStart(device.id, id);
@@ -178,6 +188,10 @@ export async function zoneStop(id: string): Promise<void> {
   running.delete(id);
   window.clearInterval(r.timer);
   await r.zone.stop();
+  // Its device may be gone from the zone already (it stopped answering); the session isn't.
+  await requireBridge()
+    .castStop(id)
+    .catch(() => undefined);
   publish();
 }
 

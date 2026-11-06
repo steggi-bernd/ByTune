@@ -19,6 +19,10 @@ interface AlbumEditsState extends AlbumEdits {
   setSongs(edits: Record<string, SongEdit>): void;
   /** take songs off the album they were put on by hand */
   clearSongs(ids: string[]): void;
+  /** the name an album is shown under; null goes back to its tags */
+  setTitle(key: string, title: string | null): void;
+  /** an album's picture; null goes back to the one its songs bring */
+  setCover(key: string, cover: string | null): void;
 }
 
 export const useAlbumEdits = create<AlbumEditsState>()(
@@ -28,6 +32,8 @@ export const useAlbumEdits = create<AlbumEditsState>()(
       mergedInto: {},
       aliases: {},
       songs: {},
+      titles: {},
+      covers: {},
 
       setArtists(key, credit) {
         set((s) => {
@@ -69,11 +75,30 @@ export const useAlbumEdits = create<AlbumEditsState>()(
           return { songs };
         });
       },
+
+      setTitle(key, title) {
+        set((s) => {
+          const titles = { ...s.titles };
+          const clean = title?.trim();
+          if (clean) titles[key] = clean;
+          else delete titles[key];
+          return { titles };
+        });
+      },
+
+      setCover(key, cover) {
+        set((s) => {
+          const covers = { ...s.covers };
+          if (cover) covers[key] = cover;
+          else delete covers[key];
+          return { covers };
+        });
+      },
     }),
     {
       name: "album-edits",
       storage: createJSONStorage(() => storage),
-      partialize: (s) => ({ artists: s.artists, mergedInto: s.mergedInto, aliases: s.aliases, songs: s.songs }) as unknown as AlbumEditsState,
+      partialize: (s) => ({ artists: s.artists, mergedInto: s.mergedInto, aliases: s.aliases, songs: s.songs, titles: s.titles, covers: s.covers }) as unknown as AlbumEditsState,
     }
   )
 );

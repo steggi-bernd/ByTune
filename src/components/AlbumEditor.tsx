@@ -7,11 +7,12 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
-import { Plus, RotateCcw, Search, Split, X } from "lucide-react";
+import { ImageIcon, Plus, RotateCcw, Search, Split, X } from "lucide-react";
 import { baseTitle, resolveAlbumKey } from "../lib/albumEdits";
 import { useLibraryIndex, type LibAlbum } from "../lib/catalogIndex";
 import { foldTag } from "../lib/duplicates";
 import { albumKeyOf, splitCredits } from "../lib/libraryTracks";
+import { pickAlbumCover } from "../lib/pickPicture";
 import { RELEASE_LABEL } from "../lib/releases";
 import { useAlbumEdits } from "../stores/albumEdits";
 import { versionsOf } from "../stores/catalog";
@@ -40,6 +41,23 @@ function AlbumRow({ album, action }: { album: LibAlbum; action: React.ReactNode 
 
 export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () => void }) {
   const credit = useAlbumEdits((s) => s.artists[album.key]);
+  const renamed = useAlbumEdits((s) => !!s.titles?.[album.key]);
+  const recovered = useAlbumEdits((s) => !!s.covers?.[album.key]);
+  const [title, setTitle] = useState(album.title);
+  useEffect(() => setTitle(album.title), [album.title]);
+  const saveTitle = (): void => {
+    const clean = title.trim();
+    if (!clean) setTitle(album.title);
+    else if (clean !== album.title) useAlbumEdits.getState().setTitle(album.key, clean);
+  };
+  const choosePicture = async (): Promise<void> => {
+    try {
+      const cover = await pickAlbumCover();
+      if (cover) useAlbumEdits.getState().setCover(album.key, cover);
+    } catch {
+      toast(T("That picture can't be read"), "error");
+    }
+  };
   const mergedInto = useAlbumEdits((s) => s.mergedInto);
   const handPut = useAlbumEdits((s) => s.songs);
   const { albums, artists } = useLibraryIndex();
@@ -72,7 +90,7 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
         .filter((k) => k !== album.key && resolveAlbumKey(k, mergedInto) === album.key)
         .map((k) => {
           const songs = album.tracks.filter((t) => albumKeyOf(t) === k);
-          return { key: k, title: songs[0]?.album ?? k.split("|")[1] ?? k, artist: songs[0]?.albumArtist || songs[0]?.artist || "", count: songs.length };
+          return { key: k, title: songs[0]?.albumTag ?? songs[0]?.album ?? k.split("|")[1] ?? k, artist: songs[0]?.albumArtist || songs[0]?.artist || "", count: songs.length };
         }),
     [mergedInto, album]
   );
@@ -123,6 +141,36 @@ export function AlbumEditor({ album, onClose }: { album: LibAlbum; onClose: () =
         </div>
 
         <div className="overflow-y-auto min-h-0 px-5 pb-5 space-y-6">
+          <section>
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-[14px] font-bold text-ink-hi">{T("Name and picture")}</h3>
+              {(renamed || recovered) && (
+                <button
+                  onClick={() => {
+                    useAlbumEdits.getState().setTitle(album.key, null);
+                    useAlbumEdits.getState().setCover(album.key, null);
+                  }}
+                  className="inline-flex items-center gap-1 text-[12.5px] text-ink-dim hover:text-ink-hi"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />{" "}{T("Back to the tags")}</button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={saveTitle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+                aria-label={T("Album name")}
+                placeholder={T("Album name")}
+                className="flex-1 h-9 px-4 rounded-full bg-ink-hi/[0.07] text-[13.5px] text-ink-hi placeholder:text-ink-hi/45 outline-none focus:bg-ink-hi/[0.1]"
+              />
+              <Btn variant="glass" size="md" icon={ImageIcon} onClick={() => void choosePicture()}>{T("Choose a picture…")}</Btn>
+            </div>
+          </section>
+
           <section>
             <div className="flex items-baseline justify-between">
               <h3 className="text-[14px] font-bold text-ink-hi">{T("Artists")}</h3>

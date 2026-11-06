@@ -4,6 +4,8 @@ import {
   Download,
   FolderOpen,
   Heart,
+  ImageIcon,
+  ImageOff,
   ListMusic,
   ListStart,
   Pencil,
@@ -225,6 +227,16 @@ export function playlistMenuItems(playlist: Playlist, track: Track, from?: Track
   ];
 }
 
+async function choosePlaylistPicture(playlist: Playlist): Promise<void> {
+  const { pickPlaylistPicture } = await import("./pickPicture");
+  try {
+    const cover = await pickPlaylistPicture();
+    if (cover) useLibrary.getState().setPlaylistCover(playlist.id, cover);
+  } catch {
+    useUI.getState().toast(T("That picture can't be read"), "error");
+  }
+}
+
 export function playlistHeaderItems(playlist: Playlist): MenuItem[] {
   return [
     {
@@ -242,6 +254,20 @@ export function playlistHeaderItems(playlist: Playlist): MenuItem[] {
         });
       },
     },
+    {
+      label: playlist.cover ? T("Change picture…") : T("Choose a picture…"),
+      icon: ImageIcon,
+      action: () => void choosePlaylistPicture(playlist),
+    },
+    ...(playlist.cover
+      ? [
+          {
+            label: T("Remove picture"),
+            icon: ImageOff,
+            action: () => useLibrary.getState().setPlaylistCover(playlist.id, null),
+          },
+        ]
+      : []),
     {
       label: T("Delete playlist"),
       icon: Trash2,

@@ -135,7 +135,7 @@ function ZoneCard({ zone, onMenu }: { zone: ZoneView; onMenu: () => void }) {
   const ink = zone.main ? colors.onAccent : colors.ink;
   const isOn = zone.state === "playing" || zone.state === "loading";
   const names = zone.members.map((m) => m.name).join(" + ");
-  const line = zone.error ?? (zone.song ? `${zone.song.title} · ${zone.song.artist}` : T("Ready"));
+  const line = zone.error ?? (zone.song ? `${zone.state === "loading" ? T("Waiting for it to start · ") : ""}${zone.song.title} · ${zone.song.artist}` : T("Ready"));
   const fill = ink === colors.onAccent ? ink : "transparent";
   return (
     <View style={[styles.card, zone.main ? styles.cardMain : styles.cardOwn]}>
@@ -546,7 +546,7 @@ export function DevicesScreen() {
               busy={busy === d.id}
               picked={choosing ? choosing.has(d.id) : undefined}
               onPress={() => (choosing ? toggleChosen(d.id) : void moveMusicTo(d))}
-              onLongPress={() => deviceMenu(d)}
+              onLongPress={() => (choosing ? toggleChosen(d.id) : startChoosing(d.id))}
               corner={
                 <>
                   {main && (

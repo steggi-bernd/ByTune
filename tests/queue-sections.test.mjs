@@ -13,7 +13,7 @@ const out = await build({
   format: "esm",
   write: false,
 });
-const { handRows, lineInList, placeOf, putBack, tendedBranches, withoutSongs } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+const { handRows, jumpTarget, lineInList, listAround, placeOf, putBack, tendedBranches, withoutSongs } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
 
 const songs = (...ids) => ids.map((id) => ({ id }));
 const branch = (name, ...ids) => ({ name, trackId: ids[0], started: false, ids });
@@ -117,4 +117,23 @@ test("a song in the queue twice: where it was seen settles it, else the nearest 
 test("where the hand-made part ends, in a list that starts further on", () => {
   assert.equal(lineInList(25, 10), 15);
   assert.equal(lineInList(5, 10), 0);
+});
+
+test("where a device is told to go: the song, or one step along the list when it isn't known there", () => {
+  const q = [{ id: "a" }, { id: "b" }, { id: "a" }, { id: "c" }];
+  assert.equal(jumpTarget(q, "a", 1, 1), 2, "the copy that was meant");
+  assert.equal(jumpTarget(q, "a", 1, -1), 0);
+  assert.equal(jumpTarget(q, "c", 0), 3);
+  assert.equal(jumpTarget(q, "nope", 1, 1), 2, "next is next");
+  assert.equal(jumpTarget(q, "nope", 1, -1), 0);
+  assert.equal(jumpTarget(q, "nope", 1, 2), -1, "further than that, it could be anything");
+  assert.equal(jumpTarget(q, "nope", 3, 1), -1, "there's nothing after the last");
+  assert.equal(jumpTarget(q, "nope", 1), -1);
+});
+
+test("the part of a list that goes along: around the song, within what's there", () => {
+  const list = Array.from({ length: 10 }, (_, i) => ({ id: String(i) }));
+  assert.deepEqual(listAround(list, "5", 2, 3).map((t) => t.id), ["3", "4", "5", "6", "7"]);
+  assert.deepEqual(listAround(list, "0", 2, 3).map((t) => t.id), ["0", "1", "2"]);
+  assert.deepEqual(listAround(list, "nope", 2, 3).map((t) => t.id), ["0", "1", "2"]);
 });

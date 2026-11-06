@@ -29,6 +29,8 @@ export interface ZoneDeviceStatus {
   duration: number;
   /** played to its end, since the last status */
   ended: boolean;
+  /** it was handed a song to play and, after all that time, hasn't started it */
+  notStarted?: boolean;
 }
 
 export interface ZoneDriver {
@@ -43,6 +45,8 @@ export interface ZoneDriver {
   getVolume(): Promise<number | null>;
   /** The connection isn't needed any more. */
   close(): void;
+  /** It was handed a song to play and hasn't started it yet: its status() has to be asked for, leader or not. */
+  starting?(): boolean;
 }
 
 export interface ZoneMember {
@@ -60,6 +64,8 @@ export interface ZoneState {
   duration: number;
   repeat: "off" | "all" | "one";
   error: string | null;
+  /** the last song played out and nothing comes after it */
+  ranOut?: boolean;
 }
 
 /** Statuses in a row without an answer before a device counts as gone. */
@@ -111,11 +117,12 @@ export class Zone {
     if (!song) return;
     const seq = ++this.loadSeq;
     this.startingSince = play ? Date.now() : null;
-    this.set({ state: "loading", position, duration: song.duration, error: null });
+    this.set({ state: "loading", position, duration: song.duration, error: null, ranOut: false });
     await this.all((m) => m.driver.load(song, position, play));
     if (seq !== this.loadSeq) return;
     this.lastCommandAt = Date.now();
-    this.set({ state: this.state.error ? "stopped" : play ? "playing" : "paused" });
+    // Playing once the device says so: it may be only waking up (see tick).
+    this.set({ state: this.state.error ? "stopped" : play ? "loading" : "paused" });
   }
 
   /** Songs to play here, from one of them on. */
@@ -148,7 +155,7 @@ export class Zone {
     const at = index + 1;
     if (at >= queue.length) {
       if (repeat !== "all" && !manual) {
-        this.set({ state: "stopped", position: 0 });
+        this.set({ state: "stopped", position: 0, ranOut: true });
         return Promise.resolve();
       }
       this.state = { ...this.state, index: 0 };
@@ -217,7 +224,7 @@ export class Zone {
     member.volume = await member.driver.getVolume().catch(() => null);
     const song = this.current;
     if (song && this.state.state !== "stopped" && this.state.state !== "idle") {
-      await member.driver.load(song, this.state.position, this.state.state === "playing").catch((err: unknown) => {
+      await member.driver.load(song, this.state.position, this.state.state !== "paused").catch((err: unknown) => {
         this.members = this.members.filter((m) => m !== member);
         this.set({ error: err instanceof Error ? err.message : T("{name} can't join", { name: member.name }) });
       });
@@ -254,6 +261,14 @@ export class Zone {
     this.set({ state: "stopped" });
   }
 
+  /** Handed a song and never started it. */
+  private didNotStart(member: ZoneMember): void {
+    this.members = this.members.filter((m) => m !== member);
+    member.driver.close();
+    this.startingSince = null;
+    this.set({ error: T("{name} didn't start. Is it switched on?", { name: member.name }), state: this.members.length ? this.state.state : "stopped" });
+  }
+
   /** Lets go of the devices without stopping them. */
   release(): void {
     this.loadSeq += 1;
@@ -270,6 +285,17 @@ export class Zone {
     const song = this.current;
     try {
       const leader = this.members[0];
+      // The others of a group get no reports asked for, but one still on its way up has to be looked after.
+      for (const m of this.members.slice(1)) {
+        if (!m.driver.starting?.()) continue;
+        void m.driver.status().then(
+          (st) => {
+            if (st.notStarted) this.didNotStart(m);
+          },
+          () => undefined
+        );
+      }
+      const waking = !!leader.driver.starting?.();
       let status: ZoneDeviceStatus;
       try {
         status = await leader.driver.status();
@@ -287,20 +313,36 @@ export class Zone {
         return;
       }
       if (song !== this.current) return;
+      if (status.notStarted) {
+        this.didNotStart(leader);
+        return;
+      }
       if (status.ended) {
         await this.next(false);
         return;
       }
       if (status.state === "playing") this.startingSince = null;
       if (status.state === "loading") return;
+      // Asleep when it was first asked, it can tell its volume now.
+      if (waking && !leader.driver.starting?.() && leader.volume === null) {
+        void leader.driver.getVolume().then(
+          (volume) => {
+            leader.volume = volume;
+            this.onChange(this);
+          },
+          () => undefined
+        );
+      }
       const settled = Date.now() - this.lastCommandAt > SETTLE_MS;
       const changes: Partial<ZoneState> = {};
       if (settled || status.state === "playing") {
         changes.position = status.position;
         if (status.duration > 0) changes.duration = status.duration;
       }
+      // It says it plays what was on its way: that's the news.
+      if (status.state === "playing" && this.state.state === "loading") changes.state = "playing";
       // Paused or stopped on the device itself: the zone follows, but not while a song starts.
-      if (settled && this.startingSince === null && status.state !== this.state.state) changes.state = status.state;
+      else if (settled && this.startingSince === null && status.state !== this.state.state) changes.state = status.state;
       if (Object.keys(changes).length) this.set(changes);
     } finally {
       if (this.tickingSince === started) this.tickingSince = 0;

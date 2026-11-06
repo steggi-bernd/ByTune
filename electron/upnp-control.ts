@@ -102,6 +102,22 @@ export async function describe(location: string): Promise<Renderer | null> {
   return parseDescription((await res.text()).slice(0, 512 * 1024), location);
 }
 
+/** The device answered and said no. */
+export class DeviceRefusal extends Error {
+  constructor(
+    message: string,
+    /** its UPnP error code, when it says */
+    readonly code: number | null
+  ) {
+    super(message);
+  }
+
+  /** About the song itself: no waiting helps with that, unlike a device still on its way up. */
+  get final(): boolean {
+    return this.code === 402 || this.code === 714 || this.code === 716;
+  }
+}
+
 /** One SOAP action; resolves to the response body, throws with the device's own error text. */
 export async function soap(
   service: { url: string; type: string },
@@ -123,7 +139,10 @@ export async function soap(
     signal: timeoutSignal(5000),
   });
   const text = (await res.text()).slice(0, 256 * 1024);
-  if (!res.ok) throw new Error(`The player refused ${action}: ${unescapeXml(tag(text, "errorDescription") ?? `HTTP ${res.status}`)}`);
+  if (!res.ok) {
+    const code = Number(tag(text, "errorCode"));
+    throw new DeviceRefusal(`The player refused ${action}: ${unescapeXml(tag(text, "errorDescription") ?? `HTTP ${res.status}`)}`, Number.isFinite(code) && code > 0 ? code : null);
+  }
   return text;
 }
 

@@ -49,6 +49,8 @@ export interface Settings {
   speed: number;
   /** a queue that runs out goes on with something from the library */
   autoplay: boolean;
+  /** going to another song ends repeat-one: the whole list repeats from there */
+  skipEndsRepeatOne: boolean;
   /** what played lately stays out of that */
   dontRepeat: boolean;
   eqOn: boolean;
@@ -76,6 +78,7 @@ const DEFAULTS: Settings = {
   skipSilence: false,
   speed: 1,
   autoplay: false,
+  skipEndsRepeatOne: true,
   dontRepeat: false,
   eqOn: false,
   eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],

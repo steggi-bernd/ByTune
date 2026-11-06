@@ -211,56 +211,6 @@ export const analyseTrackHead = {
 };
 
 /**
- * Time where sustained music energy begins, for lyric alignment.
- *
- * YouTube uploads of a song often prepend a quiet intro (scene setting,
- * dialogue, ambience) before the music that the synced-lyrics timeline was
- * made for — the lyrics then animate tens of seconds before anyone sings.
- * This scans the decoded upload for the first sustained above-music-level
- * energy (≥2s of windows over the threshold) and returns that time; 0 when
- * the audio opens cold on the song. Music sits far above dialogue-level
- * RMS, so a spoken intro doesn't trip it.
- */
-export function detectMusicOnset(audio: AudioBuffer, limitSec = 75): number {
-  const sr = audio.sampleRate;
-  const win = Math.floor(sr * 0.5);
-  const total = Math.min(audio.length, Math.floor(sr * limitSec));
-  const windows = Math.floor(total / win);
-  if (windows < 8) return 0;
-  const ch = Math.min(2, audio.numberOfChannels);
-  const threshold = 0.055;
-  const need = 4; // 2s of consecutive loud windows
-  let run = 0;
-  for (let w = 0; w < windows; w++) {
-    let sum = 0;
-    const base = w * win;
-    const data = audio.getChannelData(0);
-    const data2 = ch > 1 ? audio.getChannelData(1) : null;
-    for (let i = 0; i < win; i += 2) {
-      const v = data2 ? (data[base + i] + data2[base + i]) / 2 : data[base + i];
-      sum += v * v;
-    }
-    const rms = Math.sqrt((sum * 2) / win);
-    if (rms > threshold) {
-      run += 1;
-      if (run >= need) return Math.max(0, (w - need + 1) * win) / sr;
-    } else {
-      run = 0;
-    }
-  }
-  return 0;
-}
-
-/** Decoded-audio analysis over the full stream: music onset, in seconds. */
-export async function detectMusicOnsetForTrack(trackId: string, limitSec = 75): Promise<number | null> {
-  const buf = await fetchAudio(trackId);
-  if (!buf) return null;
-  const audio = await decode(buf);
-  if (!audio) return null;
-  return detectMusicOnset(audio, limitSec);
-}
-
-/**
  * Leading/trailing silence, in seconds. Threshold ≈ -42dBFS sustained over a
  * 40ms window, matching what a listener would call silence.
  */

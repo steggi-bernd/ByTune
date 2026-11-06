@@ -46,7 +46,7 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
     playlist: {
       id: playlist.id,
       title: playlist.name,
-      thumb: playlist.tracks[0]?.thumb || undefined,
+      thumb: playlist.cover ?? (playlist.tracks[0]?.thumb || undefined),
     },
   });
 
@@ -90,7 +90,9 @@ function LibraryPlaylistCard({ playlist }: { playlist: Playlist }) {
           title={playlist.name}
           className={`relative w-full aspect-square rounded-lg bg-gradient-to-br ${COVER_FALLBACK} border border-ink-hi/[0.05] overflow-hidden cursor-pointer`}
         >
-          {playlist.tracks.length > 0 ? (
+          {playlist.cover ? (
+            <img src={playlist.cover} alt="" className="absolute inset-0 w-full h-full object-cover p-1.5 rounded-lg bg-ink-hi/[0.04]" />
+          ) : playlist.tracks.length > 0 ? (
             playlist.tracks.length === 1 ? (
               <img
                 src={upgradeArtwork(playlist.tracks[0].thumb)}

@@ -36,6 +36,8 @@ interface SettingsState {
   smartFade: boolean;
   skipSilence: boolean;
   autoplay: boolean;
+  /** going to another song ends repeat-one: the whole list repeats from there */
+  skipEndsRepeatOne: boolean;
   /** 0.5..2 — persisted playback speed (pitch-preserving) */
   playbackSpeed: number;
   /** Audio output device (setSinkId). "" follows the system default. */
@@ -95,8 +97,6 @@ interface SettingsState {
   seamlessAlbums: boolean;
   /** tempo, key and energy of every local song, measured once in the background (electron/sound-library.ts) */
   soundAnalysis: boolean;
-  /** Milkdrop behind the full-screen Now Playing */
-  milkdrop: boolean;
   /** Explore: the open tab, list or tiles, and each tab's column order */
   exploreTab: ExploreTab;
   exploreLayout: "list" | "grid";
@@ -116,6 +116,7 @@ interface SettingsState {
   setSmartFade(v: boolean): void;
   setSkipSilence(v: boolean): void;
   setAutoplay(v: boolean): void;
+  setSkipEndsRepeatOne(v: boolean): void;
   setPlaybackSpeed(v: number): void;
   setAudioSinkId(sinkId: string): void;
   setEqEnabled(v: boolean): void;
@@ -149,7 +150,6 @@ interface SettingsState {
   setGapless(v: boolean): void;
   setSeamlessAlbums(v: boolean): void;
   setSoundAnalysis(v: boolean): void;
-  setMilkdrop(v: boolean): void;
   setExploreTab(v: ExploreTab): void;
   setExploreLayout(v: "list" | "grid"): void;
   setExploreSort(tab: ExploreTab, sort: ExploreSort): void;
@@ -173,6 +173,7 @@ export const useSettings = create<SettingsState>()(
       smartFade: false,
       skipSilence: false,
       autoplay: false,
+      skipEndsRepeatOne: true,
       playbackSpeed: 1,
       audioSinkId: "",
       eqEnabled: false,
@@ -209,7 +210,6 @@ export const useSettings = create<SettingsState>()(
       gapless: true,
       seamlessAlbums: true,
       soundAnalysis: true,
-      milkdrop: false,
       exploreTab: "albums",
       exploreLayout: "list",
       exploreSort: DEFAULT_EXPLORE_SORTS,
@@ -225,6 +225,7 @@ export const useSettings = create<SettingsState>()(
       setSmartFade: (smartFade) => set({ smartFade }),
       setSkipSilence: (skipSilence) => set({ skipSilence }),
       setAutoplay: (autoplay) => set({ autoplay }),
+      setSkipEndsRepeatOne: (skipEndsRepeatOne) => set({ skipEndsRepeatOne }),
       setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed: Math.min(2, Math.max(0.5, playbackSpeed)) }),
       setAudioSinkId: (audioSinkId) => set({ audioSinkId }),
       setEqEnabled: (eqEnabled) => set({ eqEnabled }),
@@ -259,7 +260,6 @@ export const useSettings = create<SettingsState>()(
       setGapless: (gapless) => set({ gapless }),
       setSeamlessAlbums: (seamlessAlbums) => set({ seamlessAlbums }),
       setSoundAnalysis: (soundAnalysis) => set({ soundAnalysis }),
-      setMilkdrop: (milkdrop) => set({ milkdrop }),
       setExploreTab: (exploreTab) => set({ exploreTab }),
       setExploreLayout: (exploreLayout) => set({ exploreLayout }),
       setExploreSort: (tab, sort) => set((st) => ({ exploreSort: { ...st.exploreSort, [tab]: sort } })),

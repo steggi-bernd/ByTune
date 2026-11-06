@@ -15,7 +15,7 @@ import { create } from "zustand";
 import type { PlayCounts } from "../lib/catalogBuild";
 import type { JellyfinStatus } from "../../electron/jellyfin";
 import type { SubsonicStatus } from "../../electron/subsonic";
-import { applyAlbumMerges, applyArtistAliases, applySongEdits } from "../lib/albumEdits";
+import { applyAlbumLooks, applyAlbumMerges, applyArtistAliases, applySongEdits } from "../lib/albumEdits";
 import { mergeDuplicates } from "../lib/duplicates";
 import { loadAllLibraryTracks } from "../lib/libraryTracks";
 import { useAlbumEdits } from "./albumEdits";
@@ -64,11 +64,13 @@ function mergeCounts(counts: PlayCounts, versions: Map<string, Track[]>): PlayCo
 
 /**
  * The songs as shown: the songs put on an album by hand first, then the
- * user's artist spellings, then their album merges (stores/albumEdits.ts).
+ * user's artist spellings, then their album merges, then the names and
+ * pictures they gave albums (stores/albumEdits.ts).
  */
 function shownTracks(base: Track[], versions: Map<string, Track[]>): Track[] {
-  const { aliases, mergedInto, songs } = useAlbumEdits.getState();
-  return applyAlbumMerges(applyArtistAliases(applySongEdits(base, songs ?? {}, versions), aliases ?? {}), mergedInto);
+  const { aliases, mergedInto, songs, titles, covers } = useAlbumEdits.getState();
+  const merged = applyAlbumMerges(applyArtistAliases(applySongEdits(base, songs ?? {}, versions), aliases ?? {}), mergedInto);
+  return applyAlbumLooks(merged, titles ?? {}, covers ?? {});
 }
 
 let inflight: Promise<void> | null = null;
@@ -119,9 +121,9 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   },
 }));
 
-// An album merge, an artist spelling or songs put on an album (or their undo) regroup the songs at once — no reload from disk.
+// An album merge, an artist spelling, songs put on an album, a name or a picture (or their undo) show at once — no reload from disk.
 useAlbumEdits.subscribe((s, prev) => {
-  if (s.mergedInto === prev.mergedInto && s.aliases === prev.aliases && s.songs === prev.songs) return;
+  if (s.mergedInto === prev.mergedInto && s.aliases === prev.aliases && s.songs === prev.songs && s.titles === prev.titles && s.covers === prev.covers) return;
   const c = useCatalog.getState();
   if (c.loaded) useCatalog.setState({ tracks: shownTracks(c.base, c.versions), version: c.version + 1 });
 });

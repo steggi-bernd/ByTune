@@ -270,6 +270,8 @@ test("a zone plays its own queue and moves on when a song ends", async () => {
   const d = fakeDriver();
   const zone = new zones.Zone([member("denon", d)], () => undefined);
   await zone.play(songs, 0);
+  assert.equal(zone.state.state, "loading", "playing once the device says so");
+  await zone.tick();
   assert.equal(zone.state.state, "playing");
   assert.deepEqual(d.log, ["load a@0"]);
 
@@ -338,11 +340,12 @@ test("paused on the device itself: the zone follows, but only once a command of 
   const d = fakeDriver();
   const zone = new zones.Zone([member("denon", d)], () => undefined);
   await zone.play(songs, 0);
+  await zone.tick();
+  assert.equal(zone.state.state, "playing");
   d.st.state = "paused";
   await zone.tick();
   assert.equal(zone.state.state, "playing");
   zone.lastCommandAt = 0;
-  zone.startingSince = null;
   await zone.tick();
   assert.equal(zone.state.state, "paused");
 });
@@ -371,6 +374,7 @@ test("a song that won't load stands still instead of loading forever, and play t
   assert.match(zone.state.error, /no way/);
   d.failing = false;
   await zone.toggle();
+  await zone.tick();
   assert.equal(zone.state.state, "playing");
   assert.equal(zone.state.error, null);
 });
@@ -391,7 +395,7 @@ test("back on a zone that stands still starts the song again; a device can't see
   zone.state = { ...zone.state, index: 0, position: 0 };
   await zone.previous();
   assert.deepEqual(log, ["load a@0"]);
-  assert.equal(zone.state.state, "playing");
+  assert.equal(zone.state.state, "loading");
 });
 
 test("a status that never comes back doesn't stop the zone for good", async () => {

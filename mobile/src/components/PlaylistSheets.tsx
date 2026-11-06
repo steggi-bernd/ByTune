@@ -107,7 +107,7 @@ export function AddToPlaylistSheet() {
                       close();
                     }}
                   >
-                    <CoverGrid tracks={playlistTracks(item)} size={48} />
+                    <CoverGrid tracks={playlistTracks(item)} size={48} cover={item.cover} />
                     <View style={styles.rowText}>
                       <Text numberOfLines={1} style={styles.rowTitle}>
                         {item.name}

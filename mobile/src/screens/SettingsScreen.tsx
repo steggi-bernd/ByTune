@@ -319,6 +319,8 @@ export function SettingsScreen() {
           <Text style={styles.rowSub}>{T("The pitch stays where it is")}</Text>
         </View>
         <View style={styles.divider} />
+        <SwitchRow title={T("Skipping ends repeat one")} line={T("Go to another song while one is on repeat, and the whole list repeats from there")} value={settings.skipEndsRepeatOne} onChange={(skipEndsRepeatOne) => change({ skipEndsRepeatOne })} />
+        <View style={styles.divider} />
         <SwitchRow title={T("Autoplay")} line={T("Keep the music going when the queue ends")} value={settings.autoplay} onChange={(autoplay) => change({ autoplay })} />
         {settings.autoplay && (
           <>

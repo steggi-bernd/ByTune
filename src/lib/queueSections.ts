@@ -137,6 +137,22 @@ export function placeOf<T extends { id: string }>(queue: T[], id: string, index:
   return best;
 }
 
+/**
+ * The song a device is asked to go to, in its own queue. One step along the list needs no name to
+ * agree on: two devices can know one song by different copies.
+ */
+export function jumpTarget<T extends { id: string }>(queue: T[], id: string, index: number, by?: number, keyOf: (song: T) => string = (song) => song.id): number {
+  const at = placeOf(queue, id, index, by, keyOf);
+  if (at >= 0) return at;
+  return (by === 1 || by === -1) && queue[index + by] ? index + by : -1;
+}
+
+/** The part of a list around a song that goes along to another device. */
+export function listAround<T extends { id: string }>(list: T[], id: string, behind: number, ahead: number): T[] {
+  const at = Math.max(0, list.findIndex((t) => t.id === id));
+  return list.slice(Math.max(0, at - behind), at + ahead);
+}
+
 /** A queue's hand-made part as it goes between devices: in the list that's sent, whose start may be cut off. */
 export function lineInList(lineEnd: number, from: number): number {
   return Math.max(0, lineEnd - from);

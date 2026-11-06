@@ -33,6 +33,8 @@ import { useSettings } from "./stores/settings";
 import { useUI } from "./stores/ui";
 import { SmartPlaylistEditorHost } from "./components/SmartPlaylistEditor";
 import { watchCatalog } from "./stores/catalog";
+import { watchAlbumCopies } from "./lib/albumCopies";
+import { watchRecoveredPlaylists } from "./lib/playlistRecovery";
 import { watchSound } from "./stores/sound";
 import { watchRecentlyPlayed } from "./lib/recentlyPlayed";
 import { watchAvailability } from "./stores/availability";
@@ -344,6 +346,8 @@ export default function App() {
 
   // The catalogue behind home, album/artist pages, mixes and smart playlists.
   useEffect(() => watchCatalog(), []);
+  useEffect(() => watchAlbumCopies(), []);
+  useEffect(() => watchRecoveredPlaylists(), []);
 
   // Which folders and servers can play right now (lists grey out the rest).
   useEffect(() => watchAvailability(), []);

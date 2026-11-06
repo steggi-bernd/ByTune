@@ -727,6 +727,22 @@ export function applyTrackFills(fills: Map<string, { art?: string; album?: strin
   });
 }
 
+/** A picture chosen by hand for an album, kept with the covers read from files. */
+export function saveChosenArt(bytes: Uint8Array): string | null {
+  const MAX_CHOSEN_BYTES = 8 * 1024 * 1024;
+  // The page makes a JPEG of whatever was picked (lib/pickPicture.ts).
+  if (!bytes?.length || bytes.length > MAX_CHOSEN_BYTES || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  try {
+    const dir = path.join(app.getPath("userData"), "local-art");
+    fs.mkdirSync(dir, { recursive: true });
+    const hash = crypto.createHash("sha1").update(bytes).digest("hex").slice(0, 16);
+    fs.writeFileSync(path.join(dir, `${hash}.jpg`), Buffer.from(bytes));
+    return `localart://${hash}.jpg`;
+  } catch {
+    return null;
+  }
+}
+
 /** Read one extracted cover off disk for the localart:// protocol. */
 export function readArtFile(name: string): { data: Buffer; mime: string } | null {
   if (!/^[a-f0-9]{16}\.(jpg|png)$/.test(name)) return null;

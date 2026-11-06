@@ -12,7 +12,6 @@ import { LyricsView } from "./SyncedLyrics";
 import { usePlayer } from "../stores/player";
 import { useUI } from "../stores/ui";
 import { useArtworkPalette } from "../lib/palette";
-import { requestLyricsAlignment, useLyricsAlign } from "../lib/lyricsOffset";
 import type { LyricsResult, Track } from "../types";
 import { T } from "../lib/i18n";
 
@@ -30,7 +29,7 @@ export function requestLyrics(track: Track): Promise<LyricsResult | null> {
             id: track.id,
             title: track.title,
             artist: track.artist,
-            album: track.album,
+            album: track.albumTag ?? track.album,
             duration: track.duration || undefined,
           })
           .catch(() => null)
@@ -67,22 +66,12 @@ export function LyricsCenter() {
       if (!cancelled) {
         setLyrics(r ?? null);
         setLoading(false);
-        // Version-mismatch check: when the upload is much longer than the
-        // synced song, measure the intro offset from the audio itself.
-        const last = r?.synced?.[r.synced.length - 1];
-        const end = last?.end ?? last?.time ?? 0;
-        if (r?.synced?.length && track.duration) {
-          requestLyricsAlignment(track.id, track.duration, end);
-        }
       }
     });
     return () => {
       cancelled = true;
     };
   }, [track?.id]);
-
-  // 0 until the audio-anchored alignment lands, then lyrics re-sync to it.
-  const offset = useLyricsAlign((s) => s.offsets[track?.id ?? ""] ?? 0);
 
   const palette = useArtworkPalette(track?.thumb ?? null);
 
@@ -114,7 +103,7 @@ export function LyricsCenter() {
           /* Keyed by track: a new song remounts the view, so the scroll
              position resets to the top instead of staying where the previous
              song's lyrics ended. */
-          <LyricsView key={track.id} trackKey={track.id} lyrics={lyrics} loading={loading} large offset={offset} />
+          <LyricsView key={track.id} trackKey={track.id} lyrics={lyrics} loading={loading} large />
         ) : (
           <div className="flex-1 grid place-items-center">
             <p className="text-[15px] text-ink-hi/60">{T("Play something to sing along.")}</p>

@@ -37,6 +37,8 @@ interface PlaylistsState extends PlaylistDoc {
   restore(): Promise<void>;
   create(name: string): string;
   rename(id: string, name: string): void;
+  /** The picture chosen for it, here and on the computer; null goes back to its songs' covers. */
+  setCover(id: string, cover: string | null): void;
   /** On top of Your Library, here and on the computer. */
   togglePin(id: string): void;
   remove(id: string): void;
@@ -85,6 +87,18 @@ export const usePlaylists = create<PlaylistsState>((set, get) => {
 
     rename(id, name) {
       change({ playlists: edit(id, (p) => ({ ...p, name: name.trim() || p.name })) }, [{ kind: "edit", group: "playlists", id }]);
+    },
+
+    setCover(id, cover) {
+      change(
+        {
+          playlists: edit(id, (p) => {
+            const { cover: _old, ...rest } = p;
+            return cover ? { ...rest, cover } : rest;
+          }),
+        },
+        [{ kind: "edit", group: "playlists", id }]
+      );
     },
 
     togglePin(id) {

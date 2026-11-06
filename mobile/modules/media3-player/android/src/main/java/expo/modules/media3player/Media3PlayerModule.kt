@@ -45,6 +45,7 @@ class QueueItem : Record {
 private const val TICK_MS = 500L
 private const val ZONE_TICK_MS = 1000L
 private const val PICK_FOLDER = 7931
+private const val PICK_IMAGE = 7932
 
 /**
  * The player as JavaScript sees it: commands in, one state event out. The
@@ -61,6 +62,7 @@ class Media3PlayerModule : Module() {
   private var output: SoundOutput? = null
   private var sockets: LanSockets? = null
   private var pickingFolder: Promise? = null
+  private var pickingImage: Promise? = null
 
   /** Timers in JavaScript stand still in the background; native events still arrive, and the zones need their once a second. */
   private val zoneTick = object : Runnable {
@@ -193,6 +195,19 @@ class Media3PlayerModule : Module() {
     Events("onState", "onError", "onNetwork", "onOutput", "onSocket", "onZoneTick", "onZoneControl", "onLocalScan")
 
     OnActivityResult { _, payload ->
+      if (payload.requestCode == PICK_IMAGE) {
+        val promise = pickingImage ?: return@OnActivityResult
+        pickingImage = null
+        val image = payload.data?.data
+        if (payload.resultCode != Activity.RESULT_OK || image == null) {
+          promise.resolve(null)
+          return@OnActivityResult
+        }
+        thread(isDaemon = true) {
+          promise.resolve(runCatching { PickedImage.asDataUrl(context, image) }.getOrNull())
+        }
+        return@OnActivityResult
+      }
       if (payload.requestCode != PICK_FOLDER) return@OnActivityResult
       val promise = pickingFolder ?: return@OnActivityResult
       pickingFolder = null
@@ -217,6 +232,18 @@ class Media3PlayerModule : Module() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
           .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
         activity.startActivityForResult(intent, PICK_FOLDER)
+      }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("pickImage") { promise: Promise ->
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve(null)
+      } else {
+        pickingImage?.resolve(null)
+        pickingImage = promise
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*")
+        activity.startActivityForResult(intent, PICK_IMAGE)
       }
     }.runOnQueue(Queues.MAIN)
 

@@ -300,6 +300,8 @@ const api = {
   // Filesystem helpers
   defaultDownloadDir: () => ipcRenderer.invoke("app:defaultDownloadDir"),
   pickFolder: () => ipcRenderer.invoke("app:pickFolder"),
+  /** Keeps a picture chosen for an album; resolves to its localart:// address. */
+  saveArtwork: (bytes: Uint8Array) => ipcRenderer.invoke("art:save", bytes) as Promise<string | null>,
   /** Save text the app composed (e.g. a CSV list) where the user picks; resolves to the path, or null if cancelled. */
   saveTextFile: (suggestedName: string, content: string) =>
     ipcRenderer.invoke("file:saveText", suggestedName, content) as Promise<string | null>,

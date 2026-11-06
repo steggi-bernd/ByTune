@@ -478,6 +478,7 @@ function registerIpc(): void {
   });
 
   ipc.handle("library:get", () => locallib.readLocalLibrary());
+  ipc.handle("art:save", (_e, bytes: unknown) => (bytes instanceof Uint8Array ? locallib.saveChosenArt(bytes) : null));
   ipc.handle("library:scan", async (_e, filterNonMusic?: boolean) => {
     folderWatch.noteFilterNonMusic(filterNonMusic !== false);
     const lib = await locallib.scanLibrary(filterNonMusic !== false);

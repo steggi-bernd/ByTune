@@ -9,7 +9,7 @@ import { build } from "esbuild";
 const stores = fileURLToPath(new URL("../src/stores/", import.meta.url));
 const stub = (contents) => ({ contents, resolveDir: stores, loader: "ts" });
 const out = await build({
-  stdin: { contents: `export { usePlayer, setSteering } from "./player"; export { useMuted } from "./muted";`, resolveDir: stores, loader: "ts" },
+  stdin: { contents: `export { usePlayer, setSteering, setQueueRanOut } from "./player"; export { useMuted } from "./muted"; export { useSettings } from "./settings";`, resolveDir: stores, loader: "ts" },
   bundle: true,
   platform: "node",
   format: "esm",
@@ -19,14 +19,14 @@ const out = await build({
       name: "stubs",
       setup(b) {
         b.onLoad({ filter: /[\\/]lib[\\/]persist\.ts$/ }, () =>
-          stub(`export const lazyJSONStorage = () => ({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });`)
+          stub(`export const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }; export const lazyJSONStorage = () => ({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });`)
         );
         b.onLoad({ filter: /[\\/]stores[\\/]catalog\.ts$/ }, () => stub(`export const songKey = (id) => id; export const versionsOf = (t) => [t];`));
       },
     },
   ],
 });
-const { usePlayer, setSteering } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+const { usePlayer, setSteering, setQueueRanOut, useSettings } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
 
 const t = (id) => ({ id, title: id.toUpperCase(), artist: "Band", duration: 100, thumb: "" });
 const songs = (...names) => names.map(t);
@@ -331,6 +331,129 @@ test("while a device is followed, what's asked here goes there", () => {
   usePlayer.getState().cancelBranch("Mix");
   assert.deepEqual(said.at(-1), ["cancelBranch", "Mix"]);
   assert.deepEqual(ids(), ["a", "b", "c"]);
+});
+
+/* ------------------------------------------------------------- skipping away from repeat-one */
+
+function onRepeatOne() {
+  useSettings.setState({ skipEndsRepeatOne: true });
+  usePlayer.setState({ queue: LIST, index: 1, repeat: "one", playing: true, position: 40 });
+}
+
+test("repeat-one ends with a skip: Next, Previous, a song of the queue", () => {
+  onRepeatOne();
+  usePlayer.getState().next(true);
+  assert.equal(now(), "c");
+  assert.equal(usePlayer.getState().repeat, "all");
+
+  onRepeatOne();
+  usePlayer.setState({ position: 1 });
+  usePlayer.getState().prev();
+  assert.equal(now(), "a");
+  assert.equal(usePlayer.getState().repeat, "all");
+
+  onRepeatOne();
+  usePlayer.getState().jumpTo(4);
+  assert.equal(now(), "e");
+  assert.equal(usePlayer.getState().repeat, "all");
+});
+
+test("repeat-one stays when the song stays: Previous well into it, the queue going on by itself, a queue of one", () => {
+  onRepeatOne();
+  usePlayer.getState().prev();
+  assert.equal(now(), "b", "from the top");
+  assert.equal(usePlayer.getState().repeat, "one");
+
+  onRepeatOne();
+  usePlayer.getState().next(false);
+  assert.equal(usePlayer.getState().repeat, "one", "a song that couldn't play isn't somebody skipping");
+
+  usePlayer.setState({ queue: songs("a"), index: 0, repeat: "one", playing: true });
+  usePlayer.getState().next(true);
+  assert.equal(usePlayer.getState().repeat, "one", "round to the very same song");
+});
+
+test("with the setting off, repeat-one stays when skipping", () => {
+  onRepeatOne();
+  useSettings.setState({ skipEndsRepeatOne: false });
+  usePlayer.getState().next(true);
+  assert.equal(now(), "c");
+  assert.equal(usePlayer.getState().repeat, "one");
+  useSettings.setState({ skipEndsRepeatOne: true });
+});
+
+test("a new song or list while something plays is another song too; with nothing on, repeat-one is left alone", () => {
+  onRepeatOne();
+  usePlayer.getState().playQueue(songs("x", "y"), 0);
+  assert.equal(usePlayer.getState().repeat, "all");
+
+  onRepeatOne();
+  usePlayer.getState().playTrack(t("x"));
+  assert.equal(usePlayer.getState().repeat, "all");
+
+  onRepeatOne();
+  usePlayer.getState().playQueue(LIST, 1);
+  assert.equal(usePlayer.getState().repeat, "one", "the very song that's on");
+
+  onRepeatOne();
+  usePlayer.setState({ playing: false });
+  usePlayer.getState().playQueue(songs("x", "y"), 0);
+  assert.equal(usePlayer.getState().repeat, "one", "turned on first, then the song");
+});
+
+test("while a device is followed the skip goes there, and that device says what became of repeat", () => {
+  onRepeatOne();
+  const asked = [];
+  setSteering({ next: () => asked.push("next"), previous: () => asked.push("previous"), jump: () => asked.push("jump") });
+  usePlayer.getState().next(true);
+  usePlayer.getState().prev();
+  usePlayer.getState().jumpTo(3);
+  assert.deepEqual(asked, ["next", "previous", "jump"]);
+  assert.equal(usePlayer.getState().repeat, "one");
+});
+
+test("Next past the last song: round to the start, or with Autoplay on, what the queue's end does", () => {
+  const ran = [];
+  setQueueRanOut(() => ran.push("autoplay"));
+  usePlayer.setState({ queue: songs("a", "b"), index: 1, playing: true });
+  usePlayer.getState().next(true);
+  assert.equal(now(), "a");
+  assert.deepEqual(ran, []);
+
+  useSettings.setState({ autoplay: true });
+  try {
+    usePlayer.setState({ queue: songs("a", "b"), index: 1, playing: true, repeat: "off" });
+    usePlayer.getState().next(true);
+    assert.deepEqual(ran, ["autoplay"]);
+    assert.equal(now(), "b");
+
+    usePlayer.setState({ repeat: "all" });
+    usePlayer.getState().next(true);
+    assert.equal(now(), "a", "Repeat goes round");
+    assert.deepEqual(ran, ["autoplay"]);
+
+    useSettings.setState({ skipEndsRepeatOne: true });
+    usePlayer.setState({ queue: songs("a", "b"), index: 1, repeat: "one" });
+    usePlayer.getState().next(true);
+    assert.equal(now(), "a", "repeat-one turned into going round the list");
+    assert.equal(usePlayer.getState().repeat, "all");
+    assert.deepEqual(ran, ["autoplay"]);
+
+    useSettings.setState({ skipEndsRepeatOne: false });
+    usePlayer.setState({ queue: songs("a", "b"), index: 1, repeat: "one" });
+    usePlayer.getState().next(true);
+    assert.deepEqual(ran, ["autoplay", "autoplay"]);
+  } finally {
+    useSettings.setState({ autoplay: false, skipEndsRepeatOne: true });
+    setQueueRanOut(null);
+  }
+});
+
+test("the song on screen taken out: the next one starts from its top", () => {
+  usePlayer.setState({ queue: LIST, index: 1, playing: true, position: 40 });
+  usePlayer.getState().removeAt(1);
+  assert.equal(now(), "c");
+  assert.equal(usePlayer.getState().position, 0);
 });
 
 test("an older save, shuffled: its order is mixed once, and it's the queue from then on", async () => {

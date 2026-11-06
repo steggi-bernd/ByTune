@@ -216,3 +216,16 @@ test("a second copy of a song in the arranged order is no new like: it stands wi
   assert.deepEqual(list, ["jf:c", "jf:d", "jf:a", "jf:b"]);
   assert.deepEqual(oneCopyEach(list, (id) => byId.get(id)), ["jf:c", "jf:d", "jf:a"]);
 });
+
+test("a playlist's picture goes where the playlist goes, and only a picture does", () => {
+  const cover = "data:image/jpeg;base64,/9j/AAAA";
+  const doc = toPlaylistDoc({ playlists: [{ id: "p", name: "With picture", tracks: [], cover }, { id: "q", name: "Odd", tracks: [], cover: "file:///etc/passwd" }, { id: "r", name: "Too big", tracks: [], cover: "data:image/jpeg;base64," + "A".repeat(500_000) }] });
+  assert.equal(doc.playlists[0].cover, cover);
+  assert.equal("cover" in doc.playlists[1], false);
+  assert.equal("cover" in doc.playlists[2], false);
+});
+
+test("a song travels with what its tags say, whatever name its album goes by here", () => {
+  assert.equal(toWireTrack(song("a", { album: "Better Name", albumTag: "Album" })).album, "Album");
+  assert.equal("albumTag" in toWireTrack(song("a", { album: "Better Name", albumTag: "Album" })), false);
+});

@@ -36,7 +36,7 @@ const out = await build({
         );
         b.onLoad({ filter: /[\\/]lib[\\/]bridge\.ts$/ }, () => stub(`export const requireBridge = () => globalThis.__bridge;`));
         b.onLoad({ filter: /[\\/]lib[\\/]persist\.ts$/ }, () =>
-          stub(`export const lazyJSONStorage = () => ({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });`)
+          stub(`export const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }; export const lazyJSONStorage = () => ({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });`)
         );
         b.onLoad({ filter: /[\\/]stores[\\/]ui\.ts$/ }, () =>
           stub(`export const useUI = { getState: () => ({ toast: (m, k) => globalThis.__toasts.push([m, k ?? "info"]) }) };`)
@@ -215,32 +215,64 @@ test("an album played again from its first song: from the top on the player too"
   assert.deepEqual(bridgeLog, [["seek", 0]]);
 });
 
-test("a song handed over that never starts: why, as far as it can be told", async () => {
+test("moving to a player that takes its time: no word of playing until it does", async () => {
   usePlayer.getState().playQueue([song("local:a"), song("local:b")], 0);
   await cast.castTo(TV);
+  assert.equal(cast.useCast.getState().connecting, TV.id, "the wheel goes on");
+  assert.equal(usePlayer.getState().buffering, true);
+  assert.deepEqual(globalThis.__toasts, []);
   // Its stops on the way to starting are not a listener's stop.
   now += 6000;
-  report({ trackId: "local:a", state: "stopped", fetched: false });
+  report({ trackId: "local:a", state: "loading" });
+  report({ trackId: "local:a", state: "stopped" });
   assert.equal(usePlayer.getState().playing, true);
-  now += 7000;
-  report({ trackId: "local:a", state: "stopped", fetched: false });
+  assert.deepEqual(globalThis.__toasts, []);
+  report({ trackId: "local:a", state: "playing", position: 1 });
+  assert.deepEqual(globalThis.__toasts, [["Playing on TV", "info"]]);
+  assert.equal(cast.useCast.getState().connecting, null);
+  assert.equal(usePlayer.getState().buffering, false);
+  report({ trackId: "local:a", state: "playing", position: 2 });
+  assert.equal(globalThis.__toasts.length, 1, "once");
+});
+
+test("a song handed over that never starts: why, as far as it can be told, and the music comes back here, paused", async () => {
+  usePlayer.getState().playQueue([song("local:a"), song("local:b")], 0);
+  await cast.castTo(TV);
+  now += 60_000;
+  report({ trackId: "local:a", state: "stopped", fetched: false, members: [{ id: TV.id, name: "TV", volume: 0.3, muted: false }], notStarted: { id: TV.id, name: "TV" } });
+  await flush();
   assert.equal(usePlayer.getState().playing, false);
-  assert.deepEqual(globalThis.__toasts.at(-1), ["TV can't reach this computer — let Songsta through the firewall for private networks", "error"]);
+  assert.equal(cast.useCast.getState().active, null);
+  assert.equal(cast.useCast.getState().connecting, null);
+  assert.deepEqual(globalThis.__toasts.at(-1), ["TV didn't start. It may be off, or a firewall keeps it from this computer: let Songsta through for private networks. The music is back here, paused", "error"]);
+  assert.ok(globalThis.__audio.some((a) => a[0] === "takeBack"));
+
   // Fetched but not started: most likely the file type.
-  usePlayer.getState().next(true);
+  usePlayer.getState().setPlaying(true);
+  await cast.castTo(TV);
+  report({ trackId: "local:a", state: "stopped", fetched: true, members: [{ id: TV.id, name: "TV", volume: 0.3, muted: false }], notStarted: { id: TV.id, name: "TV" } });
   await flush();
-  now += 13_000;
-  report({ trackId: "local:b", state: "stopped", fetched: true });
-  assert.match(globalThis.__toasts.at(-1)[0], /TV doesn't start "LOCAL:B" — it may not play this kind of file/);
-  // Once it plays, no more of that.
-  const toasts = globalThis.__toasts.length;
-  usePlayer.getState().toggle();
+  assert.match(globalThis.__toasts.at(-1)[0], /TV fetched "LOCAL:A" but didn't start it/);
+  assert.equal(cast.useCast.getState().active, null);
+});
+
+test("one of a group that never starts just goes; the first one leaving hands the group to the next", async () => {
+  const HALL = { id: "uuid:hall", name: "Hall", volume: 0.5, muted: false };
+  const tv = { id: TV.id, name: "TV", volume: 0.3, muted: false };
+  await connected();
+  report({ trackId: "local:a", members: [tv, HALL], position: 3 });
+  report({ trackId: "local:a", members: [tv], position: 4, notStarted: { id: HALL.id, name: "Hall" } });
   await flush();
-  now += 2000;
-  report({ trackId: "local:b", state: "playing", position: 1 });
-  now += 20_000;
-  report({ trackId: "local:b", state: "playing", position: 21 });
-  assert.equal(globalThis.__toasts.length, toasts);
+  assert.deepEqual(globalThis.__toasts.at(-1), ["Hall didn't start. Is it switched on?", "error"]);
+  assert.deepEqual(cast.useCast.getState().active, { id: TV.id, name: "TV" });
+
+  report({ trackId: "local:a", members: [tv, HALL], position: 5 });
+  report({ device: { id: HALL.id, name: "Hall" }, trackId: "local:a", members: [HALL], position: 6 });
+  assert.deepEqual(cast.useCast.getState().active, { id: HALL.id, name: "Hall" }, "the song's end and the rest are heard from that one now");
+  assert.equal(usePlayer.getState().position, 6);
+  // Anybody else is from before.
+  report({ device: { id: "uuid:old", name: "Old" }, trackId: "local:a", position: 90 });
+  assert.equal(usePlayer.getState().position, 6);
 });
 
 test("the end of the queue: nothing is sent to the stopped player", async () => {

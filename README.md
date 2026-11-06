@@ -82,6 +82,7 @@ All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/rel
 - Crossfade, Automix, skip silence, playback speed, and a volume slider that is actually quiet at the bottom.
 - **Sound analysis:** tempo, key and energy of every local song, measured once in the background with FFmpeg. They show in the song's details, Automix times its fades to the beat with them, and they make the *Calm* and *Upbeat* mixes.
 - **Seamless albums:** live albums, DJ mixes and songs that run into each other play on without a gap or a crossfade.
+- **Repeat one ends when you skip:** go to another song and the whole list repeats from there, instead of the new song over and over. A switch in Settings turns that off.
 
 ### Your music, arranged like a streaming app
 
@@ -90,6 +91,7 @@ All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/rel
 - **Home**, built only from your library: quick-access tiles, *Made for you* mixes (On Repeat, Rediscover, what you usually play at this time of day, Calm and Upbeat, one per big genre and decade, reshuffled daily), recently added albums, your top artists and recently played songs.
 - **Album and artist pages** with play and shuffle, popular songs ranked by your own plays, the artist's songs you've liked, albums, singles & EPs, "appears on" and the Wikipedia bio.
 - **Discography tab:** every release with its songs, newest first.
+- **Playlists** can have a picture of their own, chosen on the computer or the phone, and it goes with them to your other devices.
 - **Smart playlists** that fill themselves from rules — genre, artist, year, date added, plays, last played, length, format, sample rate, bit depth, source, liked — with an order and an optional limit.
 - **The library panel** puts what you played last on top. Pinned playlists and albums stay above it, in the order you drag them into; the panel folds down to an icon rail (<kbd>Ctrl</kbd>+<kbd>B</kbd>).
 - **The right panel** shows the playing song — its title opens the album, its artists their pages — what plays next (drag songs in), the song's story and credits from Genius with its tempo and key, and the artist.
@@ -98,10 +100,11 @@ All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/rel
 
 ### Fix albums without touching your files
 
-![The album editor: the album's artists as chips, and a split "Bonus Tracks" album offered for merging](docs/screenshots/local/album-editor.jpg)
+![The album editor: the album's name and picture, its artists as chips, and a split "Bonus Tracks" album offered for merging](docs/screenshots/local/album-editor.jpg)
 
 Tags aren't always right. The album editor — the pencil on an album page, or right-click an album in the library panel — lets you
 
+- **give an album another name or picture**, on this computer, with your files staying as they are,
 - **add or remove artists** on an album, with one click back to what the tags say, and
 - **merge albums** that show up as several (a "Disc 2", bonus tracks, one song with a different album artist), and separate them again.
 
@@ -149,7 +152,7 @@ Coming from Spotify? Export your Liked Songs with [Exportify](https://github.com
 
 The import and your decisions are kept until you start over, so they survive restarts.
 
-**Playlists** come over the same way: **+ → Recover a Spotify playlist** in the library panel, or the button in an empty playlist. Use the playlist's CSV from Exportify, or `Playlist1.json` from the data download — it holds all your playlists, and you pick one. The songs you have go into a Songsta playlist in Spotify's order, and your *Same song* / *Different* answers carry over.
+**Playlists** come over the same way: **+ → Recover a Spotify playlist** in the library panel, or the button in an empty playlist. Use the playlist's CSV from Exportify, or `Playlist1.json` from the data download — it holds all your playlists, and you pick one. The songs you have go into a Songsta playlist in Spotify's order, and your *Same song* / *Different* answers carry over. The playlist remembers the rest: a song you buy or add later joins it by itself, in its place, and one you took out by hand stays out.
 
 ## Discord status (optional)
 
@@ -192,6 +195,7 @@ There is one stream, like Spotify Connect: a device that isn't playing shows wha
 The speaker button next to the volume on the computer, and in the mini player or the player on the phone, opens a small smart-home room for everything that can make sound:
 
 - **One press moves the music:** to this device and its outputs (Bluetooth speakers, headphones), to your other computers and phones with Songsta on them, or to anything on your network that plays by itself: receivers and network speakers over UPnP/DLNA, Chromecast, Google TV and Nest speakers over Cast. It goes on from the same place in the song.
+- **A receiver still asleep is waited for:** the music counts as moved once the device really plays. Until then its tile says it's waiting, and a device that forgets the song on its way out of standby gets it again, from the same place. After a minute without a start you're told, and the music is back where it was, paused.
 - **Several at once:** the plus lets another device play along, each with its own volume. Or hold a tile on the phone, right-click one on the computer, and choose as many as you like; on the phone this device can be one of them.
 - **Different music per device:** a device's menu lets you choose music for it, on the phone right there from your playlists, albums and songs, and a song's own menu has *Play on*. It gets its own queue and controls, while your own music goes on. On the phone it keeps running with the screen off, with a notification to steer it.
 - **Rename** anything. On the phone a device that doesn't announce itself can be added by its address.

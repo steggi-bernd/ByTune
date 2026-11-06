@@ -23,7 +23,7 @@ import type { Track } from "../types";
 
 /** A song as it is on any device: no covers or paths, those belong to one machine. */
 export type WireTrack = Pick<Track, "id" | "title" | "artist" | "duration"> &
-  Partial<Pick<Track, "album" | "albumId" | "albumArtist" | "source" | "year" | "trackNo" | "discNo" | "genre">>;
+  Partial<Pick<Track, "album" | "albumId" | "albumArtist" | "source" | "year" | "trackNo" | "discNo" | "genre" | "albumTag">>;
 
 export interface WirePlaylist {
   id: string;
@@ -34,6 +34,8 @@ export interface WirePlaylist {
   folderId?: string;
   artistId?: string;
   artistThumb?: string;
+  /** the picture chosen for it, as a small data: image, so it goes where the playlist goes */
+  cover?: string;
 }
 
 export interface WireFolder {
@@ -50,11 +52,20 @@ export interface PlaylistDoc {
 
 const TRACK_FIELDS = ["album", "albumId", "albumArtist", "source", "year", "trackNo", "discNo", "genre"] as const;
 
+/** A name given to an album stays on the computer it was given on: songs travel with what their tags say. */
 export function toWireTrack(t: WireTrack): WireTrack {
   const wire: WireTrack = { id: t.id, title: t.title, artist: t.artist, duration: t.duration };
   for (const field of TRACK_FIELDS) if (t[field] !== undefined) (wire as any)[field] = t[field];
+  if (t.albumTag !== undefined) wire.album = t.albumTag;
   return wire;
 }
+
+/** Roughly 200 KB of JPEG once written out; anything larger isn't one of ours. */
+const MAX_COVER_CHARS = 400_000;
+
+/** A playlist's picture from another device or a backup, if it is one. */
+export const safeCover = (cover: unknown): string | undefined =>
+  typeof cover === "string" && cover.length <= MAX_COVER_CHARS && /^data:image\/(jpeg|png|webp);base64,/.test(cover) ? cover : undefined;
 
 const object = (value: unknown): Record<string, any> =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : {};
@@ -73,8 +84,9 @@ export function toPlaylistDoc(state: unknown): PlaylistDoc {
   const meta = readDeletionSync(s.deletionSync);
   return {
     playlists: records(s.playlists).map((p) => {
-      const { tracks, ...rest } = p;
-      return { name: "", createdAt: 0, ...rest, tracks: records(tracks).map((t) => toWireTrack(t as WireTrack)) } as WirePlaylist;
+      const { tracks, cover, ...rest } = p;
+      const picture = safeCover(cover);
+      return { name: "", createdAt: 0, ...rest, ...(picture ? { cover: picture } : {}), tracks: records(tracks).map((t) => toWireTrack(t as WireTrack)) } as WirePlaylist;
     }),
     folders: records(s.folders) as WireFolder[],
     deletionSync: { ...meta, adds: onlySynced(meta.adds), deletes: onlySynced(meta.deletes), edits: onlySynced(meta.edits), clears: {} },

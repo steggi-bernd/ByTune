@@ -113,6 +113,8 @@ declare class Media3PlayerModule extends NativeModule<Events> {
   zonesWatch(ticking: boolean, keepAwake: boolean, title: string, text: string, playing: boolean, volume: number): Promise<void>;
   /** Android's folder picker; null when somebody changed their mind. */
   pickFolder(): Promise<{ uri: string; name: string } | null>;
+  /** Android's own picker; the chosen picture as a small data: address, or null. */
+  pickImage(): Promise<string | null>;
   localScan(folder: string, known: Record<string, number>): Promise<LocalFileInfo[]>;
   localForget(folder: string): Promise<void>;
   readText(uri: string): Promise<string | null>;

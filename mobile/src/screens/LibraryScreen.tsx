@@ -29,7 +29,7 @@ type Row =
   | { kind: "liked"; key: string; count: number }
   | { kind: "downloads"; key: string; line: string }
   | { kind: "local"; key: string; line: string }
-  | { kind: "playlist"; key: string; title: string; subtitle: string; tracks: Track[]; lastAt: number }
+  | { kind: "playlist"; key: string; title: string; subtitle: string; tracks: Track[]; lastAt: number; cover?: string }
   | { kind: "mix"; key: string; id: string; title: string; subtitle: string; tracks: Track[]; lastAt: number }
   | { kind: "album"; key: string; album: LibAlbum; lastAt: number }
   | { kind: "artist"; key: string; name: string; thumb: string; lastAt: number };
@@ -105,6 +105,7 @@ export function LibraryScreen() {
           title: p.name,
           subtitle: T("Playlist · {count}", { count: plural(tracks.length, T("song"), T("songs")) }),
           tracks,
+          cover: p.cover,
           // A new one stands on top, as what somebody just did.
           lastAt: Math.max(p.createdAt, lastOf(tracks)),
         });
@@ -204,7 +205,7 @@ export function LibraryScreen() {
         return pulled(
           item,
           <Pressable style={styles.row} onLongPress={() => hold(item)} onPress={() => nav.navigate("Collection", { kind: "playlist", id: item.key })}>
-            <CoverGrid tracks={item.tracks} size={56} />
+            <CoverGrid tracks={item.tracks} size={56} cover={item.cover} />
             <View style={styles.rowText}>
               <Text numberOfLines={1} style={styles.rowTitle}>
                 {item.title}

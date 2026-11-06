@@ -22,9 +22,8 @@
  * motion) is untouched.
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronDown, Heart, Music2, Shuffle, Sparkles } from "lucide-react";
+import { ChevronDown, Heart, Music2 } from "lucide-react";
 import { PlayerBar } from "./PlayerBar";
-import { MilkdropVisualizer, type MilkdropHandle } from "./MilkdropVisualizer";
 import { QueuePanel } from "./RightRail";
 import { LyricsView } from "./SyncedLyrics";
 import { requestLyrics } from "./LyricsCenter";
@@ -36,7 +35,6 @@ import { useArtworkPalette, type ArtworkPalette } from "../lib/palette";
 import { upgradeArtwork } from "../lib/artwork";
 import { useDrag } from "../lib/dnd";
 import { useCanvas } from "../lib/canvas";
-import { requestLyricsAlignment, useLyricsAlign } from "../lib/lyricsOffset";
 import type { LyricsResult } from "../types";
 import { T } from "../lib/i18n";
 
@@ -283,9 +281,6 @@ export function NowPlaying() {
   const boost = useSettings((st) => st.fullBleedArtwork);
   const legacyMesh = useSettings((st) => st.legacyMeshGradient);
   const animatedCanvas = useSettings((st) => st.animatedCanvas);
-  const milkdrop = useSettings((st) => st.milkdrop);
-  const setMilkdrop = useSettings((st) => st.setMilkdrop);
-  const milkdropRef = useRef<MilkdropHandle | null>(null);
   const canvasUrl = useCanvas(track ?? null);
   const canvasVideoRef = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
@@ -298,8 +293,7 @@ export function NowPlaying() {
   const palette: ArtworkPalette = useArtworkPalette(track?.thumb ?? null);
 
   // Lyrics — the same cached lookup the centre-pane lyrics view uses (warmed
-  // by prefetchLyrics the moment a track starts), plus the same audio-anchored
-  // alignment check. No second lyrics pipeline.
+  // by prefetchLyrics the moment a track starts). No second lyrics pipeline.
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   useEffect(() => {
@@ -314,21 +308,11 @@ export function NowPlaying() {
       if (cancelled) return;
       setLyrics(r ?? null);
       setLyricsLoading(false);
-      // Version-mismatch check — the same audio-anchored alignment the
-      // centre lyrics use, so both agree on the timeline.
-      const last = r?.synced?.[r.synced.length - 1];
-      const end = last?.end ?? last?.time ?? 0;
-      if (r?.synced?.length && track.duration) {
-        requestLyricsAlignment(track.id, track.duration, end);
-      }
     });
     return () => {
       cancelled = true;
     };
   }, [track?.id, open]);
-
-  // 0 until the audio-anchored alignment lands, then lyrics re-sync to it.
-  const lyricsOffset = useLyricsAlign((s) => s.offsets[track?.id ?? ""] ?? 0);
 
   const [mode, setMode] = useState<"lyrics" | "queue">("lyrics");
 
@@ -387,13 +371,6 @@ export function NowPlaying() {
       }`}
     >
       <FsBackdrop artwork={track?.thumb ?? null} boost={boost} legacy={legacyMesh} />
-      {milkdrop && (
-        <>
-          <MilkdropVisualizer ref={milkdropRef} className="absolute inset-0 w-full h-full" />
-          {/* A dark veil over the visuals keeps the cover, title and lyrics readable. */}
-          <div aria-hidden className="absolute inset-0 bg-black/35 pointer-events-none" />
-        </>
-      )}
 
       <div className="relative h-full flex flex-col">
         {/* Fullscreen entry hint — Spotify's "To exit full screen, press Esc".
@@ -421,30 +398,6 @@ export function NowPlaying() {
           >
             <ChevronDown className="w-5 h-5" />
           </button>
-          <div className="relative z-10 ml-auto flex items-center gap-1">
-            {milkdrop && (
-              <button
-                onClick={() => milkdropRef.current?.next()}
-                title={T("Next visual")}
-                aria-label={T("Next visual")}
-                className="p-2 rounded-full text-white/75 hover:text-white hover:bg-white/[0.08] transition-colors"
-              >
-                <Shuffle className="w-5 h-5" />
-              </button>
-            )}
-            <button
-              onClick={() => setMilkdrop(!milkdrop)}
-              role="switch"
-              aria-checked={milkdrop}
-              title={milkdrop ? T("Hide the Milkdrop visuals") : T("Milkdrop visuals behind the music")}
-              aria-label={T("Milkdrop visualizer")}
-              className={`p-2 rounded-full transition-colors ${
-                milkdrop ? "text-white bg-white/[0.14]" : "text-white/75 hover:text-white hover:bg-white/[0.08]"
-              }`}
-            >
-              <Sparkles className="w-5 h-5" />
-            </button>
-          </div>
         </div>
 
         {!track ? (
@@ -569,7 +522,6 @@ export function NowPlaying() {
                       loading={lyricsLoading}
                       hero
                       anchor={lyricsAnchor}
-                      offset={lyricsOffset}
                     />
                   </div>
                 ) : (

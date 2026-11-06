@@ -24,6 +24,7 @@ import { fetchLyrics as fetchSubsonicLyrics, readLibrary as readSubsonicLibrary 
 import { localTrackById, readLocalLibrary } from "./local-library";
 import { fetchLyrics as fetchProviderLyrics, isPlaceholderFetched, lyricsFromText, type FetchedLyrics } from "./lyrics";
 import { keepLyricsIndexOf, linesOf, lyricsIndexEntry, noteLyrics, saveLyricsIndex, setLyricsIndexEntry } from "./lyrics-index";
+import { unfoldStamps } from "../src/lib/lrc";
 
 export interface LyricsRequest {
   id: string;
@@ -99,6 +100,8 @@ async function readCached(id: string): Promise<FetchedLyrics | null> {
       await fs.promises.rm(file, { force: true });
       return null;
     }
+    // Kept before a line's further stamps were read.
+    if (lyrics?.synced) lyrics.synced = unfoldStamps(lyrics.synced, (l) => l.time * 1000, (at, text, from) => ({ ...from, time: at / 1000, text }));
     return lyrics;
   } catch {
     return null;

@@ -27,7 +27,7 @@ function sized(uri: string, size: number): string {
 }
 
 /** Where to load a picture from now, remembered by what it is: seen at home it's there on the road too. */
-export const picture = (uri: string): { uri: string; cacheKey: string } => ({ uri: here(uri), cacheKey: withoutServer(uri) });
+export const picture = (uri: string): { uri: string; cacheKey?: string } => (uri.startsWith("data:") ? { uri } : { uri: here(uri), cacheKey: withoutServer(uri) });
 
 /** A cover or photo; `fallback` stands in when the server has no such picture. */
 export function Cover({
@@ -103,7 +103,8 @@ export function CoverKeeper() {
 }
 
 /** Four covers of a mix or playlist, or the one it has. */
-export function CoverGrid({ tracks, size, radius = 4 }: { tracks: Track[]; size: number; radius?: number }) {
+export function CoverGrid({ tracks, size, radius = 4, cover }: { tracks: Track[]; size: number; radius?: number; cover?: string }) {
+  if (cover) return <Cover uri={cover} size={size} radius={radius} />;
   const covers: string[] = [];
   for (const t of tracks) {
     if (t.thumb && !covers.includes(t.thumb)) covers.push(t.thumb);

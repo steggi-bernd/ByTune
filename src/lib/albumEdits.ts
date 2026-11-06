@@ -11,12 +11,13 @@
  *    as "Beyoncé") wherever they are credited (the library check)
  *  - songs: songs whose tags name no album, put on one by hand
  *    (views/LooseSongsView.tsx)
+ *  - titles, covers: an album's name and picture as the user wants them
  *
  * Pure, so the grouping rules are testable on their own.
  */
 import type { Track } from "../types";
 import { foldTag } from "./duplicates";
-import { albumKeyOf, albumRoute, artistRoute, leadArtist, splitCredits } from "./libraryTracks";
+import { albumKeyOf, albumRoute, artistRoute, leadArtist, parseRoute, splitCredits } from "./libraryTracks";
 
 export interface AlbumEdits {
   /** album key → artist credit line ("A, B") */
@@ -27,6 +28,10 @@ export interface AlbumEdits {
   aliases: Record<string, string>;
   /** a song put on an album by hand → what it carries, under every id of the song */
   songs: Record<string, SongEdit>;
+  /** album key → the name it's shown under */
+  titles: Record<string, string>;
+  /** album key → its picture, a file kept on this computer (localart://) */
+  covers: Record<string, string>;
 }
 
 /** What a song put on an album by hand carries, as if tagged. */
@@ -129,6 +134,27 @@ export function withSplit(mergedInto: Record<string, string>, from: string): Rec
   const next = { ...mergedInto };
   delete next[from];
   return next;
+}
+
+/**
+ * Songs of an album shown under another name or with another picture carry it,
+ * so every list says the same. The album stays the one it was: its page link
+ * keeps its key, and `albumTag` keeps the name its other edits go by.
+ */
+export function applyAlbumLooks(tracks: Track[], titles: Record<string, string>, covers: Record<string, string>): Track[] {
+  if (!Object.keys(titles).length && !Object.keys(covers).length) return tracks;
+  return tracks.map((t) => {
+    const key = (t.albumId ? parseRoute(t.albumId, "album") : null) ?? albumKeyOf(t);
+    if (!key) return t;
+    const title = titles[key];
+    const cover = covers[key];
+    if (!title && !cover) return t;
+    return {
+      ...t,
+      ...(title ? { album: title, albumTag: t.albumTag ?? t.album, albumId: albumRoute(key) } : {}),
+      ...(cover ? { thumb: cover } : {}),
+    };
+  });
 }
 
 /** Songs of merged albums point at the album they're shown in (their album page link follows). */

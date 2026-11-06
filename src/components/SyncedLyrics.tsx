@@ -11,8 +11,9 @@
  * word sweep, so the active word-synced line advances off its own rAF loop
  * reading the live element clock.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPlaybackPosition } from "../lib/audio";
+import { sungLines } from "../lib/lrc";
 import { LYRICS_LOADING_LINES, pickLyricsLine } from "../lib/lyricsPhrases";
 import { hasCyrillic, toLatin } from "../lib/transliterate";
 import { usePlayer } from "../stores/player";
@@ -37,6 +38,9 @@ interface LyricsViewProps {
 }
 
 type LyricsVariant = "compact" | "large" | "hero";
+
+/** After someone scrolled the lines themselves, how long the list stays where they put it. */
+const READING_MS = 5000;
 
 /** The Latin reading under a Cyrillic line: same font, a size down, dimmed. */
 function latinSizeClass(variant: LyricsVariant): string {
@@ -98,13 +102,11 @@ function WordLine({
   spans,
   variant,
   glow,
-  offset,
 }: {
   words: SyncedLyricWord[];
   spans: Array<{ start: number; end: number }>;
   variant: LyricsVariant;
   glow: boolean;
-  offset: number;
 }) {
   const playing = usePlayer((st) => st.playing);
   const [, force] = useState(0);
@@ -120,7 +122,7 @@ function WordLine({
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
   }, [playing]);
-  const pos = getPlaybackPosition() - offset;
+  const pos = getPlaybackPosition();
   return (
     <span className={lineSizeClass(variant)}
       style={glow ? { filter: "drop-shadow(0 0 22px rgba(255,255,255,0.28))" } : undefined}
@@ -184,9 +186,8 @@ export function LyricsView({
   large = false,
   hero = false,
   anchor = 0.5,
-  offset = 0,
   trackKey,
-}: LyricsViewProps & { offset?: number }) {
+}: LyricsViewProps) {
   const variant: LyricsVariant = hero ? "hero" : large ? "large" : "compact";
   const position = usePlayer((s) => s.position);
   const seek = usePlayer((s) => s.seek);
@@ -200,7 +201,14 @@ export function LyricsView({
   const blurLines = blurOn && !reduceBlur;
   const glowLines = blurOn && !reduceMotion && !reduceBlur;
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const activeRef = useRef<HTMLButtonElement | null>(null);
+  const activeRef = useRef<HTMLElement | null>(null);
+  const markActive = useCallback((el: HTMLElement | null) => {
+    activeRef.current = el;
+  }, []);
+  const readingUntil = useRef(0);
+  const reading = useCallback(() => {
+    readingUntil.current = performance.now() + READING_MS;
+  }, []);
 
   // BitChord mobile's LyricsLoadingLine: the lookup's stand-in is one of the
   // loading phrases — no spinner — picked once per track and held there.
@@ -208,13 +216,8 @@ export function LyricsView({
 
   const synced = lyrics?.synced ?? null;
 
-  // Providers attach backing-vocal / credit lines wrapped in parentheses at
-  // the head of the song — they render as phantom lyrics before the first
-  // real line, so they're dropped here (gap lines stay).
-  const lines = useMemo(
-    () => synced?.filter((l) => l.gap || (!!l.text && !/^[[(]/.test(l.text.trim()) && l.time > 0)) ?? null,
-    [synced],
-  );
+  // In the song's order, without what nobody sings (lib/lrc.ts).
+  const lines = useMemo(() => (synced ? sungLines(synced, (l) => l.time) : null), [synced]);
 
   // Static text for the plain (unsynced) treatment: the provider's plain
   // lyrics when they exist, otherwise the synced lines' own words joined in
@@ -252,38 +255,44 @@ export function LyricsView({
     >{T("Latin")}</button>
   ) : null;
 
-  // Lyric times live on the matched recording's timeline; the playing upload
-  // may prepend an intro (music videos). offset converts element position →
-  // lyric timeline.
-  const lyricPos = position - offset;
-
   const activeIndex = useMemo(() => {
     if (!lines) return -1;
     let idx = -1;
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].time <= lyricPos + 0.35) idx = i;
+      if (lines[i].time <= position + 0.35) idx = i;
       else break;
     }
     return idx;
-  }, [lines, lyricPos]);
+  }, [lines, position]);
 
   // Keep the active line on its anchor. Runs on lyrics load too — at mount
   // the layout isn't measured yet, so the first attempt needs a frame first.
   // `anchor` is the fraction of the container height where the live line's
   // centre comes to rest: 0.5 = centred (default), the fullscreen player
   // passes the album cover's measured centre so the line sits beside it.
+  // Before the first line the list rests at its top; someone reading ahead
+  // gets a moment before it comes back.
   useEffect(() => {
-    if (activeIndex < 0) return;
-    const raf = window.requestAnimationFrame(() => {
+    const follow = (): void => {
       const container = containerRef.current;
+      if (!container) return;
       const el = activeRef.current;
-      if (!container || !el) return;
+      if (activeIndex < 0 || !el) {
+        if (activeIndex < 0) container.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       const target =
         el.offsetTop + el.clientHeight / 2 - container.clientHeight * anchor;
       container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
-    });
+    };
+    const wait = readingUntil.current - performance.now();
+    if (wait > 0) {
+      const timer = window.setTimeout(follow, wait);
+      return () => window.clearTimeout(timer);
+    }
+    const raf = window.requestAnimationFrame(follow);
     return () => window.cancelAnimationFrame(raf);
-  }, [activeIndex, synced, anchor]);
+  }, [activeIndex, lines, anchor]);
 
   if (loading) {
     // Words, not a spinner — mobile's LyricsLoadingLine, dimmed like an
@@ -357,6 +366,8 @@ export function LyricsView({
         <div
           ref={containerRef}
           className="absolute inset-0 overflow-y-auto scroll-host px-6 py-0"
+          onWheel={reading}
+          onTouchMove={reading}
           style={{
             // Lines melt into the dark at the panel edges instead of stopping hard.
             maskImage: "linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%)",
@@ -374,6 +385,7 @@ export function LyricsView({
               return (
                 <div
                   key={`${line.time}-${i}`}
+                  ref={active ? markActive : undefined}
                   className="flex items-center gap-2 py-2 px-1"
                   title={T("Instrumental")}
                   style={{ opacity: Math.max(0.15, depth.style.opacity as number) }}
@@ -411,14 +423,17 @@ export function LyricsView({
             return (
               <button
                 key={`${line.time}-${i}`}
-                ref={i === activeIndex ? activeRef : undefined}
-                onClick={() => seek(Math.max(0, line.time + offset - 0.15))}
+                ref={active ? markActive : undefined}
+                onClick={() => {
+                  readingUntil.current = 0;
+                  seek(Math.max(0, line.time - 0.15));
+                }}
                 title={T("Jump here")}
                 className={`block w-full text-left origin-left ${depth.className}`}
                 style={depth.style}
               >
                 {wordSynced ? (
-                  <WordLine words={line.words!} spans={spans} variant={variant} glow={glowLines} offset={offset} />
+                  <WordLine words={line.words!} spans={spans} variant={variant} glow={glowLines} />
                 ) : (
                   <span
                     className={lineSizeClass(variant)}

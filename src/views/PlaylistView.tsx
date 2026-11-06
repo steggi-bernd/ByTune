@@ -15,6 +15,7 @@ import { playlistHeaderItems, playlistMenuItems } from "../lib/trackActions";
 import { useDrag } from "../lib/dnd";
 import { fmtTime, plural } from "../lib/format";
 import { useArtworkPalette } from "../lib/palette";
+import { useStillMissing } from "../lib/playlistRecovery";
 import { upgradeArtwork } from "../lib/artwork";
 import { useLibrary, type Playlist } from "../stores/library";
 import { useIsMuted } from "../stores/muted";
@@ -29,10 +30,12 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   const playQueue = usePlayer((s) => s.playQueue);
   const openContextMenu = useUI((s) => s.openContextMenu);
   const toast = useUI((s) => s.toast);
+  const stillMissing = useStillMissing(playlistId);
 
-  // Artist-imported playlists wear the artist's photo, not a song cover —
-  // the page tint and the hero read from that same artwork.
-  const coverThumb = playlist?.artistThumb ?? playlist?.tracks[0]?.thumb ?? null;
+  // The picture chosen for it, else: artist-imported playlists wear the
+  // artist's photo, not a song cover — the page tint and the hero read from
+  // that same artwork.
+  const coverThumb = playlist?.cover ?? playlist?.artistThumb ?? playlist?.tracks[0]?.thumb ?? null;
   useArtworkPalette(coverThumb);
 
   // Dropping songs onto this page is handled panel-wide in App (usePanelDrop).
@@ -72,7 +75,7 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   };
 
   const openHeaderMenu = (x: number, y: number): void => {
-    const [renameItem, deleteItem] = playlistHeaderItems(playlist);
+    const [renameItem, ...moreItems] = playlistHeaderItems(playlist);
     openContextMenu(x, y, [
       {
         label: T("Add all to queue"),
@@ -99,7 +102,7 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
           ]
         : []),
       { ...renameItem, separatorBefore: true },
-      deleteItem,
+      ...moreItems,
     ]);
   };
 
@@ -143,6 +146,17 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
       />
 
       <div className="page-pad pb-12 pt-2">
+        {stillMissing > 0 && (
+          <div className="mb-3 flex items-center gap-3 rounded-xl bg-ink-hi/[0.05] px-4 py-2.5 text-[13px] text-ink-dim">
+            <span className="min-w-0 flex-1">
+              {T("Recovered from Spotify: {count} {value} not in your library yet. They join this playlist in their place as soon as they are.", { count: stillMissing, value: stillMissing === 1 ? T("song") : T("songs") })}
+            </span>
+            <button
+              onClick={() => useUI.getState().navigate({ name: "spotify", param: `playlist:${playlist.id}` })}
+              className="shrink-0 font-semibold text-ink-hi hover:underline"
+            >{T("See which")}</button>
+          </div>
+        )}
         {tracks.length ? (
           <div>
             {tracks.map((track, i) => (

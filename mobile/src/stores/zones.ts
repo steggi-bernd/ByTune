@@ -317,8 +317,10 @@ function driverFor(player: DevicePlayer): ZoneDriver {
       watch.moved(sec);
       await player.seek(sec);
     },
+    starting: () => player.starting(),
     async status() {
       const at = await player.status();
+      if (at.notStarted) return { state: "stopped", position: at.position, duration: at.duration, ended: false, notStarted: true };
       // A report about the song before (players switch over in their own time) says nothing about this one.
       if (playing && at.uri && !at.uri.includes(playing.mark)) return { state: "loading", position: 0, duration: playing.song.duration, ended: false };
       return watch.see(at, playing?.song.duration ?? 0);
@@ -414,7 +416,7 @@ function reportMain(r: Running): void {
     isPlaying: s.state === "playing",
     playWhenReady: s.state === "playing" || s.state === "loading",
     isBuffering: s.state === "loading",
-    isEnded: false,
+    isEnded: !!s.ranOut,
     index: s.index,
     count: s.queue.length,
     positionMs: s.position * 1000,
@@ -441,10 +443,8 @@ function dropEmptyZones(): void {
   for (const r of [...running.values()]) {
     if (r.zone.members.length) continue;
     running.delete(r.id);
-    if (r.main) {
-      if (r.zone.state.error) say(r.zone.state.error);
-      switchOutput(null, false);
-    }
+    if (r.zone.state.error) say(r.zone.state.error);
+    if (r.main) switchOutput(null, false);
   }
 }
 
@@ -479,7 +479,8 @@ function keepAlive(): void {
   const keepAwake = !!song && (on.length > 0 || Date.now() - pausedSince < PAUSED_KEEP_MS);
   const names = lead?.zone.members.map((m) => m.name).join(" + ") ?? "";
   const title = song?.title ?? "Songsta";
-  const text = `${on.length ? T("Playing on") : T("Paused on")} ${names}${on.length > 1 ? T(" ({count} zones)", { count: on.length }) : ""}`;
+  const waking = lead?.zone.state.state === "loading";
+  const text = `${waking ? T("Waiting for") : on.length ? T("Playing on") : T("Paused on")} ${names}${on.length > 1 ? T(" ({count} zones)", { count: on.length }) : ""}`;
   const firstVolume = lead?.zone.members[0]?.volume;
   const volume = typeof firstVolume === "number" ? Math.round(firstVolume * 100) : -1;
   const key = JSON.stringify([all.length > 0, keepAwake, title, text, on.length > 0, volume]);

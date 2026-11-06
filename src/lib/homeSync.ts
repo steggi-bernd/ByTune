@@ -10,7 +10,7 @@
  * second stream, asked for there as well, lets both go their own way.
  */
 import { create } from "zustand";
-import { useCatalog } from "../stores/catalog";
+import { songKey, useCatalog } from "../stores/catalog";
 import { useLibrary, type LibraryFolder, type Playlist } from "../stores/library";
 import { useMuted } from "../stores/muted";
 import { setSteering, usePlayer, type Steering } from "../stores/player";
@@ -18,8 +18,8 @@ import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
 import type { Track } from "../types";
 import { songFinder, toPlaylistDoc, toWireTrack, withSyncedDeletions, type PlaylistDoc, type WireTrack } from "./playlistSync";
-import { lineInList, placeOf } from "./queueSections";
-import { handOverToCast, takeBackFromCast } from "./audio";
+import { jumpTarget, lineInList, listAround, placeOf } from "./queueSections";
+import { followClock, handOverToCast, takeBackFromCast } from "./audio";
 import { useCast } from "./cast";
 import { syncFavorites } from "./serverSync";
 import { createSyncEngine, DEVICE_ONLINE_MS, type DeviceCommand, type DevicePresence, type PlaybackNote, type QueueDoc, type RemoteDevice, type SyncEngine, type SyncStatus } from "./syncEngine";
@@ -36,6 +36,8 @@ const BRANCH_IDS_SENT = 500;
 /** A device that was only paused stays on screen for this long; then this computer is by itself again. */
 const FOLLOW_PAUSED_MS = 5 * 60_000;
 const FOLLOW_TICK_MS = 1000;
+/** Reports arrive when they arrive: less than this from the clock running here is no move, and the words on screen stay put. */
+const FOLLOW_DRIFT_MS = 1500;
 const AT_KEY = "songsta.sync.at";
 const QUEUE_KEY = "songsta.sync.queueId";
 
@@ -66,8 +68,8 @@ export const isAround = (device: RemoteDevice): boolean => device.ageMs < DEVICE
 export const otherDevices = {
   /** This computer's music goes to that device and plays on there. */
   sendTo: async (_id: string): Promise<boolean> => false,
-  /** The music of the device being followed comes here and plays on. */
-  takeHere: (): void => undefined,
+  /** The music of the device being followed comes here and plays on; with `false`, it waits here, say for a speaker to take it. */
+  takeHere: (_play?: boolean): void => undefined,
   /** A word for that device. */
   send: async (_id: string, _command: DeviceCommand): Promise<boolean> => false,
   /** This computer plays its own music from here on; the device being followed goes on with its own. */
@@ -168,29 +170,40 @@ export function watchHomeSync(): () => void {
 
   function inSameSong(note: PlaybackNote): boolean {
     const { queue, index } = usePlayer.getState();
-    return note.queueId === queueId && !!queue[index] && findSong(note.track)?.id === queue[index].id;
+    return note.queueId === queueId && !!queue[index] && songKey(findSong(note.track)?.id ?? "") === songKey(queue[index].id);
   }
 
+  /** Later than the note this computer stands on, whatever the two devices' clocks say: it's what makes it the news. */
+  const newNote = (): number => Math.max(Date.now(), activityAt + 1);
+
   const activity = (): void => {
-    activityAt = ownActivityAt = Date.now();
+    activityAt = newNote();
+    ownActivityAt = Date.now();
     store(AT_KEY, String(activityAt));
     engine?.playbackChanged();
   };
 
   function readPlayback(): { note: PlaybackNote; queue: () => QueueDoc } | null {
-    const { queue, index, position, playing } = usePlayer.getState();
+    const { queue, index, position, playing, shuffle, repeat } = usePlayer.getState();
     const track = queue[index];
-    // What another device plays is that device's to tell.
-    if (!track || !activityAt || followed) return null;
+    // What another device plays is that device's to tell; and where the music just went, that it's paused here is no news that should overwrite its word.
+    if (!track || !activityAt || followed || followNext) return null;
     if (!queueId) queueId = String(activityAt);
     const id = queueId;
     store(AT_KEY, String(activityAt));
     return {
-      note: { device, at: activityAt, playing, positionMs: position * 1000, track: toWireTrack(track), queueId: id, place: index },
+      note: { device, at: activityAt, playing, positionMs: position * 1000, track: toWireTrack(track), queueId: id, place: index, shuffle, repeat },
       queue: () => {
         const from = Math.max(0, index - QUEUE_NOTE_BEHIND);
-        const { lineEnd, branches } = usePlayer.getState();
-        return { id, from, tracks: queue.slice(from, index + QUEUE_NOTE_AHEAD).map(toWireTrack), lineEnd: lineInList(lineEnd, from), branches: branches.map((b) => ({ ...b, ids: b.ids.slice(0, BRANCH_IDS_SENT) })) };
+        const { lineEnd, branches, unshuffled } = usePlayer.getState();
+        return {
+          id,
+          from,
+          tracks: queue.slice(from, index + QUEUE_NOTE_AHEAD).map(toWireTrack),
+          lineEnd: lineInList(lineEnd, from),
+          branches: branches.map((b) => ({ ...b, ids: b.ids.slice(0, BRANCH_IDS_SENT) })),
+          unshuffled: unshuffled ? listAround(unshuffled, track.id, QUEUE_NOTE_BEHIND, QUEUE_NOTE_AHEAD).map(toWireTrack) : undefined,
+        };
       },
     };
   }
@@ -205,18 +218,29 @@ export function watchHomeSync(): () => void {
   }
 
   /** Continues from another device: its queue, its song, its position, paused until somebody presses play. */
-  function adoptPlayback(note: PlaybackNote, queue: QueueDoc | null): void {
-    const current = findSong(note.track);
-    if (!current) return;
+  function adoptPlayback(given: PlaybackNote, queue: QueueDoc | null, handedOver = false): boolean {
+    let note = given;
+    let current = findSong(note.track);
+    if (!current) {
+      if (!handedOver) return true;
+      // Sent here, and not here: the next song of its list that is, from its start.
+      const after = note.place !== undefined && queue?.from !== undefined ? note.place - queue.from + 1 : 0;
+      current = (queue?.tracks ?? []).slice(Math.max(0, after)).map(findSong).find((t): t is Track => !!t);
+      const { title } = note.track;
+      useUI.getState().toast(current ? T("\"{title}\" isn't on this computer, so the next song plays", { title }) : T("\"{title}\" isn't on this computer", { title }), "warning");
+      if (!current) return false;
+      note = { ...note, track: toWireTrack(current), positionMs: 0, place: undefined };
+    }
     adoptedAt = Date.now();
+    const goesOn = { ...(note.shuffle === undefined ? {} : { shuffle: note.shuffle }), ...(note.repeat ? { repeat: note.repeat } : {}) };
     // The same song a little further on: no need to load it again, nor to say so.
     if (inSameSong(note)) {
       applying = true;
       activityAt = note.at;
       store(AT_KEY, String(activityAt));
-      usePlayer.setState({ position: note.positionMs / 1000, seekNonce: usePlayer.getState().seekNonce + 1 });
+      usePlayer.setState({ position: note.positionMs / 1000, seekNonce: usePlayer.getState().seekNonce + 1, ...goesOn });
       applying = false;
-      return;
+      return true;
     }
     const wires = queue?.tracks ?? [];
     const songs = wires.map(findSong);
@@ -226,7 +250,7 @@ export function watchHomeSync(): () => void {
     const newQueue = note.queueId !== queueId;
     // On its way to another song, asked for here: that's where the screen stays.
     const state = usePlayer.getState();
-    const going = steeringTo && Date.now() < steeringTo.until ? placeOf(list, steeringTo.id, state.index) : -1;
+    const going = steeringTo && Date.now() < steeringTo.until ? placeOf(list, songKey(steeringTo.id), state.index, undefined, (t) => songKey(t.id)) : -1;
     // In its list twice: where that device says it stands.
     const said = note.place !== undefined && queue?.from !== undefined ? note.place - queue.from : -1;
     const playingAt = songs[said]?.id === current.id ? songs.slice(0, said).filter(Boolean).length : list.findIndex((t) => t.id === current.id);
@@ -238,7 +262,9 @@ export function watchHomeSync(): () => void {
     usePlayer.setState({
       queue: list,
       index: going >= 0 ? going : playingAt,
-      unshuffled: null,
+      ...goesOn,
+      // Shuffled there: back to the list's own order when shuffle goes off here.
+      unshuffled: whole && note.shuffle && queue?.unshuffled ? queue.unshuffled.map(findSong).filter((t): t is Track => !!t) : null,
       lineEnd: whole ? songs.slice(0, queue?.lineEnd ?? 0).filter(Boolean).length : 0,
       branches: whole ? (queue?.branches ?? []) : [],
       position: going >= 0 ? state.position : note.positionMs / 1000,
@@ -250,6 +276,7 @@ export function watchHomeSync(): () => void {
     applying = false;
     // A new song within a queue this one already follows needs no word; a device being followed shows by itself.
     if (newQueue && !followed) useUI.getState().toast(T("Picked up from {name}", { name: note.device.name }), "info");
+    return true;
   }
 
   /** Songs for the device being followed: right in the command if they fit. */
@@ -270,7 +297,8 @@ export function watchHomeSync(): () => void {
     usePlayer.setState({ index: at, position: 0, duration: song.duration, playing: true, error: null });
     applying = false;
     followed = { ...followed, playing: true, positionMs: 0, heardAt: Date.now(), pausedSince: 0 };
-    void engine?.sendCommand(followed.id, { action: "jump", trackId: song.id, by: at - index });
+    followClock(0, true);
+    void engine?.sendCommand(followed.id, { action: "jump", trackId: song.id, by: at - index, track: toWireTrack(song) });
   }
 
   /** What's asked of the player here while a device is followed: for that device, and shown here at once. */
@@ -285,6 +313,7 @@ export function watchHomeSync(): () => void {
       // The list itself comes back with that device's next word, in the order it plays.
       queueId = "";
       followed = { ...followed, playing: true, positionMs: 0, heardAt: Date.now() };
+      followClock(0, true);
       void engine?.sendList(followed.id, tracks.slice(0, QUEUE_NOTE_AHEAD).map(toWireTrack), undefined, { action: "playList", start, keepOrder, shuffle: usePlayer.getState().shuffle });
     },
     upcoming(tracks) {
@@ -332,30 +361,39 @@ export function watchHomeSync(): () => void {
     if (applying || !followed) return;
     const cur = state.queue[state.index];
     const before = prev.queue[prev.index];
-    if (cur && cur.id !== before?.id) void engine?.sendCommand(followed.id, { action: "jump", trackId: cur.id });
+    if (cur && cur.id !== before?.id) void engine?.sendCommand(followed.id, { action: "jump", trackId: cur.id, track: toWireTrack(cur) });
     else if (state.seekNonce !== prev.seekNonce) {
       heldUntil = Date.now() + STEER_HOLD_MS;
       followed = { ...followed, positionMs: state.position * 1000, heardAt: Date.now() };
+      followClock(state.position, followed.playing);
       void engine?.sendCommand(followed.id, { action: "seek", positionMs: state.position * 1000 });
     }
     if (state.playing !== prev.playing) {
       heldUntil = Date.now() + STEER_HOLD_MS;
       followed = { ...followed, playing: state.playing, positionMs: state.position * 1000, heardAt: Date.now() };
+      followClock(state.position, state.playing);
       void engine?.sendCommand(followed.id, { action: state.playing ? "play" : "pause" });
     }
   }
 
+  /** Where the device being followed stands by now: the seek bar and the words on screen go by this. */
   function tickFollow(): void {
-    if (!followed?.playing) return;
+    if (!followed) return;
     const { duration } = usePlayer.getState();
-    const running = (followed.positionMs + (Date.now() - followed.heardAt)) / 1000;
-    usePlayer.getState()._setTime(duration > 0 ? Math.min(duration, running) : running);
+    const running = (followed.positionMs + (followed.playing ? Date.now() - followed.heardAt : 0)) / 1000;
+    const at = duration > 0 ? Math.min(duration, running) : running;
+    followClock(at, followed.playing);
+    if (!followed.playing) return;
+    applying = true;
+    usePlayer.getState()._setTime(at);
+    applying = false;
   }
 
   /** This computer is by itself again, from the place the other device had reached. */
   function stopFollowing(play: boolean): void {
     if (!followed) return;
     followed = null;
+    followNext = null;
     setSteering(null);
     if (followTimer !== null) window.clearInterval(followTimer);
     followTimer = null;
@@ -377,22 +415,31 @@ export function watchHomeSync(): () => void {
       handOverToCast(steer);
       setSteering(steering);
       followTimer = window.setInterval(tickFollow, FOLLOW_TICK_MS);
+      // Not playing any more: the others shouldn't go by what it said before.
+      engine?.presenceChanged();
     }
     const song = findSong(p.track) ?? ({ thumb: "", ...p.track } as Track);
+    // That device can have a song as another copy than the list here: the same song is the same song.
+    const isIt = (t: Track | { id: string } | null | undefined): boolean => !!t && songKey(t.id) === songKey(song.id);
     // What it says from before it got to what was asked of it doesn't move the screen back.
-    const waiting = !!steeringTo && Date.now() < steeringTo.until && song.id !== steeringTo.id;
+    const waiting = !!steeringTo && Date.now() < steeringTo.until && !isIt(steeringTo);
     if (!waiting) steeringTo = null;
     const held = !!followed && (waiting || Date.now() < heldUntil);
     const positionMs = p.positionMs + (p.playing ? other.ageMs : 0);
     const pausedSince = p.playing ? 0 : followed?.pausedSince || Date.now();
-    followed = held && followed ? { ...followed, id: other.id, name: p.name, kind: p.kind } : { id: other.id, name: p.name, kind: p.kind, playing: p.playing, positionMs, heardAt: Date.now(), pausedSince };
+    const { queue, index } = usePlayer.getState();
+    const runningMs = followed?.playing && p.playing && isIt(queue[index]) ? followed.positionMs + (Date.now() - followed.heardAt) : null;
+    const close = runningMs !== null && Math.abs(runningMs - positionMs) < FOLLOW_DRIFT_MS;
+    followed =
+      followed && (held || close)
+        ? { ...followed, id: other.id, name: p.name, kind: p.kind, pausedSince: held ? followed.pausedSince : pausedSince }
+        : { id: other.id, name: p.name, kind: p.kind, playing: p.playing, positionMs, heardAt: Date.now(), pausedSince };
     if (useHomeSync.getState().followed?.id !== other.id || useHomeSync.getState().followed?.name !== p.name) {
       useHomeSync.setState({ followed: { id: other.id, name: p.name, kind: p.kind } });
     }
-    const { queue, index } = usePlayer.getState();
     applying = true;
-    if (!waiting && queue[index]?.id !== song.id) {
-      const at = placeOf(queue, song.id, index);
+    if (!waiting && !isIt(queue[index])) {
+      const at = placeOf(queue, songKey(song.id), index, undefined, (t) => songKey(t.id));
       if (at >= 0 && p.queueId === queueId) usePlayer.setState({ index: at });
       else {
         // The queue itself comes with the look below.
@@ -400,16 +447,21 @@ export function watchHomeSync(): () => void {
         queueId = "";
         void engine?.checkPlayback();
       }
+    } else if (!waiting && p.queueId && p.queueId !== queueId) {
+      // The same song, in a list that isn't the one here.
+      void engine?.checkPlayback();
     }
     const { shuffle, repeat } = usePlayer.getState();
     usePlayer.setState({
-      ...(held ? {} : { playing: p.playing, position: positionMs / 1000, duration: p.durationMs / 1000 }),
+      // A song only just starting there doesn't know its length yet.
+      ...(held ? {} : { playing: p.playing, ...(close ? {} : { position: positionMs / 1000 }), duration: p.durationMs > 0 ? p.durationMs / 1000 : song.duration }),
       error: null,
       shuffle: p.shuffle ?? shuffle,
       repeat: p.repeat ?? repeat,
       ...(Date.now() > volumeHeldUntil ? { remoteVolume: p.volume ?? null } : {}),
     });
     applying = false;
+    tickFollow();
   }
 
   /** The other devices said something: who, if anybody, this computer shows. */
@@ -447,11 +499,16 @@ export function watchHomeSync(): () => void {
       // The music started on another device: there is one stream, and it's there now.
       if (useHomeSync.getState().secondStream) return;
       followNext = command.to;
-      usePlayer.getState().setPlaying(false);
+      // Showing a device already, a pause here would go there: the very music that just started.
+      if (!followed) usePlayer.getState().setPlaying(false);
       return;
     }
-    // Asked to play here: whatever this computer was showing, it's this computer's music now.
-    if (followed) stopFollowing(false);
+    if (followed) {
+      // Anything else is for a device that plays, and this one doesn't any more: it's from before the music moved on.
+      if (command.action !== "takeOver" && command.action !== "playList") return;
+      // Asked to play here: whatever this computer was showing, it's this computer's music now.
+      stopFollowing(false);
+    }
     const player = usePlayer.getState();
     switch (command.action) {
       case "takeOver":
@@ -503,7 +560,9 @@ export function watchHomeSync(): () => void {
         player.seek(command.positionMs / 1000);
         break;
       case "jump": {
-        const at = placeOf(player.queue, command.trackId, player.index, command.by);
+        // By the song, whichever copy of it that device has in its list.
+        const id = (command.track && findSong(command.track)?.id) ?? command.trackId;
+        const at = jumpTarget(player.queue, songKey(id), player.index, command.by, (t) => songKey(t.id));
         if (at >= 0) player.jumpTo(at);
         break;
       }
@@ -575,12 +634,12 @@ export function watchHomeSync(): () => void {
       }
       return sent;
     };
-    otherDevices.takeHere = () => {
+    otherDevices.takeHere = (play = true) => {
       if (!followed) return;
       // The pause is for a device that doesn't know the second word yet.
       void engine?.sendCommand(followed.id, { action: "pause" });
       void engine?.sendCommand(followed.id, { action: "yield", to: device.id });
-      stopFollowing(true);
+      stopFollowing(play);
     };
     otherDevices.startSecondStream = () => {
       if (!followed) return;
@@ -615,6 +674,7 @@ export function watchHomeSync(): () => void {
     if (applying || !playerRead) return;
     // Started here, not following anybody: there's one stream, and it's here now.
     if (s.playing && !prev.playing && !followed && !useHomeSync.getState().secondStream) {
+      followNext = null;
       for (const other of useHomeSync.getState().others.filter(isAround)) {
         if (other.presence.playing && !other.presence.separate) void engine?.sendCommand(other.id, { action: "yield", to: device.id });
       }
@@ -630,7 +690,8 @@ export function watchHomeSync(): () => void {
     } else if (s.playing !== prev.playing || s.index !== prev.index || s.seekNonce !== prev.seekNonce) {
       activity();
     } else if (s.playing && s.position !== prev.position) {
-      activityAt = ownActivityAt = Date.now();
+      activityAt = newNote();
+      ownActivityAt = Date.now();
       engine?.playbackChanged(true);
     }
   });

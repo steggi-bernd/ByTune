@@ -252,7 +252,18 @@ export function SpotifyImportView({ param }: { param?: string }) {
   const dated = playlistMode ? false : imp.dated;
   const error = playlistMode ? imp.playlistError : imp.error;
   const load = (file: File): Promise<void> => (playlistMode ? imp.loadPlaylist(file, into) : imp.load(file));
-  const reset = playlistMode ? imp.resetPlaylist : imp.reset;
+  const reset = playlistMode
+    ? (): void => {
+        const id = imp.playlist?.playlistId;
+        imp.resetPlaylist();
+        if (id) imp.forgetRecovered(id);
+      }
+    : imp.reset;
+  // Coming from a recovered playlist's page: what it remembers.
+  useEffect(() => {
+    if (into && imp.recovered[into] && imp.playlist?.playlistId !== into) imp.openRecovered(into);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [into]);
   const playlists = useLibrary((s) => s.playlists);
   const target = playlistMode ? (playlists.find((p) => p.id === (recovering?.playlistId ?? into)) ?? null) : null;
   const tracks = useCatalog((s) => s.tracks);
@@ -322,6 +333,13 @@ export function SpotifyImportView({ param }: { param?: string }) {
     }
     const before = new Set(playlist.tracks.map((t) => songKey(t.id)));
     lib.setPlaylistTracks(playlist.id, mergeImportedPlaylist(playlist.tracks, order, songKey));
+    // From here on it finishes itself (lib/playlistRecovery.ts).
+    imp.rememberRecovered(playlist.id, {
+      name: recovering.name,
+      fileName: recovering.fileName,
+      entries: recovering.entries,
+      added: rows.filter((r) => r.kind === "match").map((r) => entryKey(r.entry)),
+    });
     const added = order.filter((t) => !before.has(songKey(t.id))).length;
     const name = lib.getPlaylist(playlist.id)?.name ?? recovering.name;
     toast(
@@ -381,7 +399,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
           {playlistMode ? T("Recover a Spotify playlist") : T("Import from Spotify")}
         </h1>
         <p className="text-[14px] text-ink-dim mt-2 max-w-[760px]">
-          {playlistMode ? T("Bring a Spotify playlist over: see which of its songs you already have, put them in {value} in Spotify's order, and keep a list of the ones you still want to buy. Come back after buying songs and add again.", { value: target ? `“${target.name}”` : T("a playlist") }) : T("Bring your Spotify Liked Songs over: see which songs you already have, add them to your Liked Songs in Spotify's order, and keep a list of the ones you still want to buy. The import stays here until you start over, so you can come back after buying songs and add again.")}
+          {playlistMode ? T("Bring a Spotify playlist over: see which of its songs you already have, put them in {value} in Spotify's order, and keep a list of the ones you still want to buy. Songs you get later join the playlist by themselves.", { value: target ? `“${target.name}”` : T("a playlist") }) : T("Bring your Spotify Liked Songs over: see which songs you already have, add them to your Liked Songs in Spotify's order, and keep a list of the ones you still want to buy. The import stays here until you start over, so you can come back after buying songs and add again.")}
         </p>
       </header>
 
@@ -418,7 +436,7 @@ export function SpotifyImportView({ param }: { param?: string }) {
               <Btn variant="white" icon={ListPlus} onClick={addToPlaylist} disabled={!toLike.length}>
                 {target ? T("Add {count} to “{name}”", { count: toLike.length, name: target.name }) : T("Make “{name}” with {count} {value}", { name: recovering.name, count: toLike.length, value: toLike.length === 1 ? T("song") : T("songs") })}
               </Btn>
-              <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">{T("In the playlist's order — adding again later puts newly found songs in their place. Songs you added to it in Songsta stay, after them{value}.", { value: check.length ? T("; the {count} still to check aren't added until you decide", { count: check.length }) : "" })}</p>
+              <p className="text-[13px] text-ink-dim flex-1 min-w-[240px]">{T("In the playlist's order. Songs you get later join it by themselves, in their place. Songs you added to it in Songsta stay, after them{value}.", { value: check.length ? T("; the {count} still to check aren't added until you decide", { count: check.length }) : "" })}</p>
               {target && (
                 <Btn variant="glass" size="sm" onClick={() => navigate({ name: "playlist", param: target.id })}>{T("Open playlist")}</Btn>
               )}

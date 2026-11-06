@@ -144,7 +144,7 @@ function zoneLine(zone: ZoneView): string {
   const song = zone.state.queue[zone.state.index];
   if (zone.state.error) return zone.state.error;
   if (!song) return T("Ready");
-  return `${zone.state.state === "playing" ? "" : T("Paused · ")}${song.title}`;
+  return `${zone.state.state === "playing" ? "" : zone.state.state === "loading" ? T("Waiting for it to start · ") : T("Paused · ")}${song.title}`;
 }
 
 export function DevicesPanel({ onClose }: { onClose: () => void }) {
@@ -215,15 +215,12 @@ export function DevicesPanel({ onClose }: { onClose: () => void }) {
     const [first, ...rest] = chosen();
     setChoosing(null);
     if (!first) return;
-    if (followed) otherDevices.takeHere();
-    await castTo(first);
+    await moveTo(first);
     for (const d of rest) await joinCast(d);
   };
 
-  const moveTo = (d: CastDevice): void => {
-    if (followed) otherDevices.takeHere();
-    void castTo(d);
-  };
+  /** The device being followed plays on until this one answers, and this computer stays silent on the way. */
+  const moveTo = (d: CastDevice): Promise<void> => castTo(d, followed ? () => otherDevices.takeHere(false) : undefined);
 
   const sendToDevice = (id: string, name: string): void => {
     if (active) void stopCasting(false);
@@ -380,7 +377,7 @@ export function DevicesPanel({ onClose }: { onClose: () => void }) {
             const zone = zoneOn(d.id);
             const isMain = inGroup(d.id) || active?.id === d.id;
             const Icon = kindIcon(d);
-            const line = isMain ? (track ? `${playing ? "" : T("Paused · ")}${track.title}` : T("Ready")) : zone ? zoneLine(zone) + withOthers(zone, d.id) : d.model || T("Ready");
+            const line = isMain ? (track ? `${connecting === d.id ? T("Waiting for it to start · ") : playing ? "" : T("Paused · ")}${track.title}` : T("Ready")) : zone ? zoneLine(zone) + withOthers(zone, d.id) : d.model || T("Ready");
             return (
               <Tile
                 key={d.id}
@@ -391,7 +388,7 @@ export function DevicesPanel({ onClose }: { onClose: () => void }) {
                 wide={(isMain || !!zone) && !choosing}
                 busy={connecting === d.id}
                 picked={choosing ? choosing.has(d.id) : undefined}
-                onClick={() => (choosing ? toggleChosen(d.id) : isMain ? undefined : zone ? zoneToggle(zone.id) : moveTo(d))}
+                onClick={() => (choosing ? toggleChosen(d.id) : isMain ? undefined : zone ? zoneToggle(zone.id) : void moveTo(d))}
                 onMenu={(e) => menu(e, d)}
                 actions={
                   <>

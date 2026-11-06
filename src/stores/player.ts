@@ -20,8 +20,15 @@ import { lazyJSONStorage } from "../lib/persist";
 import type { Track } from "../types";
 import { songKey } from "./catalog";
 import { isMuted } from "./muted";
+import { useSettings } from "./settings";
 
 export type RepeatMode = "off" | "all" | "one";
+
+/** Autoplay's way of going on when the queue has run out (lib/audio.ts). */
+let queueRanOut: (() => void) | null = null;
+export function setQueueRanOut(next: typeof queueRanOut): void {
+  queueRanOut = next;
+}
 
 /** While somebody is choosing music for another device, what's asked for goes there (lib/zones.ts). */
 let playHook: ((tracks: Track[], start: number) => boolean) | null = null;
@@ -169,6 +176,11 @@ function intoOrder(order: Track[], current: Track | undefined, skip: number, tra
   return [...order.slice(0, from).filter((t) => !asked.has(t.id)), ...tracks, ...order.slice(from).filter((t) => !asked.has(t.id))];
 }
 
+/** Repeat-one is about the song it was turned on for: go to another one, and the whole list repeats from there (Settings). */
+function leaving(repeat: RepeatMode): { repeat?: RepeatMode } {
+  return repeat === "one" && useSettings.getState().skipEndsRepeatOne ? { repeat: "all" } : {};
+}
+
 /** What the volume was before it was muted from here, on the device this computer follows. */
 let lastRemoteVolume = 0.5;
 
@@ -212,9 +224,11 @@ export const usePlayer = create<PlayerState>()(
           steering.play(list, at, false);
           return;
         }
-        const { shuffle } = get();
+        const { shuffle, queue, index, repeat, playing } = get();
         branchUndo.clear();
         set({
+          // Listening to another song. With nothing on, repeat-one may well be meant for this one.
+          ...(playing && queue[index] && queue[index].id !== list[at].id ? leaving(repeat) : {}),
           queue: shuffle ? [list[at], ...shuffled(list.filter((_, i) => i !== at))] : list,
           index: shuffle ? 0 : at,
           unshuffled: shuffle ? list : null,
@@ -243,8 +257,9 @@ export const usePlayer = create<PlayerState>()(
           steering.play(q, index + 1, true);
           return;
         }
-        const { lineEnd, unshuffled } = get();
+        const { lineEnd, unshuffled, repeat, playing } = get();
         set({
+          ...(playing ? leaving(repeat) : {}),
           queue: q,
           index: index + 1,
           lineEnd: lineEnd > index + 1 ? lineEnd + 1 : lineEnd,
@@ -256,7 +271,7 @@ export const usePlayer = create<PlayerState>()(
       },
 
       jumpTo(at) {
-        const { queue, index, shuffle, lineEnd } = get();
+        const { queue, index, shuffle, lineEnd, repeat } = get();
         if (at < 0 || at >= queue.length) return;
         if (steering) {
           steering.jump(queue[at]);
@@ -266,10 +281,10 @@ export const usePlayer = create<PlayerState>()(
           const q = [...queue];
           const [song] = q.splice(at, 1);
           q.splice(index + 1, 0, song);
-          set({ queue: q, index: index + 1, lineEnd: at >= lineEnd && lineEnd > index + 1 ? lineEnd + 1 : lineEnd, playing: true, position: 0, error: null });
+          set({ ...leaving(repeat), queue: q, index: index + 1, lineEnd: at >= lineEnd && lineEnd > index + 1 ? lineEnd + 1 : lineEnd, playing: true, position: 0, error: null });
           return;
         }
-        set({ index: at, playing: true, position: 0, error: null });
+        set({ ...(queue[at].id === queue[index]?.id ? {} : leaving(repeat)), index: at, playing: true, position: 0, error: null });
       },
 
       addToQueue(tracks) {
@@ -385,6 +400,8 @@ export const usePlayer = create<PlayerState>()(
         const { lineEnd, unshuffled, branches } = get();
         const gone = queue[i].id;
         set({
+          // The song on screen went: the one after it starts from its top, not from that one's place.
+          ...(i === index ? { position: 0 } : {}),
           queue: q,
           index: ni,
           lineEnd: i < lineEnd ? lineEnd - 1 : lineEnd,
@@ -439,8 +456,14 @@ export const usePlayer = create<PlayerState>()(
           set({ playing: false });
           return;
         }
+        const goesOn = manual ? leaving(repeat) : {};
         let ni = index + 1;
         if (ni >= queue.length) {
+          // Skipping past the end with Autoplay on: what the queue's end does, as on the phone.
+          if (manual && (goesOn.repeat ?? repeat) !== "all" && useSettings.getState().autoplay && queueRanOut) {
+            queueRanOut();
+            return;
+          }
           if (manual || repeat === "all") {
             ni = 0;
           } else {
@@ -454,7 +477,7 @@ export const usePlayer = create<PlayerState>()(
           set({ playing: true, position: 0, error: null, seekNonce: get().seekNonce + 1 });
           return;
         }
-        set({ index: ni, playing: true, position: 0, error: null });
+        set({ ...goesOn, index: ni, playing: true, position: 0, error: null });
       },
 
       prev() {
@@ -474,7 +497,7 @@ export const usePlayer = create<PlayerState>()(
           set({ position: 0, seekNonce: get().seekNonce + 1 });
           return;
         }
-        set({ index: ni, playing: true, position: 0, error: null });
+        set({ ...leaving(repeat), index: ni, playing: true, position: 0, error: null });
       },
 
       toggle() {

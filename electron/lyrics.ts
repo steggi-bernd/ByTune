@@ -22,6 +22,7 @@
  * don't match" bug hides.
  */
 import { createHmac, randomUUID } from "node:crypto";
+import { lrcRows } from "../src/lib/lrc";
 import type { SyncedLyricLine, SyncedLyricWord } from "../src/types";
 import { GENIUS_HEADERS, geniusFindWith } from "./genius";
 import { cleanTitle, primaryArtist, queryTitle } from "./song-names";
@@ -194,32 +195,22 @@ export function lyricsFromText(source: string, text: string): FetchedLyrics | nu
 
 /** Plain LRC → line-synced lines (seconds). Word stamps `<…>` are ignored. */
 function parseLrc(lrc: string): SyncedLyricLine[] {
-  const rows: { time: number; text: string }[] = [];
-  for (const raw of lrc.split(/\r?\n/)) {
-    const m = /^\[(\d{1,3}):(\d{2})[.:](\d{2,3})](.*)$/.exec(raw.trim());
-    if (!m) continue;
-    const text = decodeEntities(m[4].replace(/<\d{1,3}:\d{2}[.:]\d{2,3}>/g, "").trim());
-    rows.push({ time: stampMs(m[1], m[2], m[3]) / 1000, text });
-  }
-  rows.sort((a, b) => a.time - b.time);
-  return rows;
+  return lrcRows(lrc).map((row) => ({
+    time: row.at / 1000,
+    text: decodeEntities(row.rest.replace(/<\d{1,3}:\d{2}[.:]\d{2,3}>/g, "").trim()),
+  }));
 }
 
 /** Word-timed rich LRC: `[mm:ss.xx]<mm:ss.xx>word …` → seconds. */
 function parseEnhancedLrc(lrc: string): SyncedLyricLine[] {
-  const rows: { time: number; words: { start: number; text: string }[]; plain: string }[] = [];
-  for (const raw of lrc.split(/\r?\n/)) {
-    const m = /^\[(\d{1,3}):(\d{2})[.:](\d{2,3})](.*)$/.exec(raw.trim());
-    if (!m) continue;
-    const time = stampMs(m[1], m[2], m[3]) / 1000;
-    const rest = decodeEntities(m[4]);
+  const rows: { time: number; words: { start: number; text: string }[]; plain: string }[] = lrcRows(lrc).map((row) => {
+    const rest = decodeEntities(row.rest);
     const words = [...rest.matchAll(/<(\d{1,3}):(\d{2})[.:](\d{2,3})>([^<]*)/g)].map((w) => ({
       start: stampMs(w[1], w[2], w[3]) / 1000,
       text: w[4].trim(),
     }));
-    rows.push({ time, words, plain: rest.replace(/<\d{1,3}:\d{2}[.:]\d{2,3}>/g, "").trim() });
-  }
-  rows.sort((a, b) => a.time - b.time);
+    return { time: row.at / 1000, words, plain: rest.replace(/<\d{1,3}:\d{2}[.:]\d{2,3}>/g, "").trim() };
+  });
   if (!rows.some((r) => r.words.length > 0)) return []; // ordinary LRC, not rich
   const out: SyncedLyricLine[] = [];
   for (let i = 0; i < rows.length; i++) {

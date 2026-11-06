@@ -106,6 +106,7 @@ class FakeAudio {
     return this.__srcValue;
   }
   set src(v) {
+    this.__abortPlay();
     this.__srcValue = v == null ? "" : String(v);
     // Assigning a source resets the element, exactly like the real API.
     this.currentTime = 0;
@@ -145,11 +146,32 @@ class FakeAudio {
     if (!this.__srcValue) return Promise.reject(Object.assign(new Error("no source"), { name: "NotSupportedError" }));
     this.paused = false;
     this.ended = false;
+    // A test can ask for a song that takes a moment to start: until then a new source or a pause
+    // cuts the promise off with an AbortError, as in a browser.
+    if (globalThis.__playTakesMs) {
+      return new Promise((resolve, reject) => {
+        const pending = { reject };
+        this.__pendingPlay = pending;
+        globalThis.__clock.setTimeout(() => {
+          if (this.__pendingPlay !== pending) return;
+          this.__pendingPlay = null;
+          this.plays += 1;
+          this.emit("playing");
+          resolve();
+        }, globalThis.__playTakesMs);
+      });
+    }
     this.plays += 1;
     this.emit("playing");
     return Promise.resolve();
   }
+  __abortPlay() {
+    const pending = this.__pendingPlay;
+    this.__pendingPlay = null;
+    pending?.reject(Object.assign(new Error("The play() request was interrupted"), { name: "AbortError" }));
+  }
   pause() {
+    this.__abortPlay();
     this.paused = true;
   }
   /** Called by the harness ticker: the media clock is authoritative. */
@@ -276,6 +298,7 @@ export async function createEngine({ tickMs = 20 } = {}) {
   globalThis.__clock = clock;
   delete globalThis.__tempo;
   delete globalThis.__trims;
+  delete globalThis.__playTakesMs;
   globalThis.__registry = elements;
 
   const prev = {

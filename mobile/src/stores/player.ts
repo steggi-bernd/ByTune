@@ -19,7 +19,7 @@ import { streamUrl, type Session } from "../jellyfin";
 import { withoutServer } from "../addresses";
 import { branched } from "../playingFrom";
 import { chooseStream, levelGain, ORIGINAL, sameChoice, stepDown, type Leveling, type QualityMode, type StreamChoice } from "../quality";
-import { lineInList, placeOf, playCreditSeconds, putBack, tendedBranches, toWireTrack, withoutSongs, type DeviceCommand, type DevicePresence, type PlaybackNote, type QueueBranch, type QueueDoc, type RemoteDevice, type Track, type WireTrack } from "../shared";
+import { jumpTarget, lineInList, listAround, placeOf, playCreditSeconds, putBack, tendedBranches, toWireTrack, withoutSongs, type DeviceCommand, type DevicePresence, type PlaybackNote, type QueueBranch, type QueueDoc, type RemoteDevice, type Track, type WireTrack } from "../shared";
 import { readJson, writeJson } from "../storage";
 import { useConnection } from "./connection";
 import { isAround, useDevices } from "./devices";
@@ -164,7 +164,7 @@ interface PlayerState {
   setQuality(mode: QualityMode): void;
   /** A song asked for, with its list after it. Muted ones in the list stay out; the asked-for one plays anyway. */
   playTracks(tracks: Track[], start: number, context: string, shuffle?: boolean): void;
-  /** A whole list from its Play or Shuffle button: nothing in it is asked for by name, so nothing muted plays. */
+  /** A whole list from its Play or Shuffle button: nothing in it is asked for by name, so nothing muted plays. Play goes by the shuffle that's on, as on the computer. */
   playAll(tracks: Track[], context: string, shuffle?: boolean): void;
   /** The music of the device being followed comes here and plays on. */
   takeHere(): void;
@@ -319,7 +319,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     load(queue, index, context, { shuffle, unshuffled: shuffle ? tracks : null });
   },
 
-  playAll(all, context, shuffle = false) {
+  playAll(all, context, shuffle = get().shuffle) {
     const { muted } = useLibrary.getState();
     const open = all.filter((t) => !muted.has(t.id));
     if (!open.length) {
@@ -367,9 +367,12 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     }
     jumpedAt = Date.now();
     const { queue, index, repeat } = get();
-    if (index >= queue.length - 1 && repeat === "off") {
+    // On repeat-one the player itself doesn't go anywhere from the last song.
+    if (index >= queue.length - 1 && repeat !== "all") {
+      if (repeat === "one") leaveRepeatOne();
+      if (get().repeat === "all") void output.next();
       // Nothing after it: what the queue's end does, or round to its start, as on the computer.
-      if (useSettings.getState().autoplay) keepGoing();
+      else if (useSettings.getState().autoplay) keepGoing();
       else void output.skipTo(0, true);
     } else {
       void output.next();
@@ -418,7 +421,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     activity();
   },
   skipBy(delta) {
-    const { queue, index, playWhenReady, remote } = get();
+    const { queue, index, playWhenReady, remote, repeat } = get();
     if (!queue.length) return;
     const target = (index + delta + queue.length) % queue.length;
     if (remote) {
@@ -426,6 +429,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
       else void deviceLink?.send(remote.id, { action: delta > 0 ? "next" : "previous" });
       return;
     }
+    if (repeat === "one" && target !== index) leaveRepeatOne();
     skipTarget = target;
     skipUntil = Date.now() + SKIP_PATIENCE_MS;
     jumpedAt = Date.now();
@@ -694,7 +698,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     const state = await Player.getState().catch(() => null);
     if (state && state.count > 0) {
       // The service played on while the app was away: the list is the saved one.
-      if (queue.length === state.count) set({ queue, context: saved?.context ?? "", lineEnd: saved?.line ?? 0, branches: saved?.branches ?? [], homeContext: saved?.home ?? null });
+      if (queue.length === state.count) set({ queue, index: state.index, context: saved?.context ?? "", lineEnd: saved?.line ?? 0, branches: saved?.branches ?? [], homeContext: saved?.home ?? null });
       onState(state);
       return;
     }
@@ -708,6 +712,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   stop() {
+    followNext = null;
     void output.pause();
     void output.setQueue([], 0, 0, false);
     branchUndo.clear();
@@ -720,8 +725,20 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   clearError: () => set({ error: null }),
 }));
 
+/** Repeat-one is about the song it was turned on for: go to another one, and the whole list repeats from there (Settings). */
+function leaveRepeatOne(): boolean {
+  if (!useSettings.getState().skipEndsRepeatOne) return false;
+  usePlayer.setState({ repeat: "all" });
+  void output.setRepeat("all");
+  deviceLink?.presence();
+  return true;
+}
+
 /** A list from the top, whatever came before it. */
 function load(queue: Track[], index: number, context: string, order: { shuffle: boolean; unshuffled: Track[] | null }): void {
+  const before = usePlayer.getState();
+  // Listening to another song. With nothing on, repeat-one may well be meant for this one.
+  if (before.repeat === "one" && before.playWhenReady && before.queue[before.index] && before.queue[before.index].id !== queue[index]?.id) leaveRepeatOne();
   branchUndo.clear();
   usePlayer.setState({ queue, index, context, homeContext: null, ...order, lineEnd: 0, branches: [], positionMs: 0, error: null });
   void output.setQueue(queue.map(toItem), index, 0, true);
@@ -774,6 +791,8 @@ function onState(s: PlaybackState): void {
     skipTarget = null;
   }
   const prev = usePlayer.getState();
+  // On repeat-one the player stays on its song by itself: another song means somebody skipped, here, on the lock screen or on headphones.
+  if (s.repeat === "one" && s.index !== prev.index && prev.queue[s.index]?.id !== prev.queue[prev.index]?.id && leaveRepeatOne()) s = { ...s, repeat: "all" };
   if (output === Player) {
     bandwidthBps = s.bandwidthBps ?? 0;
     watchStalls(s);
@@ -991,7 +1010,7 @@ export function outputChanged(device: OutputDevice): void {
  * unless told otherwise. What's followed is left behind, paused.
  */
 export function switchOutput(next: { output: PlayerOutput; device: OutputDevice } | null, play?: boolean): void {
-  const { queue, index, positionMs, playWhenReady, remote } = usePlayer.getState();
+  const { queue, index, positionMs, playWhenReady, remote, repeat } = usePlayer.getState();
   const wanted = play ?? (remote ? remote.playing : playWhenReady);
   if (remote) {
     void deviceLink?.send(remote.id, { action: "pause" });
@@ -1009,6 +1028,8 @@ export function switchOutput(next: { output: PlayerOutput; device: OutputDevice 
     return;
   }
   void output.setQueue(queue.map(toItem), index, positionMs, wanted);
+  // Whatever plays it goes round the same way.
+  void output.setRepeat(repeat);
   showStream();
   activity();
 }
@@ -1018,6 +1039,8 @@ export function switchOutput(next: { output: PlayerOutput; device: OutputDevice 
 /** A device that was only paused stays on screen for this long; then this phone is by itself again. */
 const FOLLOW_PAUSED_MS = 5 * 60_000;
 const FOLLOW_TICK_MS = 500;
+/** Reports arrive when they arrive: less than this from the clock running here is no move, and the words on screen stay put. */
+const FOLLOW_DRIFT_MS = 1500;
 
 interface DeviceLink {
   /** this phone's id among the devices */
@@ -1066,6 +1089,7 @@ function sendUpcoming(): void {
 
 /** Started here, not following anybody: there's one stream, and it's here now. */
 function claimStream(): void {
+  followNext = null;
   if (usePlayer.getState().secondStream || !deviceLink) return;
   for (const d of useDevices.getState().others.filter(isAround)) {
     if (d.presence.playing && !d.presence.separate) void deviceLink.send(d.id, { action: "yield", to: deviceLink.self });
@@ -1142,20 +1166,23 @@ function steerTo(target: number): void {
   steeringTo = { id: song.id, until: Date.now() + STEER_PATIENCE_MS };
   const durationMs = song.duration * 1000;
   usePlayer.setState({ index: target, positionMs: 0, durationMs, playWhenReady: true, isPlaying: true, error: null, remote: { ...remote, playing: true, positionMs: 0, durationMs, heardAt: Date.now() } });
-  void deviceLink?.send(remote.id, { action: "jump", trackId: song.id, by: target - index });
+  void deviceLink?.send(remote.id, { action: "jump", trackId: song.id, by: target - index, track: toWireTrack(song) });
 }
 
 /** This phone is by itself again: the queue goes to its own player, from the place the other device had reached. */
 function stopFollowing(play: boolean, loadHere = true): void {
-  const { queue, index, positionMs } = usePlayer.getState();
+  const { queue, index, positionMs, repeat } = usePlayer.getState();
   if (followTick) clearInterval(followTick);
   followTick = null;
+  followNext = null;
   steeringTo = null;
   steerHoldUntil = 0;
   usePlayer.setState({ remote: null, playWhenReady: play, isPlaying: play, remoteVolume: null });
   if (loadHere && queue.length) {
     jumpedAt = Date.now();
     void output.setQueue(queue.map(toItem), index, positionMs, play);
+    // It goes on the way it did there, not the way this phone's own player was left.
+    void output.setRepeat(repeat);
     showStream();
   }
   activity();
@@ -1180,9 +1207,17 @@ function follow(device: RemoteDevice): void {
   if (!waiting) steeringTo = null;
   const held = before.remote && (waiting || Date.now() < steerHoldUntil) ? before.remote : null;
   const heardMs = p.positionMs + (p.playing ? device.ageMs : 0);
+  // A song only just starting there doesn't know its length yet.
+  const lengthMs = p.durationMs > 0 ? p.durationMs : song.duration * 1000;
+  const runningMs = before.remote?.playing && p.playing && queue[index]?.id === song.id ? before.remote.positionMs + (Date.now() - before.remote.heardAt) : null;
+  const close = before.remote && runningMs !== null && Math.abs(runningMs - heardMs) < FOLLOW_DRIFT_MS ? before.remote : null;
   const changes: Partial<PlayerState> = {
-    remote: held ? { ...held, id: device.id, name: p.name, kind: p.kind } : { id: device.id, name: p.name, kind: p.kind, playing: p.playing, positionMs: heardMs, durationMs: p.durationMs, heardAt: Date.now() },
-    ...(held ? {} : { positionMs: heardMs, durationMs: p.durationMs, playWhenReady: p.playing, isPlaying: p.playing }),
+    remote: held
+      ? { ...held, id: device.id, name: p.name, kind: p.kind }
+      : close
+        ? { ...close, id: device.id, name: p.name, kind: p.kind, durationMs: lengthMs }
+        : { id: device.id, name: p.name, kind: p.kind, playing: p.playing, positionMs: heardMs, durationMs: lengthMs, heardAt: Date.now() },
+    ...(held ? {} : { ...(close ? {} : { positionMs: heardMs }), durationMs: lengthMs, playWhenReady: p.playing, isPlaying: p.playing }),
     isBuffering: false,
     error: null,
     shuffle: p.shuffle ?? before.shuffle,
@@ -1197,6 +1232,7 @@ function follow(device: RemoteDevice): void {
       // The queue itself comes with the look below.
       changes.queue = [song];
       changes.index = 0;
+      changes.unshuffled = null;
       changes.context = p.context ?? "";
       changes.homeContext = null;
       changes.lineEnd = 0;
@@ -1204,8 +1240,13 @@ function follow(device: RemoteDevice): void {
       queueId = "";
       deviceLink?.look();
     }
+  } else if (!waiting && p.queueId && p.queueId !== queueId) {
+    // The same song, in a list that isn't the one here.
+    deviceLink?.look();
   }
   usePlayer.setState(changes);
+  // Not playing any more: the others shouldn't go by what it said before.
+  if (!before.remote) deviceLink?.presence();
 }
 
 /** The other devices said something: who, if anybody, this phone shows. */
@@ -1241,8 +1282,12 @@ export function runCommand(command: DeviceCommand): void {
     if (player.playWhenReady && !player.remote) void output.pause();
     return;
   }
-  // Asked to play here: whatever this phone was showing, it's this phone's music now.
-  if (player.remote && command.action !== "syncLikes" && command.action !== "enqueue") stopFollowing(false);
+  if (player.remote && command.action !== "syncLikes" && command.action !== "enqueue") {
+    // Anything else is for a device that plays, and this one doesn't any more: it's from before the music moved on.
+    if (command.action !== "takeOver" && command.action !== "playList") return;
+    // Asked to play here: whatever this phone was showing, it's this phone's music now.
+    stopFollowing(false);
+  }
   switch (command.action) {
     case "play":
       if (!usePlayer.getState().playWhenReady) usePlayer.getState().toggle();
@@ -1261,7 +1306,9 @@ export function runCommand(command: DeviceCommand): void {
       break;
     case "jump": {
       const { queue, index } = usePlayer.getState();
-      const at = placeOf(queue, command.trackId, index, command.by);
+      // By the song, whichever copy of it that device has in its list.
+      const id = (command.track && findSong(command.track)?.id) ?? command.trackId;
+      const at = jumpTarget(queue, id, index, command.by);
       if (at >= 0) usePlayer.getState().skipTo(at);
       break;
     }
@@ -1366,12 +1413,17 @@ export function onPlaybackActivity(listener: ((routine: boolean) => void) | null
   tellSync = listener;
 }
 
+/** Later than the note this phone stands on, whatever the two devices' clocks say: it's what makes it the news. */
+const newNote = (): number => Math.max(Date.now(), activityAt + 1);
+
 function activity(): void {
-  activityAt = ownActivityAt = Date.now();
+  activityAt = newNote();
+  ownActivityAt = Date.now();
   tellSync?.(false);
 }
 function routineActivity(): void {
-  activityAt = ownActivityAt = Date.now();
+  activityAt = newNote();
+  ownActivityAt = Date.now();
   tellSync?.(true);
 }
 function queueChanged(): void {
@@ -1381,14 +1433,14 @@ function queueChanged(): void {
 
 /** Where this phone stands, for the others. Nothing until it has done something itself. */
 export function playbackNote(device: PlaybackNote["device"]): { note: PlaybackNote; queue: () => QueueDoc } | null {
-  const { queue, index, positionMs, isPlaying, context, remote, lineEnd, branches, homeContext } = usePlayer.getState();
+  const { queue, index, positionMs, isPlaying, context, remote, lineEnd, branches, homeContext, shuffle, repeat, unshuffled } = usePlayer.getState();
   const track = queue[index];
-  // What another device plays is that device's to tell.
-  if (!track || !activityAt || remote) return null;
+  // What another device plays is that device's to tell; and where the music just went, that it's paused here is no news that should overwrite its word.
+  if (!track || !activityAt || remote || followNext) return null;
   if (!queueId) queueId = String(activityAt);
   const id = queueId;
   return {
-    note: { device, at: activityAt, playing: isPlaying, positionMs, track: toWireTrack(track), queueId: id, place: index, context, audio: [usePlayer.getState().audio, rateOff, downloadsLine()].filter(Boolean).join(" · ") },
+    note: { device, at: activityAt, playing: isPlaying, positionMs, track: toWireTrack(track), queueId: id, place: index, context, shuffle, repeat, audio: [usePlayer.getState().audio, rateOff, downloadsLine()].filter(Boolean).join(" · ") },
     queue: () => {
       const from = Math.max(0, index - QUEUE_NOTE_BEHIND);
       return {
@@ -1399,6 +1451,7 @@ export function playbackNote(device: PlaybackNote["device"]): { note: PlaybackNo
         tracks: queue.slice(from, index + QUEUE_NOTE_AHEAD).map(toWireTrack),
         lineEnd: lineInList(lineEnd, from),
         branches: branches.map((b) => ({ ...b, ids: b.ids.slice(0, BRANCH_IDS_SENT) })),
+        unshuffled: unshuffled ? listAround(unshuffled, track.id, QUEUE_NOTE_BEHIND, QUEUE_NOTE_AHEAD).map(toWireTrack) : undefined,
       };
     },
   };
@@ -1420,17 +1473,29 @@ function inSameSong(note: PlaybackNote): boolean {
 }
 
 /** Continues from another device: its queue, its song, its position, paused until somebody presses play. */
-export function adoptPlayback(note: PlaybackNote, queue: QueueDoc | null): void {
-  const current = findSong(note.track);
-  if (!current) return;
+export function adoptPlayback(given: PlaybackNote, queue: QueueDoc | null, handedOver = false): boolean {
+  let note = given;
+  let current = findSong(note.track);
+  if (!current) {
+    if (!handedOver) return true;
+    // Sent here, and not here: the next song of its list that is, from its start.
+    const after = note.place !== undefined && queue?.from !== undefined ? note.place - queue.from + 1 : 0;
+    current = (queue?.tracks ?? []).slice(Math.max(0, after)).map(findSong).find((t): t is Track => !!t);
+    const { title } = note.track;
+    toast(current ? T("“{title}” isn't on this phone, so the next song plays", { title }) : T("“{title}” isn't on this phone", { title }));
+    if (!current) return false;
+    note = { ...note, track: toWireTrack(current), positionMs: 0, place: undefined };
+  }
   adoptedAt = Date.now();
+  const repeatThere = note.repeat;
   // The same song a little further on: no need to load it again.
   if (inSameSong(note)) {
     activityAt = note.at;
-    usePlayer.setState({ positionMs: note.positionMs });
+    usePlayer.setState({ positionMs: note.positionMs, ...(note.shuffle === undefined ? {} : { shuffle: note.shuffle }), ...(repeatThere ? { repeat: repeatThere } : {}) });
     void output.seekTo(note.positionMs);
+    if (repeatThere && !usePlayer.getState().remote) void output.setRepeat(repeatThere);
     save(true);
-    return;
+    return true;
   }
   const { muted } = useLibrary.getState();
   const plays = (t: Track | undefined): t is Track => !!t && (t.id === current.id || !muted.has(t.id));
@@ -1457,17 +1522,21 @@ export function adoptPlayback(note: PlaybackNote, queue: QueueDoc | null): void 
     branches: whole ? queue?.branches ?? [] : [],
     positionMs: going >= 0 ? positionMs : note.positionMs,
     durationMs: going >= 0 ? durationMs : current.duration * 1000,
-    // Followed, the device playing says what shuffle is; picked up, the list is in the order it was.
-    shuffle: usePlayer.getState().remote ? usePlayer.getState().shuffle : false,
-    unshuffled: null,
+    // It goes on the way it did there; an older device doesn't say. Then, followed, what it shows counts, and picked up, the list is in the order it was.
+    shuffle: note.shuffle ?? (usePlayer.getState().remote ? usePlayer.getState().shuffle : false),
+    ...(repeatThere ? { repeat: repeatThere } : {}),
+    // Shuffled there: back to the list's own order when shuffle goes off here.
+    unshuffled: whole && note.shuffle && queue?.unshuffled ? queue.unshuffled.map(findSong).filter((t): t is Track => !!t) : null,
     error: null,
   });
   // A device being followed keeps the sound: this phone only needs to know the list.
   if (!usePlayer.getState().remote) {
     void output.setQueue(list.map(toItem), index, note.positionMs, false);
+    if (repeatThere) void output.setRepeat(repeatThere);
     showStream();
   }
   save(true);
+  return true;
 }
 
 /** A dropped connection: the server may answer at its other address, then the song goes on from there. */

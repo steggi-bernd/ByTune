@@ -44,7 +44,8 @@ export function playCollection(tracks: Track[], shuffle = false): void {
     useUI.getState().toast(T("None of these songs can be reached right now — their drive or server is away"), "warning");
     return;
   }
-  usePlayer.getState().playAll(shuffle ? [...list].sort(() => Math.random() - 0.5) : list);
+  if (shuffle) usePlayer.setState({ shuffle: true });
+  usePlayer.getState().playAll(list, shuffle);
 }
 
 /** The cover/header play button: plays the collection, or pauses/resumes it once it's playing. */

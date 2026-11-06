@@ -68,3 +68,100 @@ test("casting: the decks fall silent, the follower gets the queue, the player's 
   assert.equal(seen.length, 0, "the follower hears nothing more");
   assert.ok(engine.getPlaybackPosition() >= 4, "the clock is the deck's again");
 });
+
+/** Plays A, B and C here and hands them to a device being followed, with A a good way in. */
+async function following(t) {
+  const h = await boot({ fadeSeconds: 0 });
+  t.after(() => h.restore());
+  for (const id of ["A", "B", "C"]) h.setDuration(id, 100);
+  await play(h, [track("A", 100), track("B", 100), track("C", 100)]);
+  await h.advance(1000);
+  h.engine.handOverToCast(() => undefined);
+  await flushMicrotasks();
+  // What the other device reports, as lib/homeSync.ts shows it.
+  h.engine.usePlayer.setState({ position: 42, seekNonce: h.engine.usePlayer.getState().seekNonce + 1 });
+  // A real song takes a moment to start: a new source or a pause cuts its play() off until then.
+  globalThis.__playTakesMs = 300;
+  return h;
+}
+
+/** What the sync does when asked to play here: stops following, paused, then starts. */
+function askedToPlayHere(h) {
+  h.engine.usePlayer.getState().setPlaying(false);
+  h.engine.takeBackFromCast();
+  h.engine.usePlayer.getState().setPlaying(true);
+}
+
+test("the music handed back from another device goes on with the same song, from the same place", async (t) => {
+  const h = await following(t);
+  const { engine } = h;
+  const srcBefore = h.elements.map((e) => e.plays);
+  askedToPlayHere(h);
+  await h.advance(1500);
+  assert.equal(read(h).id, "A", "still the song that was handed over, not the next one");
+  const deck = decksOf(h, "A").find((d) => !d.paused);
+  assert.ok(deck, "it plays here");
+  assert.ok(deck.currentTime >= 42 && deck.currentTime < 45, `from where it was (${deck.currentTime})`);
+  assert.equal(h.elements.reduce((sum, e, i) => sum + e.plays - srcBefore[i], 0), 1, "started once");
+  assert.equal(h.events.filter((e) => e.type === "start" && e.id === "A").length, 1, "one listening, not a new one for moving it");
+  assert.equal(engine.usePlayer.getState().buffering, false);
+});
+
+test("a play() cut off by a pause is no broken song", async (t) => {
+  const h = await following(t);
+  h.engine.takeBackFromCast();
+  h.engine.usePlayer.getState().setPlaying(true);
+  await h.advance(100);
+  h.engine.usePlayer.getState().setPlaying(false);
+  await h.advance(1500);
+  assert.equal(read(h).id, "A");
+  assert.equal(h.engine.usePlayer.getState().playing, false, "it stays paused");
+  assert.equal(sounding(h).length, 0);
+  assert.equal(h.engine.usePlayer.getState().error, null);
+});
+
+test("while a load is on its way a new song wins, and a seek goes along with it", async (t) => {
+  const h = await following(t);
+  const { usePlayer } = h.engine;
+  askedToPlayHere(h);
+  usePlayer.getState().seek(60);
+  await h.advance(1000);
+  let deck = decksOf(h, "A").find((d) => !d.paused);
+  assert.ok(deck && deck.currentTime >= 60 && deck.currentTime < 62, `the seek made while it loaded counts (${deck?.currentTime})`);
+
+  usePlayer.getState().next(true);
+  usePlayer.getState().next(true);
+  usePlayer.getState().prev();
+  await h.advance(1000);
+  assert.equal(read(h).id, "B", "the last one asked for");
+  deck = decksOf(h, "B").find((d) => !d.paused);
+  assert.ok(deck, "and it plays");
+  assert.equal(sounding(h).length, 1, "alone");
+});
+
+test("what a silent deck does while another device plays changes nothing here", async (t) => {
+  const h = await following(t);
+  const { usePlayer } = h.engine;
+  const before = usePlayer.getState();
+  const deck = h.elements.find((e) => e.src === "fake:A");
+  deck.emit("timeupdate");
+  assert.equal(usePlayer.getState().position, 42, "the deck's clock isn't the other device's");
+  deck.emit("error");
+  deck.emit("ended");
+  await h.advance(500);
+  assert.equal(read(h).id, "A", "no song moves on because of it");
+  assert.equal(usePlayer.getState().playing, before.playing);
+  assert.ok(Math.abs(h.engine.getPlaybackPosition() - 42) < 0.01, "the words on screen go by what that device says, not by the deck");
+  assert.equal(sounding(h).length, 0);
+});
+
+test("a load on its way when another device takes over never sounds here", async (t) => {
+  const h = await boot({ fadeSeconds: 0 });
+  t.after(() => h.restore());
+  h.setDuration("A", 100);
+  const { usePlayer, handOverToCast } = h.engine;
+  usePlayer.getState().playQueue([track("A", 100)], 0);
+  handOverToCast(() => undefined);
+  await h.advance(1000);
+  assert.equal(sounding(h).length, 0);
+});

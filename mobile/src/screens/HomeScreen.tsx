@@ -60,7 +60,9 @@ export function HomeScreen() {
   const refreshing = useLibrary((s) => s.refreshing);
   const refresh = useLibrary((s) => s.refresh);
   const error = useLibrary((s) => s.error);
-  const offline = useConnection((s) => s.reach === "offline") && !!useSession((s) => s.session);
+  const unreachable = useConnection((s) => s.reach === "offline");
+  const hasServer = useSession((s) => !!s.session);
+  const offline = unreachable && hasServer;
   const data = useLibrary((s) => s.data);
   const albums = useLibrary((s) => s.albums);
   const artists = useLibrary((s) => s.artists);

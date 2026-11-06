@@ -25,6 +25,8 @@ export interface Track {
   year?: number;
   genre?: string;
   albumArtist?: string;
+  /** the album as its tags name it, when the user shows it under another name (lib/albumEdits.ts) */
+  albumTag?: string;
   trackNo?: number;
   discNo?: number;
   /** when the library first saw the song (ms) */

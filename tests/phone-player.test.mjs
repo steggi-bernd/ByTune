@@ -13,9 +13,10 @@ const stubs = {
   "stores/localMusic": `export const fileOfSong = () => null;`,
   "stores/downloads": `export const useDownloads = { getState: () => ({ kept: {}, covers: {} }), subscribe() {} }; export const downloadsLine = () => "";`,
   "stores/library": `export const useLibrary = { getState: () => ({ muted: new Set(), byId: new Map(), loaded: true, data: { tracks: [], counts: {} }, notePlayed() {} }), subscribe() {} };`,
-  "stores/playlists": `export const findSong = (wire) => ({ thumb: "", ...wire });`,
+  // A song this phone knows under another copy's id, and one it doesn't have.
+  "stores/playlists": `export const findSong = (wire) => (wire.id === "elsewhere" ? undefined : { thumb: "", ...wire, id: globalThis.__copies?.[wire.id] ?? wire.id });`,
   "stores/session": `export const useSession = { getState: () => ({ session: null }) }; export const here = (x) => x;`,
-  "stores/settings": `export const useSettings = { getState: () => ({ autoplay: false, dontRepeat: false, speed: 1 }) };`,
+  "stores/settings": `export const useSettings = { getState: () => ({ autoplay: false, dontRepeat: false, speed: 1, skipEndsRepeatOne: globalThis.__skipEnds !== false }) };`,
   "stores/popups": `export const toast = () => undefined;`,
   storage: `export const readJson = async () => null; export const writeJson = () => undefined;`,
   jellyfin: `export const streamUrl = () => "http://test/song";`,
@@ -23,7 +24,7 @@ const stubs = {
   quality: `export const ORIGINAL = { kind: "original" }; export const chooseStream = () => ORIGINAL; export const levelGain = () => 0; export const sameChoice = () => true; export const stepDown = () => null;`,
 };
 const out = await build({
-  stdin: { contents: `export { usePlayer, adoptPlayback, hearDevices, linkDevices, playbackNote, runCommand, watchPlayer } from "./player";`, resolveDir: stores, loader: "ts" },
+  stdin: { contents: `export { usePlayer, adoptPlayback, hearDevices, linkDevices, playbackNote, runCommand, wantsPlayback, watchPlayer } from "./player";`, resolveDir: stores, loader: "ts" },
   bundle: true,
   platform: "node",
   format: "esm",
@@ -230,14 +231,14 @@ test("Next shows at once, and what the device says before it got there doesn't m
   player().next();
   assert.equal(now(), "c", "at once");
   assert.equal(player().positionMs, 0);
-  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "c", by: 1 });
+  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "c", by: 1, track: t("c") });
   // The PC hasn't heard yet: still the song before, further on.
   hearDevices([pc("b", { positionMs: 41000 })]);
   assert.equal(now(), "c");
   assert.equal(player().positionMs, 0, "nor its place in the song");
-  hearDevices([pc("c", { positionMs: 300 })]);
+  hearDevices([pc("c", { positionMs: 3000 })]);
   assert.equal(now(), "c");
-  assert.equal(player().positionMs, 300, "from here on it's what the device says");
+  assert.equal(player().positionMs, 3000, "from here on it's what the device says");
   off();
   assert.deepEqual(stood, ["c"], "one step, never back");
 });
@@ -247,7 +248,7 @@ test("a swipe back goes one way only", () => {
   const { stood, off } = watchSongs();
   player().skipBy(-1);
   assert.equal(now(), "a");
-  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "a", by: -1 });
+  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "a", by: -1, track: t("a") });
   hearDevices([pc("b")]);
   hearDevices([pc("b", { positionMs: 42000 })]);
   hearDevices([pc("a", { positionMs: 100 })]);
@@ -264,7 +265,7 @@ test("Previous goes back near a song's start; well into it, it starts over", () 
   usePlayer.setState({ positionMs: 1000 });
   player().previous();
   assert.equal(now(), "a");
-  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "a", by: -1 });
+  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "a", by: -1, track: t("a") });
 });
 
 test("two skips in a row wait for the last one", () => {
@@ -341,7 +342,7 @@ test("a song in the queue twice, heard and asked for again: every word finds the
   assert.equal(player().index, 1);
   player().next();
   assert.equal(player().index, 2);
-  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "a", by: 1 });
+  assert.deepEqual(sent.at(-1), { action: "jump", trackId: "a", by: 1, track: t("a") });
   hearDevices([pc("a", { positionMs: 100 })]);
   assert.equal(player().index, 2, "not the copy that was heard");
   player().next();
@@ -408,6 +409,239 @@ test("what another device changes: the list, the line and the branches go togeth
   assert.deepEqual(ids(), ["a", "q", "x", "y", "c"]);
   m.runCommand({ action: "cancelBranch", name: "Mix" });
   assert.deepEqual(ids(), ["a", "q", "c"]);
+});
+
+test("told to go to a song by another copy's name: the song, wherever this phone has it", () => {
+  player().playTracks(songs("a", "b", "c"), 0, "Album");
+  globalThis.__copies = { "local:pc-b": "b" };
+  try {
+    m.runCommand({ action: "jump", trackId: "local:pc-b", by: 1, track: t("local:pc-b") });
+    assert.deepEqual(globalThis.__native.at(-1), ["skipTo", 1, true]);
+    // Not known here at all: one step along the list still means the next one.
+    nativeSays(1);
+    m.runCommand({ action: "jump", trackId: "elsewhere", by: 1, track: t("elsewhere") });
+    assert.deepEqual(globalThis.__native.at(-1), ["skipTo", 2, true]);
+    // Further away without knowing what's meant: nothing happens.
+    nativeSays(0);
+    globalThis.__native.length = 0;
+    m.runCommand({ action: "jump", trackId: "elsewhere", by: 2, track: t("elsewhere") });
+    assert.deepEqual(globalThis.__native.filter((c) => c[0] === "skipTo"), []);
+  } finally {
+    delete globalThis.__copies;
+  }
+});
+
+test("following a device, what was meant for this phone before the music moved on is dropped", () => {
+  followPc();
+  globalThis.__native.length = 0;
+  for (const command of [{ action: "pause" }, { action: "play" }, { action: "seek", positionMs: 5000 }, { action: "next" }, { action: "previous" }, { action: "volume", level: 0.2 }, { action: "shuffle", on: true }, { action: "repeat", mode: "all" }, { action: "jump", trackId: "c", by: 1 }]) {
+    m.runCommand(command);
+    assert.ok(player().remote, `${command.action} leaves the following alone`);
+  }
+  assert.deepEqual(globalThis.__native, []);
+  assert.equal(now(), "b");
+  m.runCommand({ action: "takeOver" });
+  assert.equal(player().remote, null, "asked to play here, it does");
+  assert.ok(globalThis.__native.some((c) => c[0] === "play"));
+});
+
+test("a clock behind the other device's doesn't make this phone's own news old", () => {
+  const ahead = Date.now() + 90_000;
+  followPc();
+  adoptPlayback({ device: { id: "pc", name: "PC" }, at: ahead, playing: true, positionMs: 40000, track: t("c"), queueId: "q-ahead", place: 2 }, { id: "q-ahead", from: 0, tracks: LIST });
+  player().takeHere();
+  const { note } = m.playbackNote({ id: "phone", name: "Phone" });
+  assert.ok(note.at > ahead, "newer than what it took over");
+  nativeSays(2);
+  assert.ok(m.playbackNote({ id: "phone", name: "Phone" }).note.at > note.at, "and every word after that newer still");
+  assert.equal(m.wantsPlayback({ device: { id: "pc", name: "PC" }, at: ahead, playing: true, positionMs: 40000, track: t("c"), queueId: "q-ahead" }), false, "what it took over isn't news");
+});
+
+test("the music gone to another device: that it's paused here is no news, until somebody starts something here", () => {
+  player().playTracks(songs("a", "b"), 0, "Album");
+  nativeSays(0);
+  assert.ok(m.playbackNote({ id: "phone", name: "Phone" }), "it says where it stands");
+  m.runCommand({ action: "yield", to: "pc" });
+  assert.equal(m.playbackNote({ id: "phone", name: "Phone" }), null, "it would overwrite what the other device just said");
+  // Nothing came of it there, and somebody starts it here again.
+  globalThis.__listeners.onState({ index: 0, isPlaying: false, playWhenReady: false, isBuffering: false, isEnded: false, positionMs: 0, durationMs: 100000, repeat: "off", audio: "", bandwidthBps: 0, count: 2 });
+  nativeSays(0);
+  assert.ok(m.playbackNote({ id: "phone", name: "Phone" }));
+});
+
+test("a song only just starting on the other device doesn't know its length yet", () => {
+  followPc();
+  hearDevices([pc("c", { durationMs: 0, positionMs: 500 })]);
+  assert.equal(now(), "c");
+  assert.equal(player().durationMs, 100000);
+});
+
+test("starting to follow is said right away: the others shouldn't go by what this phone said before", () => {
+  let said = 0;
+  linkDevices({ self: "phone", send: async () => true, sendList: async () => true, handOver: async () => true, look: () => undefined, presence: () => (said += 1) });
+  m.runCommand({ action: "yield", to: "pc" });
+  hearDevices([pc("b")]);
+  assert.equal(said, 1);
+  hearDevices([pc("b", { positionMs: 42000 })]);
+  assert.equal(said, 1, "only when it starts");
+});
+
+test("a small difference from the clock running here is no move; a real one is", () => {
+  followPc();
+  hearDevices([pc("b", { positionMs: 40000 })]);
+  const before = player().positionMs;
+  hearDevices([pc("b", { positionMs: before + 700 })]);
+  assert.equal(player().positionMs, before, "the words on screen don't flicker");
+  hearDevices([pc("b", { positionMs: before - 900 })]);
+  assert.equal(player().positionMs, before, "nor back");
+  hearDevices([pc("b", { positionMs: before + 20000 })]);
+  assert.equal(player().positionMs, before + 20000, "somebody moved it there");
+});
+
+/* ------------------------------------------------------------- repeat, going from device to device */
+
+const lastRepeat = () => globalThis.__native.filter((c) => c[0] === "setRepeat").at(-1)?.[1];
+
+test("taken over from a device, the music goes round the way it did there", () => {
+  followPc();
+  hearDevices([pc("b", { repeat: "one", shuffle: true })]);
+  assert.equal(player().repeat, "one");
+  globalThis.__native.length = 0;
+  player().takeHere();
+  assert.equal(lastRepeat(), "one", "this phone's own player is told");
+  assert.ok(globalThis.__native.findIndex((c) => c[0] === "setQueue") >= 0);
+  assert.equal(player().shuffle, true);
+});
+
+test("handed over, the note says how it goes on, and the list's own order comes along", () => {
+  player().playTracks(songs("a", "b", "c", "d"), 0, "Album", true);
+  usePlayer.setState({ repeat: "all" });
+  nativeSays(0, { repeat: "all" });
+  const { note, queue } = m.playbackNote({ id: "phone", name: "Phone" });
+  assert.equal(note.shuffle, true);
+  assert.equal(note.repeat, "all");
+  assert.deepEqual(queue().unshuffled.map((s) => s.id), ["a", "b", "c", "d"]);
+
+  // The other way round.
+  player().stop();
+  usePlayer.setState({ shuffle: false, repeat: "off" });
+  globalThis.__native.length = 0;
+  adoptPlayback({ device: { id: "pc", name: "PC" }, at: 5, playing: true, positionMs: 9000, track: t("c"), queueId: "q7", place: 0, shuffle: true, repeat: "one" }, { id: "q7", from: 0, tracks: songs("c", "a", "d", "b"), unshuffled: songs("a", "b", "c", "d") }, true);
+  assert.equal(player().shuffle, true);
+  assert.equal(player().repeat, "one");
+  assert.equal(lastRepeat(), "one");
+  player().toggleShuffle();
+  assert.deepEqual(ids().slice(0, 2), ["c", "d"], "shuffle off here finds the list's own order");
+});
+
+test("sent a song this phone doesn't have: the next one it does, from its start; none at all, it stays as it was", () => {
+  const list = songs("elsewhere", "b", "c");
+  const note = { device: { id: "pc", name: "PC" }, at: 5, playing: true, positionMs: 9000, track: t("elsewhere"), queueId: "q8", place: 0 };
+  assert.equal(adoptPlayback(note, { id: "q8", from: 0, tracks: list }, true), true);
+  assert.equal(now(), "b");
+  assert.equal(player().positionMs, 0);
+  player().stop();
+  assert.equal(adoptPlayback(note, { id: "q8", from: 0, tracks: songs("elsewhere") }, true), false);
+  assert.equal(now(), undefined);
+  // Merely seen, not sent: nothing to say.
+  assert.equal(adoptPlayback(note, null), true);
+});
+
+/* ------------------------------------------------------------- skipping away from repeat-one */
+
+function onRepeatOne() {
+  player().playTracks(songs("a", "b", "c"), 0, "Album");
+  usePlayer.setState({ repeat: "one" });
+  nativeSays(0, { repeat: "one" });
+  globalThis.__native.length = 0;
+}
+
+test("repeat-one ends with a skip, however it came: the buttons, a swipe, the queue, the lock screen", () => {
+  onRepeatOne();
+  player().next();
+  nativeSays(1, { repeat: "one" });
+  assert.equal(player().repeat, "all", "Next");
+  assert.equal(lastRepeat(), "all");
+
+  onRepeatOne();
+  nativeSays(1, { repeat: "one" });
+  assert.equal(player().repeat, "all", "from outside the app: the lock screen, headphones");
+  assert.equal(lastRepeat(), "all");
+
+  onRepeatOne();
+  player().skipBy(1);
+  assert.equal(player().repeat, "all", "a swipe");
+  assert.equal(lastRepeat(), "all");
+  nativeSays(1, { repeat: "all" });
+
+  onRepeatOne();
+  player().skipTo(2);
+  nativeSays(2, { repeat: "one" });
+  assert.equal(player().repeat, "all", "from the queue");
+});
+
+test("the last song on repeat-one: Next goes round, on a player that would stay there by itself", () => {
+  player().playTracks(songs("a", "b"), 1, "Album");
+  usePlayer.setState({ repeat: "one" });
+  nativeSays(1, { repeat: "one" });
+  globalThis.__native.length = 0;
+  player().next();
+  assert.equal(player().repeat, "all");
+  assert.deepEqual(globalThis.__native.map((c) => c[0]).filter((n) => n === "setRepeat" || n === "next"), ["setRepeat", "next"]);
+});
+
+test("the same song over, or the end of it, isn't a skip; nor is a song removed from before it", () => {
+  onRepeatOne();
+  nativeSays(0, { repeat: "one", positionMs: 100 });
+  assert.equal(player().repeat, "one");
+  player().playTracks(songs("x", "a", "b"), 1, "Album");
+  usePlayer.setState({ repeat: "one", isPlaying: true, playWhenReady: true });
+  nativeSays(1, { repeat: "one" });
+  player().removeAt(0);
+  nativeSays(0, { repeat: "one" });
+  assert.equal(player().repeat, "one");
+});
+
+test("with the setting off, repeat-one stays when skipping", () => {
+  globalThis.__skipEnds = false;
+  try {
+    onRepeatOne();
+    player().next();
+    nativeSays(1, { repeat: "one" });
+    assert.equal(player().repeat, "one");
+    assert.equal(lastRepeat(), undefined);
+    onRepeatOne();
+    player().skipBy(1);
+    assert.equal(player().repeat, "one");
+    nativeSays(1, { repeat: "one" });
+  } finally {
+    delete globalThis.__skipEnds;
+  }
+});
+
+test("Play goes by the shuffle that's on; the Shuffle button turns it on; as on the computer", () => {
+  usePlayer.setState({ shuffle: true });
+  player().playAll(songs("a", "b", "c", "d"), "Album");
+  assert.equal(player().shuffle, true);
+  assert.deepEqual(player().unshuffled.map((s) => s.id), ["a", "b", "c", "d"]);
+  usePlayer.setState({ shuffle: false, unshuffled: null });
+  player().playAll(songs("a", "b", "c", "d"), "Album");
+  assert.equal(player().shuffle, false);
+  assert.deepEqual(ids(), ["a", "b", "c", "d"]);
+  player().playAll(songs("a", "b", "c", "d"), "Album", true);
+  assert.equal(player().shuffle, true);
+});
+
+test("a new list while something plays is another song too; with nothing on, repeat-one is left alone", () => {
+  onRepeatOne();
+  usePlayer.setState({ playWhenReady: true });
+  player().playTracks(songs("m", "n"), 0, "Mix");
+  assert.equal(player().repeat, "all");
+
+  player().stop();
+  usePlayer.setState({ repeat: "one", playWhenReady: false, isPlaying: false });
+  player().playTracks(songs("m", "n"), 0, "Mix");
+  assert.equal(player().repeat, "one");
 });
 
 test("what this phone tells the others holds the line and the branches", () => {

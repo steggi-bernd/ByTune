@@ -30,6 +30,15 @@ export interface PlaylistImport {
   playlistId?: string;
 }
 
+/** A playlist made from a Spotify export: what it still waits for is worked out from the export (lib/playlistRecovery.ts). */
+export interface RecoveredPlaylist {
+  name: string;
+  fileName: string;
+  entries: SpotifyEntry[];
+  /** the export's songs that got in once (entryKey): taken out by hand, they stay out */
+  added: string[];
+}
+
 interface SpotifyImportState {
   fileName: string | null;
   entries: SpotifyEntry[];
@@ -44,6 +53,8 @@ interface SpotifyImportState {
   likedIds: string[];
   /** the playlist being recovered */
   playlist: PlaylistImport | null;
+  /** the playlists recovered so far, by their ByTune id */
+  recovered: Record<string, RecoveredPlaylist>;
   /** a data download holds every playlist: the ones to pick from (not kept) */
   playlistChoices: { fileName: string; lists: SpotifyPlaylist[]; into?: string } | null;
   playlistError: string | null;
@@ -56,6 +67,12 @@ interface SpotifyImportState {
   notePlaylist(playlistId: string): void;
   /** forget the playlist file */
   resetPlaylist(): void;
+  rememberRecovered(playlistId: string, recovered: RecoveredPlaylist): void;
+  noteRecoveredAdded(playlistId: string, keys: string[]): void;
+  /** the playlist goes on as it is: it no longer waits for anything */
+  forgetRecovered(playlistId: string): void;
+  /** open what a recovered playlist remembers, to see what it waits for */
+  openRecovered(playlistId: string): void;
   setVerdict(key: string, verdict: "same" | "different" | null): void;
   setVerdicts(keys: string[], verdict: "same" | "different"): void;
   pick(key: string, trackId: string | null): void;
@@ -75,6 +92,7 @@ export const useSpotifyImport = create<SpotifyImportState>()(
       picks: {},
       likedIds: [],
       playlist: null,
+      recovered: {},
       playlistChoices: null,
       playlistError: null,
 
@@ -122,6 +140,31 @@ export const useSpotifyImport = create<SpotifyImportState>()(
 
       resetPlaylist() {
         set({ playlist: null, playlistChoices: null, playlistError: null });
+      },
+
+      rememberRecovered(playlistId, recovered) {
+        set((s) => ({ recovered: { ...s.recovered, [playlistId]: recovered } }));
+      },
+
+      noteRecoveredAdded(playlistId, keys) {
+        set((s) => {
+          const current = s.recovered[playlistId];
+          if (!current) return s;
+          return { recovered: { ...s.recovered, [playlistId]: { ...current, added: [...new Set([...current.added, ...keys])] } } };
+        });
+      },
+
+      forgetRecovered(playlistId) {
+        set((s) => {
+          const recovered = { ...s.recovered };
+          delete recovered[playlistId];
+          return { recovered };
+        });
+      },
+
+      openRecovered(playlistId) {
+        const remembered = get().recovered[playlistId];
+        if (remembered) set({ playlist: { fileName: remembered.fileName, name: remembered.name, entries: remembered.entries, playlistId }, playlistChoices: null, playlistError: null });
       },
 
       setVerdict(key, verdict) {
@@ -173,6 +216,7 @@ export const useSpotifyImport = create<SpotifyImportState>()(
           picks: s.picks,
           likedIds: s.likedIds,
           playlist: s.playlist,
+          recovered: s.recovered,
         }) as unknown as SpotifyImportState,
     }
   )

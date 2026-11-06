@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyDecisions,
+  completePlaylist,
   entryKey,
   importOrder,
   matchEntries,
@@ -212,4 +213,56 @@ test("a playlist after an import: Spotify's order first, songs added in ByTune a
   const keyOf = (id) => (id === "b-flac" ? "b" : id);
   const merged = mergeImportedPlaylist([t("x"), t("b"), t("y")], [t("a"), t("b-flac"), t("c")], keyOf);
   assert.deepEqual(merged.map((x) => x.id), ["a", "b-flac", "c", "x", "y"]);
+});
+
+/* ------------------------------------------------------------ a recovered playlist finishes itself */
+
+const songOf = (id) => ({ id, title: id, artist: "Band", duration: 200, thumb: "" });
+const rowOf = (id, kind = "match") => ({ entry: { title: id, artists: ["Band"], album: "", uri: `spotify:track:${id}` }, kind, track: kind === "missing" ? undefined : songOf(id) });
+const key = (id) => `spotify:track:${id}`;
+const same = (id) => id;
+
+test("a song found later goes to its place in the export", () => {
+  const current = [songOf("a"), songOf("c")];
+  const { tracks, done, added } = completePlaylist(current, [rowOf("a"), rowOf("b"), rowOf("c")], new Set([key("a"), key("c")]), same);
+  assert.deepEqual(tracks.map((t) => t.id), ["a", "b", "c"]);
+  assert.deepEqual(done, [key("b")]);
+  assert.equal(added, 1);
+});
+
+test("the first songs of an export go on top; songs added here stay where they are", () => {
+  const current = [songOf("b"), songOf("mine")];
+  const { tracks } = completePlaylist(current, [rowOf("a"), rowOf("b"), rowOf("c")], new Set([key("b")]), same);
+  assert.deepEqual(tracks.map((t) => t.id), ["a", "b", "c", "mine"]);
+});
+
+test("a song taken out by hand stays out", () => {
+  const current = [songOf("a")];
+  const { tracks, added } = completePlaylist(current, [rowOf("a"), rowOf("b")], new Set([key("a"), key("b")]), same);
+  assert.equal(added, 0);
+  assert.equal(tracks, current);
+});
+
+test("songs to check and songs still missing wait", () => {
+  const current = [songOf("a")];
+  const { tracks, done, added } = completePlaylist(current, [rowOf("a"), rowOf("b", "check"), rowOf("c", "missing")], new Set([key("a")]), same);
+  assert.equal(added, 0);
+  assert.equal(tracks, current);
+  assert.deepEqual(done, []);
+});
+
+test("an arrangement made since stays: the new song follows the song before it, wherever that went", () => {
+  const current = [songOf("c"), songOf("a")];
+  const { tracks } = completePlaylist(current, [rowOf("a"), rowOf("b"), rowOf("c")], new Set([key("a"), key("c")]), same);
+  assert.deepEqual(tracks.map((t) => t.id), ["c", "a", "b"]);
+});
+
+test("a song already there under another copy counts as there", () => {
+  const copies = { "local:b": "b", "jf:b": "b" };
+  const keyOf = (id) => copies[id] ?? id;
+  const row = { entry: { title: "b", artists: ["Band"], album: "", uri: key("b") }, kind: "match", track: songOf("local:b") };
+  const current = [songOf("jf:b")];
+  const { added, done } = completePlaylist(current, [row], new Set(), keyOf);
+  assert.equal(added, 0);
+  assert.deepEqual(done, [key("b")]);
 });

@@ -38,7 +38,7 @@
  * idempotent completion, and the deck that is already playing wins either way.
  */
 import { useLibrary } from "../stores/library";
-import { usePlayer } from "../stores/player";
+import { setQueueRanOut, usePlayer } from "../stores/player";
 import { placeOf } from "./queueSections";
 import { useSettings } from "../stores/settings";
 import { useUI } from "../stores/ui";
@@ -68,6 +68,10 @@ let elements: [HTMLAudioElement, HTMLAudioElement] | null = null;
 /** which element is the session player right now */
 let mainIdx: 0 | 1 = 0;
 let loadedId: string | null = null;
+/** the song whose source is still being looked up; it goes by `playing` and `pendingSeek` when it arrives */
+let loadingId: string | null = null;
+/** bumped by every load, so one that was overtaken gives way instead of cutting the newer one off */
+let loadTurn = 0;
 let pendingSeek = 0;
 /** retries (with client rotation) for the current track */
 let retryCount = 0;
@@ -138,8 +142,9 @@ function el(): HTMLAudioElement {
 
 /** Live element clock for consumers needing sub-`timeupdate` resolution (lyrics sweep). */
 export function getPlaybackPosition(): number {
-  // Casting: the network player's last report, run on between its once-a-second reports.
-  if (castFollower && castClock) {
+  // Casting or following: the other side's last report, run on between its reports. The silent deck knows nothing.
+  if (castFollower) {
+    if (!castClock) return usePlayer.getState().position;
     const pos = castClock.running ? castClock.pos + (performance.now() - castClock.at) / 1000 : castClock.pos;
     const d = usePlayer.getState().duration;
     return d > 0 ? Math.min(pos, d) : pos;
@@ -469,19 +474,6 @@ function eqPlan(): { preampDb: number; bands: EqBandPlan[] } | null {
 }
 
 /**
- * What plays, for the Milkdrop visualizer (components/MilkdropVisualizer):
- * both decks mixed, before the EQ. The first call builds the audio graph the
- * EQ uses — with the EQ off it is a transparent chain — because a deck can
- * only ever feed one graph.
- */
-export function visualizerTap(): { context: AudioContext; node: AudioNode } | null {
-  if (!elements) return null;
-  if (!eqCtx) applyEq(true);
-  if (eqCtx?.state === "suspended") void eqCtx.resume().catch(() => undefined);
-  return eqCtx && eqInput ? { context: eqCtx, node: eqInput } : null;
-}
-
-/**
  * Both decks → preamp → EQ bands → (limiter while the curve can boost) →
  * speakers. Element volume is applied before a MediaElementSource (verified
  * on Electron's Chromium), so the gain/fade/normalisation logic above keeps
@@ -489,11 +481,11 @@ export function visualizerTap(): { context: AudioContext; node: AudioNode } | nu
  * detached from its source node again, so turning the EQ off afterwards
  * leaves an empty, transparent chain (preamp at 0 dB, no bands).
  */
-function applyEq(force = false): void {
+function applyEq(): void {
   if (!elements) return;
   const plan = eqPlan();
   if (!eqCtx) {
-    if (!plan && !force) return;
+    if (!plan) return;
     const ctx = new AudioContext();
     eqCtx = ctx;
     // Brick-wall-ish limiter for boosts the preamp doesn't cover (the
@@ -980,6 +972,10 @@ let castClock: { pos: number; at: number; running: boolean } | null = null;
 /** The network player takes over: transitions end, the decks fall silent where they are. */
 export function handOverToCast(follower: (state: PlayerSnapshot, prev: PlayerSnapshot) => void): void {
   castFollower = follower;
+  castClock = null;
+  // A load still on its way would start the song here, under the other side's.
+  loadTurn += 1;
+  loadingId = null;
   abortFade(false);
   stopPpRamp();
   flushAccum("pause");
@@ -1004,6 +1000,11 @@ export function takeBackFromCast(): void {
   const heard = historyForId;
   void loadTrack(cur, s.playing);
   historyForId = heard;
+}
+
+/** Where another device being followed stands: the clock only, what's heard there counts there. */
+export function followClock(position: number, running: boolean): void {
+  if (castFollower) castClock = { pos: position, at: performance.now(), running };
 }
 
 /**
@@ -1130,11 +1131,6 @@ function disarmSilenceTail(): void {
   }
 }
 
-/** Head silence trim applied for this track, if any (lyric offset math). */
-export function getHeadTrim(trackId: string): number {
-  return silenceTrims.get(trackId)?.head ?? 0;
-}
-
 /** Request edge-silence analysis for the track that just started loading. */
 function requestSilenceAnalysis(track: Track): void {
   const s = useSettings.getState();
@@ -1201,21 +1197,24 @@ export function initAudioEngine(): void {
     // Only the session player's clock drives the tick: onTimeUpdate and
     // updateBuffered read the main element, so standby events would run them
     // against the wrong element twice per update.
+    // While something else has the music (castFollower) the decks stand aside: whatever
+    // they still report isn't about what plays, and a stream of theirs that dies is no broken song.
+    const speaks = (): boolean => i === mainIdx && !castFollower;
     e.addEventListener("timeupdate", () => {
-      if (i === mainIdx) onTimeUpdate();
+      if (speaks()) onTimeUpdate();
     });
     e.addEventListener("progress", () => {
-      if (i === mainIdx) updateBuffered();
+      if (speaks()) updateBuffered();
     });
     e.addEventListener("waiting", () => {
-      if (i === mainIdx) usePlayer.getState()._setBuffering(true);
+      if (speaks()) usePlayer.getState()._setBuffering(true);
     });
     e.addEventListener("canplay", () => {
-      if (i === mainIdx) usePlayer.getState()._setBuffering(false);
+      if (speaks()) usePlayer.getState()._setBuffering(false);
     });
     e.addEventListener("playing", () => {
       if (eqCtx?.state === "suspended") void eqCtx.resume();
-      if (i !== mainIdx) return;
+      if (!speaks()) return;
       usePlayer.getState()._setBuffering(false);
       consecutiveFailures = 0;
       localMissingToasted = false;
@@ -1233,18 +1232,20 @@ export function initAudioEngine(): void {
     // Errors and natural ends must be caught on BOTH elements: after a
     // crossfade the other element becomes the session player.
     e.addEventListener("error", () => {
-      if (i !== mainIdx) return;
+      if (!speaks()) return;
       const cur = usePlayer.getState().queue[usePlayer.getState().index];
       if (!cur || loadedId !== cur.id) return;
       handleFailure(cur);
     });
     e.addEventListener("ended", () => {
-      if (i !== mainIdx) return;
+      if (!speaks()) return;
       onTrackEnded();
     });
   }
 
 
+
+  setQueueRanOut(() => void autoplayNext());
 
   usePlayer.subscribe((state, prev) => {
     if (!elements) return;
@@ -1288,11 +1289,7 @@ export function initAudioEngine(): void {
     }
 
     if (state.queue !== prev.queue && cur && cur.id === prevCur?.id && state.position === 0 && prev.position > 3) {
-      try {
-        el().currentTime = 0;
-      } catch {
-        /* ignore */
-      }
+      moveWithin(cur.id, 0);
     }
 
     if (state.playing !== prev.playing) {
@@ -1318,7 +1315,9 @@ export function initAudioEngine(): void {
           if (!fade) startPpRamp(1);
         } else if (cur) {
           stopPpRamp();
-          void loadTrack(cur, true);
+          // Already on its way, it looks at `playing` when it arrives. A second load would throw
+          // away the place in the song and cut the first one's play() off.
+          if (loadingId !== cur.id) void loadTrack(cur, true);
         }
       } else {
         flushAccum("pause");
@@ -1348,11 +1347,7 @@ export function initAudioEngine(): void {
 
     if (state.seekNonce !== prev.seekNonce) {
       disarmSilenceTail();
-      try {
-        el().currentTime = state.position;
-      } catch {
-        /* ignore */
-      }
+      moveWithin(cur?.id, state.position);
       const t = cur ? silenceTrims.get(cur.id) : null;
       if (t && t.tail > 0 && state.playing) armSilenceTail(t.tail);
     }
@@ -1387,6 +1382,19 @@ export function initAudioEngine(): void {
 
   setupMediaSession();
   setupAudioOutputWatch();
+}
+
+/** To a place in the song: now, or when the load on its way arrives. */
+function moveWithin(trackId: string | undefined, position: number): void {
+  if (trackId && loadingId === trackId) {
+    pendingSeek = position;
+    return;
+  }
+  try {
+    el().currentTime = position;
+  } catch {
+    /* ignore */
+  }
 }
 
 function onTrackEnded(): void {
@@ -1492,6 +1500,8 @@ async function loadTrack(track: Track | null, autoplay: boolean): Promise<void> 
   // start belongs to the previous track and must not fire.
   transitionToken += 1;
   if (!track) {
+    loadTurn += 1;
+    loadingId = null;
     loadedId = null;
     historyForId = null;
     el().pause();
@@ -1506,9 +1516,10 @@ async function loadTrack(track: Track | null, autoplay: boolean): Promise<void> 
   retryCount = 0;
   failedVersions.clear();
   pendingSeek = usePlayer.getState().position;
+  // The place in the song stands until the element has it: others read it from here meanwhile.
   usePlayer.setState({
     buffering: true,
-    position: 0,
+    position: pendingSeek,
     error: null,
     duration: track.duration || 0,
   });
@@ -1524,19 +1535,22 @@ async function loadTrack(track: Track | null, autoplay: boolean): Promise<void> 
 
 async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): Promise<void> {
   if (!elements) return;
+  const turn = ++loadTurn;
+  loadingId = track.id;
   try {
     if (isLibraryTrack(track)) {
-      const a = el();
       // Local files stream through the main-process proxy (a file:// src is
       // blocked from the http renderer origin). Always resolve fresh — the
       // proxy port changes between launches, so cached URLs would go stale,
       // and the IPC lookup is a local roundtrip. A song found in several
       // places plays its local file first, a server stream when that's away.
       const found = await resolveLibrarySource(track, failedVersions);
+      if (turn !== loadTurn) return; // another load took over while we were resolving
       if (!found) throw await librarySourceError(track);
       const { url: src, version } = found;
       const now = usePlayer.getState().queue[usePlayer.getState().index];
       if (now?.id !== track.id) return; // user moved on while we were resolving
+      const a = el();
       usePlayer.getState()._setSource(track.id, version);
       // Library songs are levelled by ReplayGain (when tagged and enabled);
       // otherwise they play at their original level — no trim.
@@ -1547,6 +1561,7 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
       refreshVolumes();
       a.src = src;
       loadedId = track.id;
+      loadingId = null;
       if (pendingSeek > 0) {
         try {
           a.currentTime = pendingSeek;
@@ -1565,6 +1580,7 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
       return;
     }
     const url = await requireBridge().getStreamUrl(track.id, forceRotate, useSettings.getState().streamingQuality);
+    if (turn !== loadTurn) return; // another load took over while we were resolving
     const cur = usePlayer.getState().queue[usePlayer.getState().index];
     if (cur?.id !== track.id) return; // user moved on while we were resolving
     // Loudness metadata races the element's own first request: both share the
@@ -1577,6 +1593,7 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
     // previous track's — fetchLoudness refines it once metadata lands.
     refreshVolumes();
     loadedId = track.id;
+    loadingId = null;
     const trim = silenceTrims.get(track.id);
     if (pendingSeek > 0) {
       try {
@@ -1602,8 +1619,16 @@ async function loadUrl(track: Track, autoplay: boolean, forceRotate: boolean): P
     const t = silenceTrims.get(track.id);
     if (t && t.tail > 0 && usePlayer.getState().playing) armSilenceTail(t.tail);
   } catch (err) {
+    // Overtaken by a newer load: what happens now is that one's business.
+    if (turn !== loadTurn) return;
+    loadingId = null;
     const cur = usePlayer.getState().queue[usePlayer.getState().index];
     if (cur?.id !== track.id) return;
+    // A pause or a new source won the race with play(): nothing is wrong with the song.
+    if (isAbortError(err)) {
+      usePlayer.setState({ buffering: false });
+      return;
+    }
     handleFailure(track, err);
   }
 }
@@ -1651,14 +1676,17 @@ function handleFailure(track: Track, err?: unknown): void {
       const tried = new Set([...failedVersions, playingFrom.id]);
       if (playableVersions(track, tried).length) {
         failedVersions.add(playingFrom.id);
-        void loadUrl(track, true, false);
+        // The failed source says nothing more; `playing` decides when the new one is there.
+        loadedId = null;
+        void loadUrl(track, false, false);
         return;
       }
     }
   }
   if (retryCount < 1 && reason !== "unreachable") {
     retryCount += 1;
-    void loadUrl(track, true, true);
+    loadedId = null;
+    void loadUrl(track, false, true);
     return;
   }
   consecutiveFailures += 1;

@@ -21,6 +21,8 @@ export interface Playlist {
       opens the artist page and the artist's photo stands in as cover */
   artistId?: string;
   artistThumb?: string;
+  /** the picture chosen for it, a small data: image that travels with it */
+  cover?: string;
 }
 
 /** An artist the user dropped into their library — a follow, not a playlist. */
@@ -78,6 +80,8 @@ interface LibraryState {
   togglePinSingle(key: PinnedSingleKey): void;
   createPlaylist(name: string): Playlist;
   renamePlaylist(id: string, name: string): void;
+  /** the picture chosen for a playlist; null goes back to its songs' covers */
+  setPlaylistCover(id: string, cover: string | null): void;
   togglePinPlaylist(id: string): void;
   deletePlaylist(id: string): void;
   addToPlaylist(playlistId: string, track: Track): boolean;
@@ -224,6 +228,16 @@ export const useLibrary = create<LibraryState>()(
       renamePlaylist(id, name) {
         withChanges(set, get, {
           playlists: get().playlists.map((p) => (p.id === id ? { ...p, name: name.trim() || p.name } : p)),
+        }, [{ kind: "edit", group: "playlists", id }]);
+      },
+
+      setPlaylistCover(id, cover) {
+        withChanges(set, get, {
+          playlists: get().playlists.map((p) => {
+            if (p.id !== id) return p;
+            const { cover: _old, ...rest } = p;
+            return cover ? { ...rest, cover } : rest;
+          }),
         }, [{ kind: "edit", group: "playlists", id }]);
       },
 

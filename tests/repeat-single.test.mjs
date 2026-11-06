@@ -19,7 +19,7 @@ const out = await build({
       name: "stubs",
       setup(b) {
         b.onLoad({ filter: /[\\/]lib[\\/]persist\.ts$/ }, () =>
-          stub(`export const lazyJSONStorage = () => ({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });`)
+          stub(`export const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }; export const lazyJSONStorage = () => ({ getItem: () => null, setItem: () => undefined, removeItem: () => undefined });`)
         );
         b.onLoad({ filter: /[\\/]stores[\\/]catalog\.ts$/ }, () => stub(`export const songKey = (id) => id; export const versionsOf = (t) => [t];`));
         b.onLoad({ filter: /[\\/]stores[\\/]ui\.ts$/ }, () => stub(`export const useUI = { getState: () => ({ toast() {}, openDialog() {}, navigate() {} }) };`));

@@ -34,6 +34,7 @@ import {
   Palette,
   Radio,
   RefreshCw,
+  Repeat,
   Server,
   ShoppingBag,
   SlidersHorizontal,
@@ -1296,6 +1297,14 @@ export function SettingsView() {
           subtitle={T("Keep the music going when the queue ends")}
           trailing={<Switch checked={s.autoplay} onChange={s.setAutoplay} />}
           onClick={() => s.setAutoplay(!s.autoplay)}
+        />
+        <Divider />
+        <SettingsRow
+          icon={Repeat}
+          title={T("Skipping ends repeat one")}
+          subtitle={T("Go to another song while one is on repeat, and the whole list repeats from there")}
+          trailing={<Switch checked={s.skipEndsRepeatOne} onChange={s.setSkipEndsRepeatOne} />}
+          onClick={() => s.setSkipEndsRepeatOne(!s.skipEndsRepeatOne)}
         />
         <Divider />
         <SliderRow

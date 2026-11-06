@@ -196,7 +196,7 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
     id: p.id,
     title: p.name,
     subtitle: T("Playlist · {count} {value}", { count: p.tracks.length, value: p.tracks.length === 1 ? T("song") : T("songs") }),
-    thumb: p.artistThumb ?? p.tracks[0]?.thumb,
+    thumb: p.cover ?? p.artistThumb ?? p.tracks[0]?.thumb,
     kind: "playlist",
     folderId,
     artistId: p.artistId,
@@ -630,7 +630,10 @@ function LibraryPill({ collapsed }: { collapsed: boolean }) {
           label: T("Shuffle"),
           icon: Shuffle,
           disabled: none,
-          action: () => usePlayer.getState().playAll([...playable].sort(() => Math.random() - 0.5)),
+          action: () => {
+            usePlayer.setState({ shuffle: true });
+            usePlayer.getState().playAll(playable, true);
+          },
         },
         {
           label: T("Add to queue"),

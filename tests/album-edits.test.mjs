@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyAlbumMerges, applySongEdits, isLoose, resolveAlbumKey, withMerge, withSplit } from "../.test-build/albumEdits.mjs";
+import { applyAlbumLooks, applyAlbumMerges, applySongEdits, isLoose, resolveAlbumKey, withMerge, withSplit } from "../.test-build/albumEdits.mjs";
 import { artistAlbums, buildAlbums } from "../.test-build/catalogIndex.mjs";
 
 const key = (artist, album) => `${artist.toLowerCase()}|${album.toLowerCase()}`;
@@ -101,4 +101,43 @@ test("loose songs put on an album you have join it", () => {
   const albums = buildAlbums(shown);
   assert.equal(albums.length, 1);
   assert.equal(albums[0].tracks.length, 3);
+});
+
+test("a name given to an album shows on its songs, and the album stays the one it was", () => {
+  const tracks = [song("Album", 1), song("Album", 2), song("Other", 1)];
+  const k = key("Band", "Album");
+  const shown = applyAlbumLooks(tracks, { [k]: "Better Name" }, {});
+  assert.deepEqual(shown.map((t) => t.album), ["Better Name", "Better Name", "Other"]);
+  assert.equal(shown[0].albumTag, "Album");
+  const albums = buildAlbums(shown);
+  const renamed = albums.find((a) => a.key === k);
+  assert.equal(renamed.title, "Better Name");
+  assert.equal(renamed.tracks.length, 2);
+  // Its other edits still go by the same album.
+  assert.equal(albums.length, 2);
+  assert.equal(buildAlbums(shown, { [k]: "Someone Else" }).find((a) => a.key === k).artist, "Someone Else");
+});
+
+test("a merged part keeps its place in a renamed album", () => {
+  const main = key("Band", "Album");
+  const merged = applyAlbumMerges([song("Album (Disc 2)", 1), song("Album", 1), song("Album", 2)], { [key("Band", "Album (Disc 2)")]: main });
+  const shown = applyAlbumLooks(merged, { [main]: "Whole Album" }, {});
+  const [album] = buildAlbums(shown);
+  assert.equal(album.title, "Whole Album");
+  assert.deepEqual(album.tracks.map((t) => t.albumTag), ["Album", "Album", "Album (Disc 2)"]);
+});
+
+test("a picture chosen for an album shows on all its songs and on the album", () => {
+  const k = key("Band", "Album");
+  const tracks = [song("Album", 1, { thumb: "localart://aaaaaaaaaaaaaaaa.jpg" }), song("Album", 2, { thumb: "" }), song("Other", 1, { thumb: "localart://bbbbbbbbbbbbbbbb.jpg" })];
+  const shown = applyAlbumLooks(tracks, {}, { [k]: "localart://cccccccccccccccc.jpg" });
+  assert.deepEqual(shown.map((t) => t.thumb), ["localart://cccccccccccccccc.jpg", "localart://cccccccccccccccc.jpg", "localart://bbbbbbbbbbbbbbbb.jpg"]);
+  assert.equal(buildAlbums(shown).find((a) => a.key === k).thumb, "localart://cccccccccccccccc.jpg");
+  assert.equal(shown[0].album, "Album");
+  assert.equal(shown[0].albumTag, undefined);
+});
+
+test("without any such edit the songs stay the very same list", () => {
+  const tracks = [song("Album", 1)];
+  assert.equal(applyAlbumLooks(tracks, {}, {}), tracks);
 });

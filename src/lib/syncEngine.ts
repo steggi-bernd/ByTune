@@ -39,6 +39,9 @@ export interface PlaybackNote {
   context?: string;
   /** what the player is doing with the sound, for a look when something sounds off */
   audio?: string;
+  /** how it goes on from here: the device continuing goes on the same way */
+  shuffle?: boolean;
+  repeat?: "off" | "all" | "one";
 }
 
 export interface QueueDoc {
@@ -52,6 +55,8 @@ export interface QueueDoc {
   branches?: QueueBranch[];
   /** what the list is called that comes after the branch playing now */
   home?: string;
+  /** shuffled: the list's own order around the playing song, to go back to */
+  unshuffled?: WireTrack[];
 }
 
 /** What a device says about itself to the others. */
@@ -91,8 +96,8 @@ export type DeviceCommand =
   /** the branch into this list taken back */
   | { action: "cancelBranch"; name?: string }
   | { action: "seek"; positionMs: number }
-  /** a song of its queue */
-  | { action: "jump"; trackId: string; by?: number }
+  /** a song of its queue: `track` says which, as devices can know a song by different copies */
+  | { action: "jump"; trackId: string; by?: number; track?: WireTrack }
   /** songs for its queue, behind the playing one and what was asked for before */
   | ({ action: "enqueue"; next?: boolean } & WithSongs)
   /** go on from the position and queue documents, playing */
@@ -127,8 +132,12 @@ export interface SyncHost {
   readPlayback(): { note: PlaybackNote; queue: () => QueueDoc } | null;
   /** Whether to take over another device's note now: not while playing, not when this one is newer. */
   wantsPlayback(note: PlaybackNote): boolean;
-  /** Take it over, paused. `queue` is null when the note's queue is no longer there. */
-  adoptPlayback(note: PlaybackNote, queue: QueueDoc | null): void;
+  /**
+   * Take it over, paused. `queue` is null when the note's queue is no longer there. `handedOver`: it
+   * was sent here, so a song this device doesn't have gives way to the next one it does; false when
+   * there's none.
+   */
+  adoptPlayback(note: PlaybackNote, queue: QueueDoc | null, handedOver?: boolean): boolean | void;
   /** Liked Songs as arranged here, on the device where they are arranged. */
   readLikes?(): WireTrack[];
   /** The order arranged on another device, on a device that follows it. */
@@ -377,7 +386,8 @@ export function createSyncEngine(host: SyncHost) {
       const doc = queue.status === 200 ? (queue.body.doc as QueueDoc | null) : null;
       sentQueueId = note.queueId;
       sentAt = note.at;
-      host.adoptPlayback(note, doc?.id === note.queueId && Array.isArray(doc.tracks) ? doc : null);
+      // Nothing of that list on this device: what it had before isn't what was asked for either.
+      if (host.adoptPlayback(note, doc?.id === note.queueId && Array.isArray(doc.tracks) ? doc : null, true) === false) return;
     }
     host.onCommand?.({ action: "takeOver" });
   }

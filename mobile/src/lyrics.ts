@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { fetchLyrics, type LyricLine } from "./jellyfin";
-import { primaryArtist, queryTitle, type Track } from "./shared";
+import { lrcRows, primaryArtist, queryTitle, sungLines, unfoldStamps, type Track } from "./shared";
 import { readJson, writeJson } from "./storage";
 import Player from "../modules/media3-player";
 import { lyricsFileOf } from "./stores/localMusic";
@@ -32,13 +32,18 @@ async function askLrclib(path: string): Promise<any> {
 }
 
 function fromLrc(lrc: string): LyricLine[] {
-  const lines: LyricLine[] = [];
-  for (const raw of lrc.split(/\r?\n/)) {
-    const m = /^\[(\d{1,3}):(\d{2})[.:](\d{2,3})](.*)$/.exec(raw.trim());
-    if (m) lines.push({ at: (Number(m[1]) * 60 + Number(m[2])) * 1000 + Number(m[3].padEnd(3, "0")), text: m[4].replace(/<\d{1,3}:\d{2}[.:]\d{2,3}>/g, "").trim() });
-  }
-  return lines.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  return lrcRows(lrc).map((row) => ({ at: row.at, text: row.rest.replace(/<\d{1,3}:\d{2}[.:]\d{2,3}>/g, "").trim() }));
 }
+
+/**
+ * What the view shows; lines kept from before a line's further stamps were read get them back.
+ * A timed line without words stays, as a note: nobody sings there.
+ */
+const toShow = (lines: LyricLine[]): LyricLine[] =>
+  sungLines(
+    unfoldStamps(lines, (l) => l.at, (at, text) => ({ at, text })).map((l): LyricLine & { gap?: boolean } => (l.text.trim() ? l : { ...l, gap: true })),
+    (l) => l.at
+  );
 
 function linesOf(record: any): LyricLine[] {
   const timed = typeof record?.syncedLyrics === "string" ? fromLrc(record.syncedLyrics) : [];
@@ -64,8 +69,9 @@ async function fromLrclib(track: Track): Promise<LyricLine[]> {
 }
 
 async function load(track: Track): Promise<LyricLine[]> {
-  const seen = known.get(track.id) ?? (await readJson<LyricLine[]>(fileOf(track.id)));
-  if (seen) {
+  const kept = known.get(track.id) ?? (await readJson<LyricLine[]>(fileOf(track.id)));
+  if (kept) {
+    const seen = toShow(kept);
     known.set(track.id, seen);
     return seen;
   }
@@ -84,12 +90,13 @@ async function load(track: Track): Promise<LyricLine[]> {
       /* no way out to it right now: asked again next time */
     }
   }
+  const shown = toShow(got);
   // None today can be some tomorrow: only what was found stays.
-  if (got.length) {
-    known.set(track.id, got);
+  if (shown.length) {
+    known.set(track.id, shown);
     writeJson(fileOf(track.id), got);
   }
-  return got;
+  return shown;
 }
 
 /** A song kept on the phone keeps its lyrics too. */

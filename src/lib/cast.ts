@@ -59,8 +59,8 @@ const CASTABLE = /^(local|jf|ss):/;
 const SETTLE_MS = 4000;
 /** Reports in a row without an answer before the player counts as gone. */
 const LOST_AFTER = 10;
-/** How long a player may take to start a song it was handed. */
-const START_MS = 12000;
+/** Not playing yet after this long, moving to a player: why nothing is heard. */
+const SAY_WAITING_AFTER_MS = 4000;
 
 let deviceState: CastStatus["state"] = "idle";
 let lastCommandAt = 0;
@@ -73,10 +73,19 @@ let unanswered = 0;
 let startingSince: number | null = null;
 /** the queue entry on the player and the copy of it that plays there */
 let sent: { queueId: string; versionId: string } | null = null;
+/** moved to this player a moment ago: "Playing on" once it really does */
+let arriving: { name: string; timer: ReturnType<typeof setTimeout> } | null = null;
 let offStatus: (() => void) | null = null;
 
 const toast = (message: string, kind: "info" | "error" = "info"): void => useUI.getState().toast(message, kind);
 const playerName = (): string => useCast.getState().active?.name ?? "the player";
+
+/** The move to a player is over, one way or the other. */
+function arrived(): void {
+  if (arriving) clearTimeout(arriving.timer);
+  arriving = null;
+  useCast.setState({ connecting: null });
+}
 
 function adopt(change: () => void): void {
   adopting = true;
@@ -115,9 +124,10 @@ async function send(track: Track, position: number, play: boolean): Promise<void
       if (seq !== loadSeq) return;
       lastCommandAt = Date.now();
       startingSince = play ? lastCommandAt : null;
-      deviceState = play ? "playing" : "paused";
+      deviceState = play ? "loading" : "paused";
       usePlayer.getState()._setSource(track.id, version);
-      usePlayer.getState()._setBuffering(false);
+      // Playing, it stays that way until the player says it plays (onStatus).
+      usePlayer.getState()._setBuffering(play);
       return;
     } catch (err) {
       if (seq !== loadSeq) return;
@@ -126,6 +136,7 @@ async function send(track: Track, position: number, play: boolean): Promise<void
   }
   sent = null;
   startingSince = null;
+  arrived();
   usePlayer.getState()._setBuffering(false);
   toast(ipcErrorText(failure, T("\"{title}\" can't play on {playerName}", { title: track.title, playerName: playerName() })), "error");
   adopt(() => usePlayer.getState().setPlaying(false));
@@ -134,6 +145,8 @@ async function send(track: Track, position: number, play: boolean): Promise<void
 /** The store changed while the player has the music (audio.ts hands every change here). */
 function follow(state: ReturnType<typeof usePlayer.getState>, prev: ReturnType<typeof usePlayer.getState>): void {
   if (!useCast.getState().active) return;
+  // Paused on the way there: nothing to wait for any more.
+  if (arriving && !state.playing) arrived();
   const cur = state.queue[state.index] ?? null;
   const before = prev.queue[prev.index] ?? null;
   if (cur?.id !== before?.id) {
@@ -160,13 +173,34 @@ function follow(state: ReturnType<typeof usePlayer.getState>, prev: ReturnType<t
 function onStatus(st: CastStatus): void {
   // The others are zones with a queue of their own (lib/zones.ts).
   if ((st.session ?? "main") !== "main") return;
-  const cast = useCast.getState();
-  if (!cast.active || !st.device || st.device.id !== cast.active.id) return;
+  let cast = useCast.getState();
+  if (!cast.active || !st.device) return;
+  if (st.device.id !== cast.active.id) {
+    // The first of a group left: the next one is who it goes by now. Anybody else is from before.
+    if (!cast.members.some((m) => m.id === st.device?.id)) return;
+    useCast.setState({ active: st.device });
+    cast = useCast.getState();
+  }
   if (st.volume !== cast.volume || st.muted !== cast.muted) useCast.setState({ volume: st.volume, muted: st.muted });
   if (st.members && JSON.stringify(st.members) !== JSON.stringify(cast.members)) useCast.setState({ members: st.members });
+  if (st.notStarted) {
+    // Handed a song and, after all that time, it plays nothing. With others left it just went from the group.
+    if (st.members.some((m) => m.id !== st.notStarted?.id)) {
+      toast(T("{name} didn't start. Is it switched on?", { name: st.notStarted.name }), "error");
+      return;
+    }
+    const { name } = st.notStarted;
+    const title = usePlayer.getState().queue[usePlayer.getState().index]?.title ?? "";
+    toast(
+      st.fetched ? T("{name} fetched \"{title}\" but didn't start it. It may not play this kind of file. The music is back on this computer, paused", { name, title }) : T("{name} didn't start. It may be off, or a firewall keeps it from this computer: let Songsta through for private networks. The music is back here, paused", { name }),
+      "error"
+    );
+    void stopCasting(false);
+    return;
+  }
   if (st.message) {
     if (++unanswered === LOST_AFTER) {
-      toast(T("{name} stopped answering — the music is back on this computer, paused", { name: cast.active.name }), "error");
+      toast(T("{name} stopped answering — the music is back on this computer, paused", { name: st.device.name }), "error");
       void stopCasting(false);
     }
     return;
@@ -177,17 +211,12 @@ function onStatus(st: CastStatus): void {
   if (!cur || !sent || sent.queueId !== cur.id || st.trackId !== sent.versionId) return;
   deviceState = st.state;
   player._setBuffering(st.state === "loading");
-  if (st.state === "playing") startingSince = null;
-  else if (startingSince != null && Date.now() - startingSince > START_MS) {
-    // Handed over, never started: say why, as far as it can be told.
+  if (st.state === "playing") {
     startingSince = null;
-    player._setBuffering(false);
-    toast(
-      st.fetched ? T("{name} doesn't start \"{title}\" — it may not play this kind of file", { name: cast.active.name, title: cur.title }) : T("{name} can't reach this computer — let Songsta through the firewall for private networks", { name: cast.active.name }),
-      "error"
-    );
-    adopt(() => usePlayer.getState().setPlaying(false));
-    return;
+    if (arriving) {
+      toast(T("Playing on {name}", { name: arriving.name }));
+      arrived();
+    }
   }
   if (st.state === "loading") return;
   // A report sent off before a seek still has the old position.
@@ -225,8 +254,11 @@ export async function searchCastDevices(): Promise<CastDevice[]> {
   }
 }
 
-/** Hands the music to `device`, from where it is now. */
-export async function castTo(device: CastDevice): Promise<void> {
+/**
+ * Hands the music to `device`, from where it is now. `beforeHanding` runs once it answers,
+ * for what has to wait until then; whether it plays is what the store says after that.
+ */
+export async function castTo(device: CastDevice, beforeHanding?: () => void): Promise<void> {
   const bridge = requireBridge();
   if (useCast.getState().active?.id === device.id) return;
   useCast.setState({ connecting: device.id });
@@ -234,14 +266,31 @@ export async function castTo(device: CastDevice): Promise<void> {
     offStatus?.();
     offStatus = bridge.onCastStatus(onStatus);
     const status = await bridge.castStart(device.id);
+    // What's followed plays there until this moment: that's what this player goes on with.
+    const playing = usePlayer.getState().playing;
+    beforeHanding?.();
     deviceState = "idle";
     unanswered = 0;
     sent = null;
-    useCast.setState({ active: status.device, volume: status.volume, muted: status.muted, members: status.members ?? [], connecting: null });
+    useCast.setState({ active: status.device, volume: status.volume, muted: status.muted, members: status.members ?? [] });
     handOverToCast(follow);
+    adopt(() => usePlayer.getState().setPlaying(playing));
     const s = usePlayer.getState();
     const cur = s.queue[s.index];
-    if (cur) await send(cur, s.position, s.playing);
+    if (cur && playing) {
+      // A receiver can take a while to wake up: the news comes when it plays (onStatus).
+      if (arriving) clearTimeout(arriving.timer);
+      arriving = {
+        name: device.name,
+        timer: setTimeout(() => {
+          if (arriving?.name === device.name) toast(T("Waiting for {name} to start…", { name: device.name }));
+        }, SAY_WAITING_AFTER_MS),
+      };
+      await send(cur, s.position, true);
+      return;
+    }
+    if (cur) await send(cur, s.position, false);
+    useCast.setState({ connecting: null });
     toast(T("Playing on {name}", { name: device.name }));
   } catch (err) {
     offStatus?.();
@@ -259,6 +308,8 @@ export async function stopCasting(keepPlaying = true): Promise<void> {
   sent = null;
   loadSeq += 1;
   startingSince = null;
+  arrived();
+  usePlayer.getState()._setBuffering(false);
   useCast.setState({ active: null, volume: null, muted: false, members: [] });
   await requireBridge()
     .castStop()

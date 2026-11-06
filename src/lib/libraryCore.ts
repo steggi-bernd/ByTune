@@ -96,8 +96,8 @@ export function creditedArtists(t: Pick<Track, "artist" | "albumArtist">): strin
 const PLACEHOLDER_ALBUM = "unknown album";
 
 /** Album identity: album artist (or lead artist) + album title. */
-export function albumKeyOf(t: Pick<Track, "album" | "albumArtist" | "artist">): string | null {
-  const album = (t.album ?? "").trim();
+export function albumKeyOf(t: Pick<Track, "album" | "albumArtist" | "artist" | "albumTag">): string | null {
+  const album = (t.albumTag ?? t.album ?? "").trim();
   if (!album || album.toLowerCase() === PLACEHOLDER_ALBUM) return null;
   const owner = (t.albumArtist || leadArtist(t.artist)).trim().toLowerCase();
   return `${owner}|${album.toLowerCase()}`;

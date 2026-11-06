@@ -7,9 +7,10 @@
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronLeft, CircleMinus, EllipsisVertical, Pause, Pencil, Pin, PinOff, Play, Search, Shuffle, Trash2 } from "lucide-react-native";
+import { ChevronLeft, CircleMinus, EllipsisVertical, Image as ImageIcon, ImageOff, Pause, Pencil, Pin, PinOff, Play, Search, Shuffle, Trash2 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import Player from "../../modules/media3-player";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NameDialog } from "../components/PlaylistSheets";
 import { MenuSheet } from "../components/Sheet";
@@ -99,7 +100,12 @@ export function CollectionScreen() {
     .filter(Boolean)
     .join(" • ")
     .toUpperCase();
-  const picture = photo ?? tracks.find((t) => t.thumb)?.thumb;
+  const picture = playlist?.cover ?? photo ?? tracks.find((t) => t.thumb)?.thumb;
+  const choosePicture = async (): Promise<void> => {
+    if (!playlist) return;
+    const cover = await Player.pickImage();
+    if (cover) usePlaylists.getState().setCover(playlist.id, cover);
+  };
 
   return (
     <>
@@ -188,13 +194,15 @@ export function CollectionScreen() {
       <>
         <MenuSheet
           visible={menu}
-          art={<CoverGrid tracks={tracks} size={46} />}
+          art={<CoverGrid tracks={tracks} size={46} cover={playlist.cover} />}
           title={playlist.name}
           subtitle={plural(tracks.length, T("song"), T("songs"))}
           onClose={() => setMenu(false)}
           rows={[
             { label: playlist.pinned ? T("Unpin from Your Library") : T("Pin to the top of Your Library"), Icon: playlist.pinned ? PinOff : Pin, run: () => usePlaylists.getState().togglePin(playlist.id) },
             { label: T("Rename"), Icon: Pencil, run: () => setRenaming(true) },
+            { label: playlist.cover ? T("Change picture…") : T("Choose a picture…"), Icon: ImageIcon, run: () => void choosePicture() },
+            ...(playlist.cover ? [{ label: T("Remove picture"), Icon: ImageOff, run: () => usePlaylists.getState().setCover(playlist.id, null) }] : []),
             {
               label: T("Delete"),
               Icon: Trash2,

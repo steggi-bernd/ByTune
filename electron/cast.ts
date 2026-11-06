@@ -65,6 +65,8 @@ export interface CastStatus {
   muted: boolean;
   /** the song played to its end (set on the one status that says so) */
   ended?: boolean;
+  /** this player was handed a song and never started it; if others are left it's out of the group (set on the one status that says so) */
+  notStarted?: { id: string; name: string };
   message?: string;
 }
 
@@ -198,7 +200,7 @@ class Session {
   private set(next: Partial<CastStatus>): void {
     this.status = { ...this.status, ...next };
     this.emit(this.status);
-    if (this.status.ended) this.status = { ...this.status, ended: false };
+    if (this.status.ended || this.status.notStarted) this.status = { ...this.status, ended: false, notStarted: undefined };
   }
 
   private members(): Pick<CastStatus, "device" | "members" | "volume" | "muted"> {
@@ -259,9 +261,29 @@ class Session {
     this.ticking = true;
     try {
       const playing = this.current;
+      const waking = leader.starting();
+      // The others of a group get no reports asked for, but one still on its way up has to be looked after.
+      for (const p of this.players.slice(1)) {
+        if (!p.starting()) continue;
+        void p.status().then(
+          (at) => {
+            if (at.notStarted) void this.didNotStart(p);
+          },
+          () => undefined
+        );
+      }
       const at = await leader.status();
+      if (this.current !== playing) return;
+      if (at.notStarted) {
+        await this.didNotStart(leader);
+        return;
+      }
       // A report about the song before (players switch over in their own time) says nothing about this one.
-      if (this.current !== playing || (at.uri && !at.uri.includes(playing.token))) return;
+      if (at.uri && !at.uri.includes(playing.token)) return;
+      // Asleep when it was first asked, it can tell its volume now.
+      if (waking && !leader.starting() && this.volumes.get(leader.id)?.volume == null) {
+        void this.readVolume(leader).then(() => this.set(this.members()));
+      }
       const { state, position, duration, ended } = this.endWatch.see(at, playing.song.duration);
       this.set({ state, position, duration, ended, message: undefined });
     } catch (err) {
@@ -269,6 +291,13 @@ class Session {
     } finally {
       this.ticking = false;
     }
+  }
+
+  /** Handed a song and never started it: out of the group if there are others, and the renderer hears of it. */
+  private async didNotStart(player: Player): Promise<void> {
+    const name = { id: player.id, name: player.name };
+    if (this.players.length > 1) await this.leave(player.id);
+    this.set({ state: this.players.length > 0 && this.players[0] !== player ? this.status.state : "stopped", notStarted: name, message: undefined });
   }
 
   async start(player: Player): Promise<void> {
@@ -306,7 +335,8 @@ class Session {
     const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
     // The first player decides: a second one that can't follow doesn't stop the music.
     if (failed && results[0].status === "rejected") throw failed.reason;
-    this.set({ state: play ? "playing" : "paused" });
+    // Playing once it says so (see tick).
+    this.set({ state: play ? "loading" : "paused" });
   }
 
   private for(deviceId?: string): Player[] {
@@ -348,7 +378,7 @@ class Session {
     if (this.current) {
       const ext = this.current.file ? path.extname(this.current.file).toLowerCase() : serverStreamExt(this.current.song);
       await player
-        .load(`${this.base}/cast/${this.current.token}/song${ext}`, { ...this.current.song, mime: mimeOf(ext) }, this.status.position, this.status.state === "playing")
+        .load(`${this.base}/cast/${this.current.token}/song${ext}`, { ...this.current.song, mime: mimeOf(ext) }, this.status.position, this.status.state === "playing" || this.status.state === "loading")
         .catch((err: unknown) => {
           this.players = this.players.filter((p) => p !== player);
           player.close();
