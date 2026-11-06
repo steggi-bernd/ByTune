@@ -3,8 +3,8 @@
 # (free for public repos).
 #
 # Builds are UNSIGNED — no Apple Developer certificate is configured. To
-# sign + notarize, add the CSC_LINK / APPLE_API_* secrets listed in
-# DISTRIBUTION.md and drop the CSC_IDENTITY_AUTO_DISCOVERY override below.
+# sign + notarize, add the CSC_LINK / APPLE_API_* secrets electron-builder
+# reads and drop the CSC_IDENTITY_AUTO_DISCOVERY override below.
 #
 # Runs automatically on v* tags (attaches the DMG/ZIPs to that release) and
 # manually via workflow_dispatch (optional tag input attaches to an existing

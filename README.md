@@ -1,12 +1,24 @@
 <p align="center">
-  <img src="build/icon.png" width="88" height="88" alt="Songsta logo">
+  <img src="docs/banner.jpg" alt="Songsta, the local music player for the music you own, on Windows, Linux and Android: the desktop app's Home page with the phone app's player in front of it">
 </p>
 
-<h1 align="center">Songsta</h1>
+<h1 align="center">Songsta: a local music player for Windows, Linux and Android</h1>
 
 <p align="center">
-  <b>A music player for the music you own — on Windows, Linux and your Android phone, kept the same everywhere by a small service on your own server.</b><br>
-  Local folders, Jellyfin and Navidrome in one library — Hi-Res playback, synced lyrics and a home page built from your own listening. No account, no ads.
+  <b>The feel of a streaming app, for the music you own.</b><br>
+  Your files, Jellyfin and Navidrome in one library, Hi-Res playback, synced lyrics and your speakers at home. Free and open source, no account, no ads.
+</p>
+
+<p align="center">
+  <a href="https://github.com/steggi-bernd/Songsta/releases/latest/download/Songsta-Setup.exe"><img src="https://img.shields.io/badge/Windows-Songsta--Setup.exe-7c5cd6?style=for-the-badge" alt="Download for Windows: Songsta-Setup.exe"></a>
+  <a href="https://github.com/steggi-bernd/Songsta/releases/latest/download/Songsta-amd64.deb"><img src="https://img.shields.io/badge/Linux-.deb-7c5cd6?style=for-the-badge" alt="Download for Linux: Songsta-amd64.deb"></a>
+  <a href="https://github.com/steggi-bernd/Songsta/releases/latest/download/Songsta-x86_64.AppImage"><img src="https://img.shields.io/badge/Linux-AppImage-7c5cd6?style=for-the-badge" alt="Download for Linux: Songsta-x86_64.AppImage"></a>
+  <a href="https://github.com/steggi-bernd/Songsta/releases/latest/download/Songsta.apk"><img src="https://img.shields.io/badge/Android-Songsta.apk-7c5cd6?style=for-the-badge" alt="Download for Android: Songsta.apk"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/steggi-bernd/Songsta/releases/latest"><img src="https://img.shields.io/github/v/release/steggi-bernd/Songsta?label=release&color=7c5cd6" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-a8324a" alt="License: GPL-3.0"></a>
 </p>
 
 <p align="center">
@@ -22,15 +34,20 @@
   <a href="#credits-and-license">License</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/steggi-bernd/Songsta/releases/latest"><img src="https://img.shields.io/github/v/release/steggi-bernd/Songsta?label=release&color=7c5cd6" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%C2%B7%20Linux%20%C2%B7%20Android-1f6f5c" alt="Platform: Windows 10/11 · Linux · Android">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-a8324a" alt="License: GPL-3.0"></a>
-</p>
+## Why Songsta
 
-![Songsta: an album page with its track list; the library panel with two pinned rows over what played last; the right panel with what's next and the song's tempo and key; the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
+Streaming apps got a lot right: a Home page with mixes, artist pages, a real queue, one stream that moves between your devices. Songsta brings all of that to the music you own, and builds it only from your own files and servers.
 
-Songsta is a fork of [ByTune](https://github.com/rishiteja21/ByTune), the open-source YouTube Music desktop app, rebuilt into a player for your own collection. YouTube and the account screens are gone: the app opens in your library, plays from your disk first and streams from your own server only when a file isn't there.
+- **One library from everywhere.** Local folders, Jellyfin, Navidrome and any Subsonic server side by side. A song you have twice is listed once and plays from your disk first.
+- **Made for good files.** FLAC up to 24-bit/192 kHz, and the player bar always shows what really plays. Volume leveling, crossfade and an equalizer with AutoEQ headphone corrections are built in.
+- **Your whole collection, arranged.** Mixes made from your own listening, smart playlists, album and artist pages, synced lyrics.
+- **On your phone too.** The Android app plays your server and your folders, with downloads for when there's no connection.
+- **The same on every device.** A small service next to Jellyfin keeps playlists and where you stopped in sync, and one device can steer another, like Spotify Connect.
+- **Speakers at home.** Receivers and network speakers over UPnP/DLNA, Chromecast and Nest speakers: one press moves the music, several can play along, and each can play something else.
+- **Coming from Spotify?** Your Liked Songs and playlists come over in their order, with a list of what you still want to buy.
+- **Yours.** No account, no ads, no analytics.
+
+![An album page in the desktop app with its songs; the library panel with three pinned rows over what played last; the right panel with what's next and the song's tempo and key; the player bar showing Hi-Res · FLAC 24-bit / 96 kHz](docs/screenshots/local/album.jpg)
 
 Songsta comes in three parts. The desktop app stands on its own; the other two build on your Jellyfin server.
 
@@ -43,7 +60,7 @@ Songsta comes in three parts. The desktop app stands on its own; the other two b
 All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/releases/latest); [Install](#install) says how to set each of them up.
 
 > [!NOTE]
-> The screenshots show a **made-up demo library** — artists, songs, covers and lyrics were invented for this page. The app around them is the real build.
+> The screenshots show a **made-up demo library**: the artists, songs, lyrics and bios were invented for this page. The covers use public-domain paintings from the Art Institute of Chicago and NASA photographs ([credits](docs/screenshots/CREDITS.md)). The app around them is the real build.
 
 ## Features
 
@@ -55,7 +72,6 @@ All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/rel
 - **Unreachable songs are greyed out** — an unplugged drive, a server that doesn't answer — and come back by themselves.
 - **Missing facts come from open databases**: covers and album names from MusicBrainz and the Cover Art Archive (iTunes Search as a fallback), artist bios and photos from Wikidata, Wikipedia and Wikimedia Commons. Your files are never rewritten.
 - Credits like "Artist A, Artist B" count as two artists, each with their own page.
-- **Library check** (Settings): artists written different ways, albums split into parts, songs you have twice, albums without a cover, year or genre, and songs without an album — with a fix wherever Songsta can make one itself.
 
 ### Made for good files
 
@@ -69,7 +85,7 @@ All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/rel
 
 ### Your music, arranged like a streaming app
 
-![Home: quick-access tiles, Made for you mixes — On Repeat, Rediscover, Calm, Upbeat and one per genre — and recently added albums](docs/screenshots/local/home.jpg)
+![Home with the library panel folded to icons: quick-access tiles, Made for you mixes (On Repeat, Rediscover, Calm, Upbeat and one per genre) and recently added albums](docs/screenshots/local/home.jpg)
 
 - **Home**, built only from your library: quick-access tiles, *Made for you* mixes (On Repeat, Rediscover, what you usually play at this time of day, Calm and Upbeat, one per big genre and decade, reshuffled daily), recently added albums, your top artists and recently played songs.
 - **Album and artist pages** with play and shuffle, popular songs ranked by your own plays, the artist's songs you've liked, albums, singles & EPs, "appears on" and the Wikipedia bio.
@@ -78,7 +94,7 @@ All three are on the [Releases page](https://github.com/steggi-bernd/Songsta/rel
 - **The library panel** puts what you played last on top. Pinned playlists and albums stay above it, in the order you drag them into; the panel folds down to an icon rail (<kbd>Ctrl</kbd>+<kbd>B</kbd>).
 - **The right panel** shows the playing song — its title opens the album, its artists their pages — what plays next (drag songs in), the song's story and credits from Genius with its tempo and key, and the artist.
 
-![An artist's page: popular songs ranked by your own plays, and the songs of theirs you've liked as a small playlist](docs/screenshots/local/artist.jpg)
+![An artist's page: a large banner, the songs of theirs you've liked as a small playlist, popular songs ranked by your own plays, and the song's story and the artist in the right panel](docs/screenshots/local/artist.jpg)
 
 ### Fix albums without touching your files
 
@@ -95,6 +111,10 @@ Songs whose tags name no album gather under **Songs without an album** in the li
 
 Songsta keeps these edits itself; your files and servers stay exactly as they are.
 
+![Library check: three songs on no album, and an album in two parts with a button to merge them](docs/screenshots/local/library-check.jpg)
+
+**Library check** (Settings) looks for the rest: artists written different ways, albums split into parts, songs you have twice, albums without a cover, year or genre, and songs without an album, with a fix wherever Songsta can make one itself.
+
 ### Lyrics and Now Playing
 
 ![Full-screen Now Playing: the cover on the left, synced lyrics on the right](docs/screenshots/local/now-playing.jpg)
@@ -103,10 +123,15 @@ Songsta keeps these edits itself; your files and servers stay exactly as they ar
 - **Search by lyrics:** a line you remember finds the song, among the lyrics already on this computer.
 - **Full-screen Now Playing** (<kbd>N</kbd>) with cover, lyrics and queue, tinted by the cover's colors.
 - **Mini player:** an always-on-top picture-in-picture window.
+- **Replay:** your listening over time — top artists and songs, hours listened, monthly and hourly patterns.
+
+### A queue that does what you asked
+
+![The queue beside a playlist: two songs added by hand, a branch from "Sunday morning" as a block of its own, and the album's own next songs under Next up](docs/screenshots/local/queue.jpg)
+
 - **A real queue:** drag to reorder. *Add to queue* puts a song behind everything you asked for before it, first come, first played, in an area of its own above the rest of the list; if it's further down the list already, it comes up from there. A branch goes there too, as a block with the list's name: long ones fold, and its cross takes the whole branch back. A song you have in several places still plays only once.
 - **Shuffle that goes one way:** it mixes what's coming, so the list you see is what plays, and *Previous* goes back to the song you really heard.
 - **Branch off:** a song next, the rest of its list behind it. A small mark shows which song you chose until it comes on, and the same action on that song takes it back.
-- **Replay:** your listening over time — top artists and songs, hours listened, monthly and hourly patterns.
 
 ### In your language
 
@@ -114,7 +139,7 @@ The computer and the phone speak English and German, following your system unles
 
 ## Spotify import
 
-![Spotify import: 14 songs in your library, 3 to check with Same song / Different / Choose…, 5 missing](docs/screenshots/local/spotify-import.jpg)
+![Spotify import: 14 songs already in your library, 3 to check, 5 missing to buy, and the button that adds them to Liked Songs in Spotify's order](docs/screenshots/local/spotify-import.jpg)
 
 Coming from Spotify? Export your Liked Songs with [Exportify](https://github.com/watsonbox/exportify) (CSV) or take `YourLibrary.json` from Spotify's own data download, then open **Import from Spotify** in Liked Songs or Settings. Songsta sorts every song into three lists:
 
@@ -138,7 +163,7 @@ The Discord desktop app has to be running; Songsta connects as soon as it starts
 
 ## On your phone
 
-![The phone app: Home with your mixes, the player with its quality in gold, and the devices with a group of speakers and a second room playing something else](docs/screenshots/phone/phone.jpg)
+![The phone app: Home with your mixes, the player with its quality in gold, synced lyrics with what plays next, and the devices with a group of speakers and a second room playing something else](docs/screenshots/phone/phone.jpg)
 
 The Android app plays the music on your Jellyfin server and in folders you pick on the phone, laid out like the desktop app: Home with your mixes, Search with *Explore your library*, Your Library, album, artist and playlist pages. The player opens from a mini player, you swipe between songs, and the lock screen, notification and headset buttons work. [Install](#android) says how to get it.
 
@@ -152,7 +177,7 @@ The Android app plays the music on your Jellyfin server and in folders you pick 
 - **Without a connection** the app opens from what it remembers: the library, playlists, covers and the lyrics it has shown. Downloaded songs play, the rest is greyed out.
 - **Quality:** the player shows what really plays, gold for lossless and down to red for a small copy; tap it to choose. *Original* plays the file itself, *Compact* a 128 kbps copy, *Automatic* the best the connection carries, over mobile data up to AAC 256 kbps.
 
-The app is young and has run in an emulator far more than on real phones. [mobile/README.md](mobile/README.md) has more on all of this, and how to build it yourself.
+The app is young and has run in an emulator far more than on real phones, so please [open an issue](https://github.com/steggi-bernd/Songsta/issues) when something misbehaves. [mobile/README.md](mobile/README.md) has more on all of this, and how to build it yourself.
 
 ## The same on all your devices
 
@@ -162,7 +187,7 @@ There is one stream, like Spotify Connect: a device that isn't playing shows wha
 
 ## Your devices in one place
 
-![The devices in the side panel: this computer, a phone with Songsta on it, a speaker playing the app's music and another one with a song of its own](docs/screenshots/local/devices.jpg)
+![The devices in the side panel: this computer, a phone with Songsta on it, the living room playing the app's music, the kitchen with a song of its own, and two more speakers ready to join](docs/screenshots/local/devices.jpg)
 
 The speaker button next to the volume on the computer, and in the mini player or the player on the phone, opens a small smart-home room for everything that can make sound:
 
@@ -270,6 +295,6 @@ Shortcuts never fire while you're typing in a text field.
 
 ## Credits and license
 
-Songsta is a fork of [ByTune](https://github.com/rishiteja21/ByTune) by [rishiteja21](https://github.com/rishiteja21), which began as a desktop port of the BitChord Android player. Like both, it is licensed under the **GNU GPL v3** — see [LICENSE](LICENSE). Thanks to everyone who built them in the open.
+Songsta began as a fork of [ByTune](https://github.com/rishiteja21/ByTune) by [rishiteja21](https://github.com/rishiteja21), the open-source YouTube Music desktop app, itself a desktop port of the BitChord Android player, and was rebuilt into a player for your own collection. Like both, it is licensed under the **GNU GPL v3** — see [LICENSE](LICENSE). Thanks to everyone who built them in the open.
 
-Built with Electron, React, TypeScript, Tailwind CSS, Zustand and music-metadata, the phone app with Expo, React Native and Media3. Songsta is not affiliated with Spotify, Discord, Jellyfin or Navidrome.
+Built with Electron, React, TypeScript, Tailwind CSS, Zustand and music-metadata, the phone app with Expo, React Native and Media3. Songsta is not affiliated with Spotify, Discord, Jellyfin or Navidrome. Where the pictures in the screenshots come from: [docs/screenshots/CREDITS.md](docs/screenshots/CREDITS.md).
